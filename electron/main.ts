@@ -18,6 +18,7 @@ import { search, type SearchEvent } from "../core/search/search";
 import { DEFAULT_LIMITS, type Limits } from "../core/search/tree";
 import { DEFAULT_ULTRAMATH, problemKind, ultramath, type UltramathEvent, type UltramathLimits } from "../core/ultramath/swarm";
 import { checkUpstream } from "../core/upstream";
+import { formatUsd, metered, type Meter, type Price } from "../core/model/metered";
 import { registerChat } from "./chat";
 import { RunManager, type Problem, type RunStatus } from "../core/search/runs";
 import { RUN_TOOLS } from "../core/search/run-tools";
@@ -60,6 +61,10 @@ export type Settings = {
   chatEffort: ReasoningEffort;
   /** Offer a likely next message in an empty composer, and title new chats. */
   suggestions: boolean;
+  /** USD one session (a chat, a proof run, a search run, an Ultramath swarm) may spend; 0 means no cap. */
+  maxCostPerSession: number;
+  /** Model prices, USD per million tokens, by model id. */
+  prices: Record<string, Price>;
   /** Download and install new Mack releases from GitHub. */
   autoUpdate: boolean;
   /** Check Open Math Harness for methodology changes on every launch. */
@@ -70,7 +75,10 @@ export type Settings = {
 
 export type RunMode = "single" | "search" | "ultramath";
 
-export type RunEvent = ProveEvent | SearchEvent | UltramathEvent;
+/** What a session has spent, after each priced model call. */
+export type SpendEvent = { type: "spend"; usd: number; limit: number; estimated: boolean };
+
+export type RunEvent = ProveEvent | SearchEvent | UltramathEvent | SpendEvent;
 
 export type KeySource = "env" | "saved" | "none";
 
@@ -92,6 +100,8 @@ export type RunRecord = {
   startedAt: number;
   finishedAt: number;
   model: string;
+  /** USD the run spent, when the model had a price. */
+  spentUsd?: number;
   /** Absent on runs recorded before providers were selectable: those used Fireworks. */
   provider?: ProviderId;
   /** Absent on runs recorded before the search tree: those were "single". */
@@ -123,6 +133,8 @@ const DEFAULTS: Settings = {
   chatEffort: "medium",
   suggestions: true,
   autoUpdate: true,
+  maxCostPerSession: 2,
+  prices: {},
   useRepl: true,
   searchWorker: "fixed",
   searchAnalysis: true,
@@ -255,11 +267,13 @@ function createWindow(): void {
 
 ipcMain.handle("settings:get", () => readSettings());
 
-ipcMain.handle("settings:set", (_e, s: Partial<Settings>) => {
-  const next = { ...readSettings(), ...s };
+function writeSettings(patch: Partial<Settings>): Settings {
+  const next = { ...readSettings(), ...patch };
   writeFileSync(settingsPath(), JSON.stringify(next, null, 2));
   return next;
-});
+}
+
+ipcMain.handle("settings:set", (_e, s: Partial<Settings>) => writeSettings(s));
 
 ipcMain.handle("key:set", (_e, id: ProviderId, key: string) => {
   if (!isProvider(id)) throw new Error("unknown provider");
@@ -333,8 +347,21 @@ ipcMain.handle("open:external", (_e, url: string) => {
 
 ipcMain.handle("models:list", async (_e, id?: ProviderId) => {
   const s = readSettings();
-  return makeProvider(s, isProvider(id) ? id : s.provider).listModels();
+  const provider = makeProvider(s, isProvider(id) ? id : s.provider);
+  const models = await provider.listModels();
+  // A catalogue that publishes prices fills in the ones the person has not set.
+  const published = await provider.listPrices().catch(() => ({}));
+  const missing = Object.fromEntries(Object.entries(published).filter(([m]) => !s.prices[m]));
+  if (Object.keys(missing).length) writeSettings({ prices: { ...s.prices, ...missing } });
+  return models;
 });
+
+/** A session's meter, refusing to start when a cap is set and the model has no price (its spend could not be counted). */
+function newMeter(s: Settings, model: string, spent = 0): { meter: Meter; price: Price | undefined } {
+  const price = s.prices[model];
+  if (s.maxCostPerSession > 0 && !price) throw new Error(`Set the price of ${model} in Setup → Model (the spending cap needs it), or turn the cap off in Settings.`);
+  return { meter: { spent, limit: s.maxCostPerSession, estimated: false }, price };
+}
 
 /** One proof run in the given mode, recorded in the run history. Shared by the Prove screen and the chat's `start_proof`. */
 async function runProof(problem: string, mode: RunMode, forward: (ev: RunEvent) => void): Promise<RunRecord> {
@@ -344,8 +371,17 @@ async function runProof(problem: string, mode: RunMode, forward: (ev: RunEvent) 
   if (!model) throw new Error(`Choose a ${providerInfo(s.provider).label} model in Setup first.`);
   const needsLean = s.mode !== "ultramath" || problemKind(problem) === "lean";
   if (needsLean && !hasProject(s.leanWorkspace)) throw new Error("Install Lean and Mathlib in Setup first.");
-  const provider = makeProvider(s, s.provider);
-  proving = new AbortController();
+  const { meter, price } = newMeter(s, model);
+  const ctl = new AbortController();
+  let capped = false;
+  const provider = metered(makeProvider(s, s.provider), price, meter, {
+    onCharge: (m) => send({ type: "spend", usd: m.spent, limit: m.limit, estimated: m.estimated }),
+    onCap: () => {
+      capped = true;
+      ctl.abort();
+    },
+  });
+  proving = ctl;
   const record: RunRecord = {
     id: `${Date.now()}`,
     startedAt: Date.now(),
@@ -361,7 +397,11 @@ async function runProof(problem: string, mode: RunMode, forward: (ev: RunEvent) 
   const send = (ev: RunEvent) => {
     if (ev.type !== "status") record.events.push(ev);
     if (ev.type === "solved" || ev.type === "accepted") record.outcome = "solved";
-    if (ev.type === "failed") record.message = ev.message;
+    if (ev.type === "failed") {
+      if (capped) ev = { ...ev, message: `Stopped: the spending cap of ${formatUsd(meter.limit)} for this run is reached.` };
+      record.message = ev.message;
+    }
+    if (ev.type === "spend") record.spentUsd = ev.usd;
     forward(ev);
   };
   try {
@@ -457,6 +497,8 @@ ipcMain.handle("file:openLean", async (e) => {
 
 registerUpdates(() => readSettings().autoUpdate);
 
+const runMeters = new Map<string, { meter: Meter; price: Price | undefined }>();
+
 /** Who started a run from a chat, to wake that chat when the run ends. */
 const runOwners = new Map<string, { projectId: string; sessionId: string }>();
 
@@ -467,10 +509,17 @@ const runs = new RunManager(
     if (!hasProject(s.leanWorkspace)) throw new Error("Install Lean and Mathlib in Setup first.");
     const run = leanRunner({ workspace: s.leanWorkspace, timeoutMs: s.timeoutMs });
     const check = quickCheck(s, Math.min(2, task.limits.w * Math.max(1, task.concurrency))) ?? (async (src: string) => checkFromRun(await run(src)));
+    // One meter per run, across its problems and its resumes.
+    let m = runMeters.get(task.name);
+    if (!m) runMeters.set(task.name, (m = newMeter(s, s.models[s.provider], runs.status(task.name).spentUsd ?? 0)));
+    const meter = m;
     await search({
       frozen: problem.frozen,
       problem: problem.id,
-      provider: makeProvider(s, s.provider),
+      provider: metered(makeProvider(s, s.provider), meter.price, meter.meter, {
+        onCharge: (x) => runs.recordSpend(task.name, x.spent),
+        onCap: () => runs.stop(task.name),
+      }),
       model: s.models[s.provider],
       run,
       check,
@@ -486,6 +535,7 @@ const runs = new RunManager(
     });
   },
   (status) => {
+    runMeters.delete(status.name);
     const owner = runOwners.get(status.name);
     if (!owner) return;
     runOwners.delete(status.name);
@@ -497,10 +547,15 @@ const runs = new RunManager(
 registerTools(RUN_TOOLS);
 registerTools(SWARM_CHAT_TOOLS);
 
-const swarms = new SwarmService({
-  provider: () => {
+const swarmMeters = new Map<string, { meter: Meter; price: Price | undefined }>();
+
+const swarms: SwarmService = new SwarmService({
+  provider: (swarm) => {
     const s = readSettings();
-    return { provider: makeProvider(s, s.provider), model: s.models[s.provider] };
+    const model = s.models[s.provider];
+    let m = swarmMeters.get(swarm);
+    if (!m) swarmMeters.set(swarm, (m = newMeter(s, model)));
+    return { provider: metered(makeProvider(s, s.provider), m.price, m.meter, { onCap: () => swarms.capReached(swarm, m!.meter.limit) }), model };
   },
   lean: () => {
     const s = readSettings();
@@ -515,6 +570,7 @@ const chat = registerChat({
   userData,
   readSettings,
   makeProvider: (s) => makeProvider(s, s.provider),
+  newMeter,
   lean: (s) => {
     if (!hasProject(s.leanWorkspace)) return undefined;
     const run = leanRunner({ workspace: s.leanWorkspace, timeoutMs: s.timeoutMs });
@@ -580,6 +636,7 @@ function runTool(call: { name: string; args: Record<string, unknown> }, ctx: { p
           const objection = frozenObjection(p.frozen);
           if (objection) throw new Error(`${p.id} is not a usable frozen file: ${objection}`);
         }
+        newMeter(s, s.models[s.provider]);
         const limits = { ...s.search, ...(typeof a.width === "number" ? { w: a.width } : {}), ...(typeof a.rounds === "number" ? { k1: a.rounds } : {}) };
         const runName = typeof a.run === "string" && a.run ? a.run : `run-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}`;
         const st = runs.start({ name: runName, project: ctx.projectId, problems, limits, worker: a.worker === "tool" || a.worker === "fixed" ? a.worker : s.searchWorker, concurrency: Math.max(1, Math.min(4, Number(a.concurrency) || s.runConcurrency)), analysis: s.searchAnalysis });
@@ -618,6 +675,7 @@ ipcMain.handle("discovery:startFiles", async (e) => {
   const r = await dialog.showOpenDialog(win!, { properties: ["openFile", "multiSelections"], filters: [{ name: "Lean", extensions: ["lean"] }], title: "Problems for a proof-search run" });
   if (r.canceled || !r.filePaths.length) return null;
   const s = readSettings();
+  newMeter(s, s.models[s.provider]);
   const problems: Problem[] = r.filePaths.map((f) => ({ id: basename(f, ".lean").replace(/[^a-zA-Z0-9._-]/g, "_"), frozen: readFileSync(f, "utf8") }));
   for (const p of problems) {
     const objection = frozenObjection(p.frozen);

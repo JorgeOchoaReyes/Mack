@@ -157,6 +157,20 @@ export class OpenAICompatibleProvider implements ModelProvider {
     return { content, usage };
   }
 
+  /** Prices the catalogue publishes, USD per million tokens (OpenRouter gives them per token); empty when it gives none. */
+  async listPrices(): Promise<Record<string, { input: number; output: number }>> {
+    const res = await fetch(this.url("/models"), { headers: this.headers() });
+    if (!res.ok) return {};
+    const json = (await res.json()) as { data?: { id?: string; pricing?: { prompt?: string | number; completion?: string | number } }[] };
+    const out: Record<string, { input: number; output: number }> = {};
+    for (const m of json.data ?? []) {
+      const input = Number(m.pricing?.prompt);
+      const output = Number(m.pricing?.completion);
+      if (m.id && Number.isFinite(input) && Number.isFinite(output) && input >= 0 && output >= 0) out[m.id] = { input: input * 1_000_000, output: output * 1_000_000 };
+    }
+    return out;
+  }
+
   async listModels(): Promise<string[]> {
     const res = await fetch(this.url("/models"), { headers: this.headers() });
     if (!res.ok) throw new Error(`${this.name} returned ${res.status}: ${(await res.text()).slice(0, 500)}`);

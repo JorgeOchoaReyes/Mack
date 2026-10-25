@@ -60,6 +60,26 @@ export function SettingsPage({ settings, saveSettings, onGo }: Props) {
       </section>
 
       <section className="settings-group">
+        <h2>Spending</h2>
+        <p className="muted">
+          Each session — a chat, a proof run, a search run, an Ultramath swarm — stops when its model calls have cost this much. Cost is the tokens your
+          provider reports times the model's price in Setup. A call already running when the cap is reached still finishes.
+        </p>
+        <div className="grid-2">
+          <Field label="Max cost per session (USD)" hint="0 turns the cap off.">
+            <input
+              className="input"
+              type="number"
+              min={0}
+              step={0.5}
+              value={settings.maxCostPerSession}
+              onChange={(e) => void saveSettings({ maxCostPerSession: Math.max(0, Number(e.target.value) || 0) })}
+            />
+          </Field>
+        </div>
+      </section>
+
+      <section className="settings-group">
         <h2>Search tree</h2>
         <p className="muted">
           Used when the Prove screen is set to Search tree. The whole search makes at most the model-call budget of billed calls.

@@ -20,6 +20,7 @@ import {
   type ToolSpec,
 } from "../api";
 import { CodeEditor } from "../components/CodeEditor";
+import { formatUsd } from "../../core/model/metered";
 import { Badge, Button, Spinner, timeAgo, Toggle } from "../components/ui";
 
 type Props = { health: Health | null; settings: Settings; saveSettings: (s: Partial<Settings>) => Promise<void>; onGoSetup: () => void };
@@ -113,6 +114,7 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
           return;
         }
         if (e.type === "delta") return setStreaming((t) => t + e.text);
+        if (e.type === "spend") return setSession((cur2) => (cur2 && cur2.id === w.sessionId ? { ...cur2, costUsd: e.usd } : cur2));
         if (e.type === "status") return setStatus(e.message);
         if (e.type === "error") setError(e.message);
         if (e.type === "assistant" || e.type === "tool") {
@@ -374,6 +376,12 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
               <button type="button" className="icon-btn" title="Attach files" disabled={!project} onClick={async () => setFiles([...files, ...(await api.attachFiles(projectId))])}>
                 <Paperclip size={15} />
               </button>
+              {session?.costUsd !== undefined && (
+                <span className="spend-chip" title="What this chat's model calls have cost, sub-agents and suggestions included">
+                  {formatUsd(session.costUsd)}
+                  {settings.maxCostPerSession > 0 ? ` of ${formatUsd(settings.maxCostPerSession)}` : ""}
+                </span>
+              )}
               <label className="muted small row gap-sm" title="How deeply the model thinks in this chat">
                 Reasoning
                 <select

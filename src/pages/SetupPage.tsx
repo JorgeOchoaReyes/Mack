@@ -364,8 +364,48 @@ function ModelStep({ settings, ready, keyReady, saveSettings, onChanged }: { set
               Use
             </Button>
           </form>
+          {current && <PriceFields settings={settings} model={current} saveSettings={saveSettings} />}
+          {current && provider === "fireworks" && (
+            <button className="link small" onClick={() => void api.openExternal("https://fireworks.ai/pricing")}>
+              Fireworks prices <ExternalLink size={12} />
+            </button>
+          )}
         </>
       )}
     </StepCard>
+  );
+}
+
+/** The model's price, USD per million tokens: what the spending cap counts with. */
+function PriceFields({ settings, model, saveSettings }: { settings: Settings; model: string; saveSettings: (s: Partial<Settings>) => Promise<void> }) {
+  const price = settings.prices[model];
+  const [input, setInput] = useState(price ? String(price.input) : "");
+  const [output, setOutput] = useState(price ? String(price.output) : "");
+  useEffect(() => {
+    setInput(price ? String(price.input) : "");
+    setOutput(price ? String(price.output) : "");
+  }, [model, price?.input, price?.output]);
+  const valid = input.trim() !== "" && output.trim() !== "" && Number(input) >= 0 && Number(output) >= 0;
+  return (
+    <form
+      className="price-row"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (valid) void saveSettings({ prices: { ...settings.prices, [model]: { input: Number(input), output: Number(output) } } });
+      }}
+    >
+      <span className="small">
+        Price of <code>{model.split("/").pop()}</code>, USD per million tokens{price ? "" : " (needed for the spending cap)"}:
+      </span>
+      <label className="small">
+        input <input className="input price" inputMode="decimal" value={input} onChange={(e) => setInput(e.target.value)} placeholder="0.90" />
+      </label>
+      <label className="small">
+        output <input className="input price" inputMode="decimal" value={output} onChange={(e) => setOutput(e.target.value)} placeholder="0.90" />
+      </label>
+      <Button size="sm" type="submit" disabled={!valid || (price?.input === Number(input) && price?.output === Number(output))}>
+        Save price
+      </Button>
+    </form>
   );
 }
