@@ -33,8 +33,8 @@ upstream module.
 | `interfaces/lean/src/rules.rs` (forbidden tokens, frozen statement, preamble) | `core/lean/rules.ts` | Ported |
 | `program-files/lean/src/verify.rs` (strict verify: axioms, `pp.all` type match, report marker) | `core/lean/verify.ts` | Ported |
 | `program-files/lean` `check` on a resident Lean REPL | `core/lean/runner.ts` (`lake env lean` per call, no REPL) | Simplified |
-| `program-files/prover` + `program-files/discovery` + `interfaces/explore` (proof search tree) | — | Planned, step 2 |
-| `interfaces/swarm` (Ultramath) | — | Planned, step 3 |
-| `program-files/chat-agent`, tools, `program-files/memory`, `program-files/approvals` | — | Planned, step 4 |
+| `program-files/prover` + `program-files/discovery` + `interfaces/explore` (proof search tree) | — | Planned, roadmap step 2 |
+| `interfaces/swarm` (Ultramath) | — | Planned, roadmap step 3 |
+| `program-files/chat-agent`, tools, `program-files/memory`, `program-files/approvals` | — | Planned, roadmap step 4 |
 | `kernel/` + `platform/` (capability microkernel, bubblewrap confinement) | — | Not ported: Linux-only. Mack restricts each agent's tools in-process instead, which is weaker. |
 | `program-files/openrouter` | `core/model/fireworks.ts` behind `core/model/provider.ts` | Replaced: Fireworks |

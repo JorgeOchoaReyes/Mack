@@ -31,8 +31,37 @@ and how Mack keeps up with upstream.
   changed its methodology. The check is optional, and you can stay on your
   current version.
 
-Planned: a proof search tree, Ultramath (parallel agents), chat with tools,
-project memory. See the module map in docs/UPSTREAM.md.
+## Roadmap
+
+Each step ports one part of Open Math Harness; docs/UPSTREAM.md maps the
+upstream module each comes from.
+
+- [x] **1. Verified proving.** Strict Lean verifier, single-agent prove loop,
+  one-click Lean setup, run history, upstream tracking, Windows installer.
+- [ ] **2. Proof search tree.** Keep partial proofs (with `sorry`) as a tree,
+  let parallel workers extend the most promising branches, and let later
+  rounds build on earlier ones instead of starting over. From upstream
+  `program-files/prover`, `program-files/discovery`, `interfaces/explore`.
+  Includes a resident Lean REPL for fast checks of partial proofs, replacing
+  one `lake env lean` run per check.
+- [ ] **3. Ultramath.** Several agents attack one hard problem from different
+  directions: a duplicate check on proposed directions, a shared board of
+  lemmas, counterexamples and dead ends, and a coordinating agent that
+  reviews reports and accepts a solution. From upstream `interfaces/swarm`.
+- [ ] **4. Chat with tools and memory.** A research chat whose agent can read
+  and write project files, run Lean, search the web and PDFs, and keep a
+  per-project memory across sessions, with protected actions waiting for
+  your approval. From upstream `program-files/chat-agent`,
+  `program-files/memory`, `program-files/approvals`.
+- [ ] **5. More model providers.** OpenRouter and other OpenAI-compatible
+  endpoints next to Fireworks, chosen per run.
+- [ ] **6. Distribution.** A code-signed installer (no SmartScreen warning),
+  GitHub Releases with auto-update, and the upstream check comparing against
+  the installed version.
+
+Not planned: upstream's capability microkernel and bubblewrap sandboxing are
+Linux-only. Mack limits each agent's tools inside the app instead, which is
+weaker, and step 4 will state exactly what each agent can do.
 
 ## Install
 
