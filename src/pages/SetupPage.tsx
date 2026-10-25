@@ -376,36 +376,56 @@ function ModelStep({ settings, ready, keyReady, saveSettings, onChanged }: { set
   );
 }
 
-/** The model's price, USD per million tokens: what the spending cap counts with. */
+/** A price as people type it: `0.14`, `$0.14`, `0,14`, `0.14 /M`. NaN when it is not one. */
+export function parsePrice(text: string): number {
+  const t = text.trim().replace(/^\$/, "").replace(/\s*(usd|\/\s*m(tok)?|per\s*m(illion)?)\s*$/i, "").replace(",", ".").trim();
+  return /^\d*\.?\d+$|^\d+\.$/.test(t) ? Number(t) : NaN;
+}
+
+/** The model's price, USD per million tokens: what the spending limits count with. */
 function PriceFields({ settings, model, saveSettings }: { settings: Settings; model: string; saveSettings: (s: Partial<Settings>) => Promise<void> }) {
   const price = settings.prices[model];
   const [input, setInput] = useState(price ? String(price.input) : "");
   const [output, setOutput] = useState(price ? String(price.output) : "");
+  const [saved, setSaved] = useState(false);
   useEffect(() => {
     setInput(price ? String(price.input) : "");
     setOutput(price ? String(price.output) : "");
   }, [model, price?.input, price?.output]);
-  const valid = input.trim() !== "" && output.trim() !== "" && Number(input) >= 0 && Number(output) >= 0;
+  const i = parsePrice(input);
+  const o = parsePrice(output);
+  const problem =
+    !input.trim() || !output.trim() ? "" : Number.isNaN(i) || Number.isNaN(o) ? "Enter plain numbers, e.g. 0.14 (dollars per million tokens)." : "";
+  const valid = !Number.isNaN(i) && !Number.isNaN(o) && input.trim() !== "" && output.trim() !== "";
+  const unchanged = price?.input === i && price?.output === o;
   return (
     <form
-      className="price-row"
-      onSubmit={(e) => {
+      className="price-block"
+      onSubmit={async (e) => {
         e.preventDefault();
-        if (valid) void saveSettings({ prices: { ...settings.prices, [model]: { input: Number(input), output: Number(output) } } });
+        if (!valid) return;
+        await saveSettings({ prices: { ...settings.prices, [model]: { input: i, output: o } } });
+        setSaved(true);
+        setTimeout(() => setSaved(false), 2500);
       }}
     >
-      <span className="small">
-        Price of <code>{model.split("/").pop()}</code>, USD per million tokens{price ? "" : " (needed for the spending cap)"}:
-      </span>
-      <label className="small">
-        input <input className="input price" inputMode="decimal" value={input} onChange={(e) => setInput(e.target.value)} placeholder="0.90" />
-      </label>
-      <label className="small">
-        output <input className="input price" inputMode="decimal" value={output} onChange={(e) => setOutput(e.target.value)} placeholder="0.90" />
-      </label>
-      <Button size="sm" type="submit" disabled={!valid || (price?.input === Number(input) && price?.output === Number(output))}>
-        Save price
-      </Button>
+      <div className="small">
+        Price of <code>{model.split("/").pop()}</code> in US dollars per million tokens{price ? "" : " — needed for the spending limits"}:
+      </div>
+      <div className="price-row">
+        <label className="small">
+          input $ <input className="input price" inputMode="decimal" value={input} onChange={(e) => setInput(e.target.value)} placeholder="0.14" />
+        </label>
+        <label className="small">
+          output $ <input className="input price" inputMode="decimal" value={output} onChange={(e) => setOutput(e.target.value)} placeholder="0.28" />
+        </label>
+        <Button size="sm" variant={price ? "secondary" : "primary"} type="submit" disabled={!valid || unchanged}>
+          Save price
+        </Button>
+        {saved && <span className="ok small">Saved</span>}
+        {!saved && price && unchanged && <span className="muted small">Saved: ${price.input} in, ${price.output} out</span>}
+      </div>
+      {problem && <div className="bad small">{problem}</div>}
     </form>
   );
 }

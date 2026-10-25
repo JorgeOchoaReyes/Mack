@@ -32,3 +32,12 @@ describe("feedback", () => {
     ]);
   });
 });
+
+describe("price input", () => {
+  it("reads prices as people type them", async () => {
+    const { parsePrice } = await import("../src/pages/SetupPage");
+    expect([parsePrice("0.14"), parsePrice("$0.14"), parsePrice("0,14"), parsePrice(" 2 "), parsePrice("0.9 /M"), parsePrice(".5")]).toEqual([0.14, 0.14, 0.14, 2, 0.9, 0.5]);
+    expect(Number.isNaN(parsePrice("abc"))).toBe(true);
+    expect(Number.isNaN(parsePrice("-1"))).toBe(true);
+  });
+});
