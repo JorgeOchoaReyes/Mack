@@ -1,27 +1,33 @@
-import { BookOpen, ChevronDown, FolderOpen, Play, Square, Sparkles, CircleCheck, CircleAlert, Cpu } from "lucide-react";
+import { BookOpen, ChevronDown, FolderOpen, GitBranch, Play, Square, Sparkles, CircleCheck, CircleAlert, Cpu, Repeat } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { api, errorText, theoremName, type Health, type ProveEvent } from "../api";
+import { api, errorText, theoremName, type Health, type RunEvent, type Settings } from "../api";
 import { CodeEditor } from "../components/CodeEditor";
 import { SolvedCard, Timeline } from "../components/RunView";
+import { TreeSummary, TreeView, type NodeEvent } from "../components/TreeView";
 import { Button, Spinner } from "../components/ui";
 import { EXAMPLES } from "../examples";
 
-type Attempt = Extract<ProveEvent, { type: "attempt" }>;
-type Solved = Extract<ProveEvent, { type: "solved" }>;
+type Attempt = Extract<RunEvent, { type: "attempt" }>;
+type Solved = Extract<RunEvent, { type: "solved" }>;
 
 type Props = {
   problem: string;
   setProblem: (p: string) => void;
   health: Health | null;
-  maxAttempts: number;
+  settings: Settings;
+  saveSettings: (s: Partial<Settings>) => Promise<void>;
   onGoSetup: () => void;
   onRunFinished: () => void;
 };
 
-export function ProvePage({ problem, setProblem, health, maxAttempts, onGoSetup, onRunFinished }: Props) {
+export function ProvePage({ problem, setProblem, health, settings, saveSettings, onGoSetup, onRunFinished }: Props) {
+  const maxAttempts = settings.maxAttempts;
   const [running, setRunning] = useState(false);
   const [status, setStatus] = useState("");
   const [attempts, setAttempts] = useState<Attempt[]>([]);
+  const [nodes, setNodes] = useState<NodeEvent[]>([]);
+  const [round, setRound] = useState(0);
+  const [runMode, setRunMode] = useState(settings.mode);
   const [solved, setSolved] = useState<Solved | null>(null);
   const [failure, setFailure] = useState("");
   const [examplesOpen, setExamplesOpen] = useState(false);
@@ -34,6 +40,8 @@ export function ProvePage({ problem, setProblem, health, maxAttempts, onGoSetup,
       api.onProveEvent((e) => {
         if (e.type === "status") setStatus(e.message);
         if (e.type === "attempt") setAttempts((a) => [...a, e]);
+        if (e.type === "node") setNodes((n) => [...n, e]);
+        if (e.type === "round") setRound(e.round);
         if (e.type === "solved") setSolved(e);
         if (e.type === "failed") setFailure(e.message);
       }),
@@ -58,6 +66,9 @@ export function ProvePage({ problem, setProblem, health, maxAttempts, onGoSetup,
 
   const run = async () => {
     setAttempts([]);
+    setNodes([]);
+    setRound(0);
+    setRunMode(settings.mode);
     setSolved(null);
     setFailure("");
     setStatus("Starting…");
@@ -84,6 +95,14 @@ export function ProvePage({ problem, setProblem, health, maxAttempts, onGoSetup,
           <span className="theorem">{theoremName(problem)}</span>
         </div>
         <div className="toolbar-actions">
+          <div className="mode-switch" title="Single: one agent revises one proof. Search tree: parallel workers extend the most promising partial proofs.">
+            <button className={settings.mode === "single" ? "active" : ""} disabled={running} onClick={() => void saveSettings({ mode: "single" })}>
+              <Repeat size={13} /> Single
+            </button>
+            <button className={settings.mode === "search" ? "active" : ""} disabled={running} onClick={() => void saveSettings({ mode: "search" })}>
+              <GitBranch size={13} /> Search tree
+            </button>
+          </div>
           <div className="menu" ref={menu}>
             <Button icon={BookOpen} onClick={() => setExamplesOpen(!examplesOpen)}>
               Examples <ChevronDown size={14} />
@@ -152,9 +171,20 @@ export function ProvePage({ problem, setProblem, health, maxAttempts, onGoSetup,
           <div className="run-scroll">
             {!ready && <SetupNudge health={health} onGoSetup={onGoSetup} />}
 
-            {ready && !running && attempts.length === 0 && !solved && !failure && <HowItWorks />}
+            {ready && !running && attempts.length === 0 && nodes.length === 0 && !solved && !failure && <HowItWorks mode={settings.mode} />}
 
-            {(running || attempts.length > 0) && (
+            {runMode === "search" && (running || nodes.length > 0) && (
+              <div className="progress">
+                <div className="progress-head">
+                  {running ? <Spinner /> : solved ? <CircleCheck size={16} className="ok" /> : <CircleAlert size={16} className="bad" />}
+                  <span className="progress-status">{running ? status : solved ? "Solved" : "Finished without a proof"}</span>
+                  {running && <span className="muted small">{elapsed}s</span>}
+                </div>
+                <TreeSummary nodes={nodes} rounds={round} k1={settings.search.k1} />
+              </div>
+            )}
+
+            {runMode === "single" && (running || attempts.length > 0) && (
               <div className="progress">
                 <div className="progress-head">
                   {running ? <Spinner /> : solved ? <CircleCheck size={16} className="ok" /> : <CircleAlert size={16} className="bad" />}
@@ -172,8 +202,9 @@ export function ProvePage({ problem, setProblem, health, maxAttempts, onGoSetup,
             )}
 
             {failure && !running && <div className="notice notice-bad">{failure}</div>}
-            {solved && <SolvedCard solved={solved} problem={problem} />}
+            {solved && <SolvedCard solved={solved} problem={problem} where={runMode === "search" ? `Node ${solved.n} of the search tree` : undefined} />}
             {attempts.length > 0 && <Timeline attempts={attempts} />}
+            {nodes.length > 0 && <TreeView nodes={nodes} />}
           </div>
         </section>
       </div>
@@ -205,8 +236,12 @@ function SetupNudge({ health, onGoSetup }: { health: Health | null; onGoSetup: (
   );
 }
 
-function HowItWorks() {
-  const steps = [
+function HowItWorks({ mode }: { mode: Settings["mode"] }) {
+  const steps = mode === "search" ? [
+    ["Workers branch out", "Several workers start from the statement, each writing a proof that may leave `sorry` gaps for later."],
+    ["Lean scores every node", "Each file is checked; partial proofs score higher than broken ones, and a complete proof goes to the verifier."],
+    ["The best branches grow", "Later rounds continue the most promising nodes instead of starting over, until the verifier accepts one."],
+  ] : [
     ["The model proposes", "Your Fireworks model writes a complete Lean proof of the frozen statement."],
     ["Lean checks", "Lean's errors and open goals go back to the model, which revises the proof."],
     ["The verifier decides", "A proof counts only if the statement is untouched, no axiom or sorry is used, and Lean accepts it."],

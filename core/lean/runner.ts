@@ -6,7 +6,7 @@ import { spawn } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { lakeCommand, leanEnv } from "./toolchain";
+import { killTree, lakeCommand, leanEnv } from "./toolchain";
 import type { LeanRun, RunResult } from "./verify";
 
 export type LeanConfig = {
@@ -38,7 +38,7 @@ export function leanRunner(config: LeanConfig): LeanRun {
           shell: false,
         });
         const timer = setTimeout(() => {
-          child.kill();
+          killTree(child);
           done({ kind: "noVerdict", reason: `lean exceeded the ${config.timeoutMs} ms deadline` });
         }, config.timeoutMs);
         child.stdout.on("data", (d: Buffer) => (output += d.toString("utf8")));
@@ -58,20 +58,4 @@ export function leanRunner(config: LeanConfig): LeanRun {
       await rm(dir, { recursive: true, force: true });
     }
   };
-}
-
-export type CheckStatus = "invalid" | "errors" | "sorries" | "complete" | "noVerdict";
-
-export type CheckResult = { status: CheckStatus; detail: string };
-
-/**
- * The quick check of a partial proof: Lean's errors, or the goals left at
- * `sorry`. Not a verdict on a finished proof; that is `verifyText`.
- */
-export function classifyCheck(r: RunResult): CheckResult {
-  if (r.kind === "noVerdict") return { status: "noVerdict", detail: r.reason };
-  const out = r.output;
-  if (r.kind === "refused" || out.includes("error:")) return { status: "errors", detail: out };
-  if (out.includes("declaration uses 'sorry'")) return { status: "sorries", detail: out };
-  return { status: "complete", detail: out };
 }

@@ -32,8 +32,10 @@ upstream module.
 |---|---|---|
 | `interfaces/lean/src/rules.rs` (forbidden tokens, frozen statement, preamble) | `core/lean/rules.ts` | Ported |
 | `program-files/lean/src/verify.rs` (strict verify: axioms, `pp.all` type match, report marker) | `core/lean/verify.ts` | Ported |
-| `program-files/lean` `check` on a resident Lean REPL | `core/lean/runner.ts` (`lake env lean` per call, no REPL) | Simplified |
-| `program-files/prover` + `program-files/discovery` + `interfaces/explore` (proof search tree) | — | Planned, roadmap step 2 |
+| `program-files/lean` `check` on a resident Lean REPL | `core/lean/repl.ts` (leanprover-community/repl, built by setup) and `core/lean/check.ts`; `core/lean/runner.ts` as the fallback | Adapted: the community REPL instead of upstream's own |
+| `program-files/discovery` (rollout, `admit`, `InitialPolicy`) + `interfaces/explore` (CONTINUE(v)) | `core/search/tree.ts`, `core/search/search.ts` | Adapted: in-process workers; no plan board or resume yet |
+| `interfaces/discovery/src/scoring.rs` (scoring v3) | `core/search/tree.ts` (`scoreOf`, `partialScore`) | Simplified: closed `have` steps count without the automation-suite and hollow-leaf analysis |
+| `program-files/prover/prompts/putnam.j2` (fixed-loop worker prompt) | `core/search/search.ts` (`workerSystem`) | Ported, competition framing made general |
 | `interfaces/swarm` (Ultramath) | — | Planned, roadmap step 3 |
 | `program-files/chat-agent`, tools, `program-files/memory`, `program-files/approvals` | — | Planned, roadmap step 4 |
 | `kernel/` + `platform/` (capability microkernel, bubblewrap confinement) | — | Not ported: Linux-only. Mack restricts each agent's tools in-process instead, which is weaker. |

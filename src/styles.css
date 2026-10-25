@@ -336,3 +336,22 @@ nav { display: flex; flex-direction: column; gap: 2px; }
 .outcomes { display: grid; gap: 8px; font-size: 13.5px; }
 .outcomes > div { display: flex; align-items: center; gap: 10px; }
 .outcomes .badge { min-width: 92px; justify-content: center; }
+
+/* Proof search tree */
+.mode-switch { display: inline-flex; border: 1px solid var(--border); border-radius: 9px; overflow: hidden; background: var(--surface-2); }
+.mode-switch button { border: 0; background: transparent; padding: 6px 12px; font-size: 13px; color: var(--muted); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.mode-switch button.active { background: var(--accent); color: #111; font-weight: 600; }
+.mode-switch button:disabled { cursor: default; opacity: 0.6; }
+.tree-summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 14px; font-size: 13px; }
+.tree { display: grid; gap: 6px; }
+.tree-node { border: 1px solid var(--border); border-radius: 10px; background: var(--surface); overflow: hidden; border-left: 3px solid var(--border-strong); }
+.tree-node.tone-ok { border-left-color: var(--ok); }
+.tree-node.tone-bad { border-left-color: var(--bad); }
+.tree-node.tone-warn { border-left-color: var(--warn); }
+.tree-node.open .chev { transform: rotate(90deg); }
+.tree-row { width: 100%; display: flex; align-items: center; gap: 9px; padding: 8px 12px; border: 0; background: transparent; cursor: pointer; text-align: left; min-width: 0; }
+.tree-node .tree-row:hover { background: var(--surface-2); }
+.tree-root { cursor: default; padding-left: 4px; }
+.tree-id { font-family: var(--mono, ui-monospace, monospace); font-size: 12px; min-width: 22px; padding: 1px 6px; border-radius: 6px; background: var(--sunken); text-align: center; }
+.tree-score { font-family: var(--mono, ui-monospace, monospace); font-size: 12px; color: var(--muted); }
+.tree-approach { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }

@@ -1,13 +1,22 @@
 import { ArrowRight, ExternalLink } from "lucide-react";
 import { UPSTREAM } from "../../core/upstream";
 import { api, type Settings } from "../api";
-import { Button, Field } from "../components/ui";
+import { Button, Field, Toggle } from "../components/ui";
+import type { Limits } from "../../core/search/tree";
 
 type Props = {
   settings: Settings;
   saveSettings: (s: Partial<Settings>) => Promise<void>;
   onGo: (page: "upstream" | "setup") => void;
 };
+
+const SEARCH_FIELDS: { key: keyof Limits; label: string; hint: string; min: number; max: number }[] = [
+  { key: "w", label: "Workers per round", hint: "How many nodes are continued at once.", min: 1, max: 8 },
+  { key: "k1", label: "Rounds", hint: "Most rounds of continuations.", min: 1, max: 20 },
+  { key: "fanout", label: "Fan-out", hint: "Most continuations of one node.", min: 1, max: 8 },
+  { key: "callsPerContinuation", label: "Calls per worker", hint: "Model calls one worker may make, revising after each check.", min: 1, max: 10 },
+  { key: "modelCalls", label: "Model-call budget", hint: "Most model calls in the whole search.", min: 1, max: 500 },
+];
 
 export function SettingsPage({ settings, saveSettings, onGo }: Props) {
   return (
@@ -39,6 +48,34 @@ export function SettingsPage({ settings, saveSettings, onGo }: Props) {
             />
           </Field>
         </div>
+      </section>
+
+      <section className="settings-group">
+        <h2>Search tree</h2>
+        <p className="muted">
+          Used when the Prove screen is set to Search tree. The whole search makes at most the model-call budget of billed calls.
+        </p>
+        <div className="grid-2">
+          {SEARCH_FIELDS.map((f) => (
+            <Field key={f.key} label={f.label} hint={f.hint}>
+              <input
+                className="input"
+                type="number"
+                min={f.min}
+                max={f.max}
+                value={settings.search[f.key]}
+                onChange={(e) =>
+                  void saveSettings({ search: { ...settings.search, [f.key]: Math.max(f.min, Math.min(f.max, Number(e.target.value) || f.min)) } })
+                }
+              />
+            </Field>
+          ))}
+        </div>
+        <Toggle
+          checked={settings.useRepl}
+          onChange={(v) => void saveSettings({ useRepl: v })}
+          label="Use the resident Lean REPL for quick checks (keeps Mathlib loaded between checks; the final verification always uses a fresh Lean)"
+        />
       </section>
 
       <section className="settings-group">
