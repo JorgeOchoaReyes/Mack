@@ -15,6 +15,7 @@ import { extractStatement, frozenObjection, protocolObjection } from "../lean/ru
 import { describeRejection, pristineType, verifyText, type LeanRun } from "../lean/verify";
 import type { ChatMessage, ModelProvider } from "../model/provider";
 import { extractLean } from "../prove";
+import { analyze, complete, creditScore, type SketchAnalysis } from "../lean/analysis";
 import { admit, initialPolicy, partialScore, scoreOf, SearchTree, type Limits, type NodeStatus, type SearchNode } from "./tree";
 
 export type SearchEvent =
@@ -33,6 +34,8 @@ export type SearchOptions = {
   /** The quick check: the resident REPL when built, else a fresh run. */
   check: LeanCheckRun;
   limits: Limits;
+  /** Run upstream's completion and the sketch analysis on partial nodes (scoring v3); off, partial nodes get the textual credit. */
+  analysis?: boolean;
   temperature?: number;
   maxTokens?: number;
   signal?: AbortSignal;
@@ -88,7 +91,18 @@ function approachOf(reply: string): string {
   return (/^\s*Approach:\s*(.+)$/m.exec(reply.replace(/<think>[\s\S]*?<\/think>/g, ""))?.[1] ?? "").trim().slice(0, 300);
 }
 
-type Evaluation = { status: NodeStatus; score: number; detail: string; errors: number; sorries: number; check: LeanCheck | null; axioms?: string[] };
+type Evaluation = {
+  status: NodeStatus;
+  score: number;
+  detail: string;
+  errors: number;
+  sorries: number;
+  check: LeanCheck | null;
+  axioms?: string[];
+  analysis?: SketchAnalysis;
+  /** The harness's completed version of the file, when the completion suite closed every sorry and the verifier accepted it. */
+  completed?: string;
+};
 
 const rank = (e: Evaluation) => [e.score, -e.sorries, -e.errors];
 const better = (a: Evaluation, b: Evaluation) => {
@@ -125,6 +139,24 @@ export async function search(o: SearchOptions): Promise<void> {
     const verdict = await verifyText(o.frozen, pristine.type, file, o.run);
     if (verdict.ok) return { ...base, ...at("verified"), detail: "", axioms: verdict.axioms };
     return { ...base, ...at("rejected"), detail: describeRejection(verdict.rejection) };
+  };
+
+  /**
+   * The harness's last word on a partial node (scoring v3): try to complete it
+   * with the suite and verify the completed file; otherwise score its sketch.
+   */
+  const finalize = async (file: string, ev: Evaluation): Promise<Evaluation> => {
+    if (!o.analysis || ev.status !== "sorries" || o.signal?.aborted) return ev;
+    const c = await complete(file, o.check);
+    if (c.completed) {
+      const v = await verifyText(o.frozen, pristine.type, c.completed, o.run);
+      if (v.ok) return { ...ev, status: "verified", score: 1, sorries: 0, axioms: v.axioms, completed: c.completed, detail: `completed by the harness: ${c.closers.map((x) => x.tactic).join(", ")}` };
+    }
+    const a = await analyze(file, statement, o.check);
+    const note = `sketch analysis (${a.suite}): ${a.closed} closed step(s), ${a.trivial} trivial, ${a.unused} unused; ${a.leaves} leaf/leaves, ${a.hollow} hollow, ${a.untestable} untestable${a.error ? `; ${a.error}` : ""}`;
+    return { ...ev, analysis: a, score: a.error && a.leaves === 0 ? ev.score : creditScore(a), detail: `${ev.detail}
+
+${note}` };
   };
 
   /** CONTINUE(v): one worker's fixed loop, then the harness's evaluation of what it hands back. */
@@ -171,9 +203,10 @@ export async function search(o: SearchOptions): Promise<void> {
       });
     }
     if (!best || o.signal?.aborted) return;
+    best = { ...best, ev: await finalize(best.file, best.ev) };
     parent.continued++;
     const node = tree.add(parentId, {
-      file: best.file,
+      file: best.ev.completed ?? best.file,
       status: best.ev.status,
       score: best.ev.score,
       detail: best.ev.detail,
