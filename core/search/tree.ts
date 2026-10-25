@@ -32,7 +32,7 @@ export type SearchNode = {
   task?: string;
 };
 
-/** Partial credit without the Lean analysis: see `partialScore`. With it, `creditScore` in core/lean/analysis.ts. */
+/** Partial credit without the Lean analysis: see `partialScore`. With it, `sketchScore` in core/lean/sketch.ts. */
 
 export type Limits = {
   /** Width: most continuations per round. */

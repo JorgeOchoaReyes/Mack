@@ -34,9 +34,9 @@ upstream module.
 | `program-files/lean/src/verify.rs` (strict verify: axioms, `pp.all` type match, report marker) | `core/lean/verify.ts` | Ported |
 | `program-files/lean` `check` on a resident Lean REPL | `core/lean/repl.ts` (leanprover-community/repl, built by setup) and `core/lean/check.ts`; `core/lean/runner.ts` as the fallback | Adapted: the community REPL instead of upstream's own |
 | `program-files/discovery` (rollout, `admit`, `InitialPolicy`) + `interfaces/explore` (CONTINUE(v)) | `core/search/tree.ts`, `core/search/search.ts` | Adapted: in-process workers |
-| `interfaces/discovery/src/scoring.rs` (scoring v3) | `core/search/tree.ts` (`scoreOf`), `core/lean/analysis.ts` (`creditScore`) | Ported table and credit |
+| `interfaces/discovery/src/scoring.rs` (scoring v3) | `core/search/tree.ts` (`scoreOf`), `core/lean/sketch.ts` (`sketchScore`) | Ported table and credit |
 | `program-files/lean` `complete` (completion.rs) | `core/lean/analysis.ts` `complete` | Ported: same suite, splicing, heartbeat cap |
-| `program-files/lean` `analyze` (sketch.rs) | `core/lean/analysis.ts` `analyze` | Simplified: textual steps and leaves on the REPL, no tactic-mode clearing or re-linting; records name their own suite id |
+| `program-files/lean` `analyze` (sketch.rs) | `core/lean/sketch.ts` `analyzeSketch` | Ported: renamed copy with `allTactics`, statement states, suite + `exact?`, linter rounds on `leaf_hole`, clear/revert, `Iff.mp`, text route, vacuity control; accepts Lean 4.36's unused-variable wording |
 | `interfaces/explore` plan board, `submit`, collection phase; `prover-agent.j2` (tool loop) | `core/search/toolworker.ts` | Adapted: workers use the chat's tool loop in their own workspaces |
 | `interfaces/discovery` runs (problem sets, journal, status, failure reasons, stop, resume) | `core/search/runs.ts`, `core/search/run-tools.ts`, Runs screen | Adapted: no policy programs, built-in policy only |
 | `program-files/prover/prompts/putnam.j2` (fixed-loop worker prompt) | `core/search/search.ts` (`workerSystem`) | Ported, competition framing made general |

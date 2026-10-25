@@ -18,7 +18,8 @@ import { PlanBoard, runToolWorker } from "./toolworker";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { extractLean } from "../prove";
-import { analyze, complete, creditScore, type SketchAnalysis } from "../lean/analysis";
+import { complete } from "../lean/analysis";
+import { sketchScore, type Analysis } from "../lean/sketch";
 import { admit, initialPolicy, partialScore, scoreOf, SearchTree, type Limits, type NodeStatus, type SearchNode } from "./tree";
 
 /** What a rollout records, in order, so a run can be shown and resumed from it (upstream's `nodes.jsonl`/`rounds.jsonl`). */
@@ -42,6 +43,8 @@ export type SearchOptions = {
   limits: Limits;
   /** Run upstream's completion and the sketch analysis on partial nodes (scoring v3); off, partial nodes get the textual credit. */
   analysis?: boolean;
+  /** Upstream's sketch analysis of a file on the resident REPL (core/lean/sketch.ts); absent without the REPL. */
+  sketch?: (file: string) => Promise<Analysis>;
   /** "fixed": the fixed loop (putnam.j2); "tool": tool-loop workers in workspaces, with the plan board when w ≥ 2. */
   worker?: "fixed" | "tool";
   /** Where tool-loop workers get their workspaces (`<workspace>/<task>/`). */
@@ -115,7 +118,7 @@ type Evaluation = {
   sorries: number;
   check: LeanCheck | null;
   axioms?: string[];
-  analysis?: SketchAnalysis;
+  analysis?: Analysis;
   /** The harness's completed version of the file, when the completion suite closed every sorry and the verifier accepted it. */
   completed?: string;
 };
@@ -173,9 +176,12 @@ export async function search(o: SearchOptions): Promise<void> {
       const v = await verifyText(o.frozen, pristine.type, c.completed, o.run);
       if (v.ok) return { ...ev, status: "verified", score: 1, sorries: 0, axioms: v.axioms, completed: c.completed, detail: `completed by the harness: ${c.closers.map((x) => x.tactic).join(", ")}` };
     }
-    const a = await analyze(file, statement, o.check);
-    const note = `sketch analysis (${a.suite}): ${a.closed} closed step(s), ${a.trivial} trivial, ${a.unused} unused; ${a.leaves} leaf/leaves, ${a.hollow} hollow, ${a.untestable} untestable${a.error ? `; ${a.error}` : ""}`;
-    return { ...ev, analysis: a, score: a.error && a.leaves === 0 ? ev.score : creditScore(a), detail: `${ev.detail}
+    // Upstream's sketch analysis needs the REPL's proof states; without it the node keeps Mack's textual credit.
+    if (!o.sketch) return ev;
+    const a = await o.sketch(file);
+    const leaves = a.leaves.map((l) => `${l.verdict}${l.hollow_by ? ` by ${l.hollow_by}` : ""}`).join(", ");
+    const note = `sketch analysis (${a.suite}): ${a.counts.closed} closed step(s) count, of ${a.steps.length} (${a.steps.filter((x) => x.trivial_by || x.library_trivial_by).length} trivial, ${a.steps.filter((x) => x.unused).length} unused); ${a.counts.open} open, leaves: ${leaves || "none"}${a.error ? `; stopped: ${a.error}` : ""}`;
+    return { ...ev, analysis: a, score: sketchScore(a), detail: `${ev.detail}
 
 ${note}` };
   };

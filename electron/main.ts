@@ -6,7 +6,8 @@ import { app, BrowserWindow, dialog, ipcMain, nativeTheme, safeStorage, shell } 
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { checkFromRun } from "../core/lean/check";
-import { hasRepl, replPool, type ReplPool } from "../core/lean/repl";
+import { hasRepl, replPool, splitHeader, type ReplPool } from "../core/lean/repl";
+import { analyzeSketch, type Analysis } from "../core/lean/sketch";
 import { leanRunner } from "../core/lean/runner";
 import { DEFAULT_WORKSPACE, hasMathlib, hasProject, runSetup, verifyWorkspace, type SetupEvent } from "../core/lean/setup";
 import { lakeVersion } from "../core/lean/toolchain";
@@ -209,6 +210,13 @@ function theoremOf(problem: string): string {
 let proving: AbortController | null = null;
 let repl: { pool: ReplPool; key: string } | null = null;
 
+/** Upstream's sketch analysis on the run's REPL pool, or none without the REPL (call after `quickCheck`). */
+function sketchFor(frozen: string): ((file: string) => Promise<Analysis>) | undefined {
+  const pool = repl?.pool;
+  if (!pool) return undefined;
+  return (file) => pool.session(splitHeader(file).header, (session) => analyzeSketch(session, frozen, file));
+}
+
 /** The quick check for a run: a REPL pool kept alive between runs (Mathlib stays loaded), or none. */
 function quickCheck(s: Settings, size: number) {
   if (!s.useRepl || !hasRepl(s.leanWorkspace)) {
@@ -372,6 +380,7 @@ async function runProof(problem: string, mode: RunMode, forward: (ev: RunEvent) 
         check,
         limits: s.search,
         analysis: s.searchAnalysis,
+        sketch: sketchFor(problem),
         worker: s.searchWorker,
         workspace: userData("prove-workspaces", record.id),
         signal: proving.signal,
@@ -467,6 +476,7 @@ const runs = new RunManager(
       check,
       limits: task.limits,
       analysis: task.analysis,
+      sketch: sketchFor(problem.frozen),
       worker: task.worker,
       workspace,
       resume,
