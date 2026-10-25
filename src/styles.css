@@ -428,3 +428,5 @@ nav { display: flex; flex-direction: column; gap: 2px; }
 .input.price { width: 80px; margin-left: 4px; }
 
 .chat-error { margin: 0 22px; display: flex; align-items: flex-start; gap: 8px; justify-content: space-between; }
+
+.price-block { display: grid; gap: 6px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
