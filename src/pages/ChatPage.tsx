@@ -50,12 +50,27 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
   const [panel, setPanel] = useState<"none" | "memory" | "tools" | "review" | "swarms">("none");
   const [secretMarks, setSecretMarks] = useState<Record<number, Finding[]>>({});
   const [newName, setNewName] = useState("");
+  const [projectError, setProjectError] = useState("");
   const scroller = useRef<HTMLDivElement>(null);
   const sessionRef = useRef<ChatSession | null>(null);
   sessionRef.current = session;
 
   const project = projects.find((p) => p.id === projectId);
-  const ready = !!health && health.keySource !== "none" && !!health.model;
+  // A spending limit needs the model's price; without it every send is refused, so say so up front.
+  const priceMissing = !!health?.model && (settings.maxCostPerSession > 0 || settings.globalLimit > 0) && !settings.prices[health.model];
+  const ready = !!health && health.keySource !== "none" && !!health.model && !priceMissing;
+
+  const create = async (name: string) => {
+    setProjectError("");
+    try {
+      const p = await api.createProject(name);
+      setNewName("");
+      await reloadProjects();
+      setProjectId(p.id);
+    } catch (err) {
+      setProjectError(errorText(err));
+    }
+  };
 
   const reloadProjects = useCallback(async () => {
     const ps = await api.listProjects();
@@ -196,37 +211,35 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
           </select>
           <form
             className="row gap-sm"
-            onSubmit={async (e) => {
+            onSubmit={(e) => {
               e.preventDefault();
-              try {
-                const p = await api.createProject(newName);
-                setNewName("");
-                await reloadProjects();
-                setProjectId(p.id);
-              } catch (err) {
-                setError(errorText(err));
-              }
+              void create(newName);
             }}
           >
             <input className="input grow" placeholder="New project name" value={newName} onChange={(e) => setNewName(e.target.value)} />
-            <button className="icon-btn" title="Create project" type="submit" disabled={!newName.trim()}>
-              <FolderPlus size={16} />
-            </button>
-            <button
-              className="icon-btn"
-              title="Use an existing folder as a project"
-              type="button"
-              onClick={async () => {
+            <Button size="sm" icon={FolderPlus} type="submit" disabled={!newName.trim()} title="Create a project folder in MackProjects">
+              Create
+            </Button>
+          </form>
+          <button
+            className="link small"
+            type="button"
+            onClick={async () => {
+              setProjectError("");
+              try {
                 const p = await api.openProject();
                 if (p) {
                   await reloadProjects();
                   setProjectId(p.id);
                 }
-              }}
-            >
-              <FolderOpen size={16} />
-            </button>
-          </form>
+              } catch (err) {
+                setProjectError(errorText(err));
+              }
+            }}
+          >
+            <FolderOpen size={13} /> Or use an existing folder…
+          </button>
+          {projectError && <div className="notice notice-bad small">{projectError}</div>}
           {project && <code className="path small">{project.folder}</code>}
         </div>
         <Button icon={MessageSquarePlus} disabled={!projectId} onClick={() => void openSession(null)}>
@@ -265,7 +278,7 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
           <Button size="sm" variant="ghost" icon={GitCompare} disabled={!projectId} onClick={() => setPanel(panel === "review" ? "none" : "review")}>
             Review
           </Button>
-          <Button size="sm" variant="ghost" icon={Users} disabled={!session} onClick={() => setPanel(panel === "swarms" ? "none" : "swarms")}>
+          <Button size="sm" variant="ghost" icon={Users} disabled={!projectId} onClick={() => setPanel(panel === "swarms" ? "none" : "swarms")}>
             Ultramath
           </Button>
           {session && (
@@ -279,26 +292,71 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
       <section className="chat-main">
         {panel === "memory" && projectId && <MemoryPanel projectId={projectId} onClose={() => setPanel("none")} />}
         {panel === "review" && projectId && <ReviewPanel projectId={projectId} onClose={() => setPanel("none")} />}
-        {panel === "swarms" && session && <SwarmsPanel projectId={projectId} sessionId={session.id} onClose={() => setPanel("none")} />}
+        {panel === "swarms" &&
+          (session ? (
+            <SwarmsPanel projectId={projectId} sessionId={session.id} onClose={() => setPanel("none")} />
+          ) : (
+            <div className="chat-panel">
+              <div className="row gap-sm">
+                <Users size={16} />
+                <b>Ultramath</b>
+                <button className="icon-btn" style={{ marginLeft: "auto" }} onClick={() => setPanel("none")}>
+                  <X size={15} />
+                </button>
+              </div>
+              <p className="small">
+                Ultramath puts several agents on one hard problem, each on a different approach, sharing a board of lemmas, counterexamples and dead ends. You
+                (through the assistant) judge what they submit; with a Lean statement, Lean checks first.
+              </p>
+              <p className="muted small">
+                To start one, send a message in a chat, for example: <i>"Start Ultramath on this problem with 4 members: …"</i>. The assistant asks your
+                approval, and the swarm then shows here. For a quick run without a chat, use the Ultramath mode on the Prove screen.
+              </p>
+            </div>
+          ))}
         {panel === "tools" && <ToolsPanel health={health} settings={settings} saveSettings={saveSettings} sessionId={session?.id} onClose={() => setPanel("none")} />}
 
         <div className="chat-scroll" ref={scroller}>
-          {!ready && (
-            <div className="notice">
-              Choose a model provider, key and model in{" "}
+          {priceMissing ? (
+            <div className="notice notice-bad">
+              <b>Set your model's price to chat.</b> The spending limits count cost from the price of <code>{health?.model.split("/").pop()}</code>, which isn't set,
+              so Mack won't start calls it can't count. Enter it in{" "}
               <button className="link" onClick={onGoSetup}>
-                Setup
+                Setup → Model
               </button>{" "}
-              to chat.
+              (USD per million tokens, from your provider's pricing page), or turn the limits off in Settings → Spending.
             </div>
+          ) : (
+            !ready && (
+              <div className="notice">
+                Choose a model provider, key and model in{" "}
+                <button className="link" onClick={onGoSetup}>
+                  Setup
+                </button>{" "}
+                to chat.
+              </div>
+            )
           )}
           {projects.length === 0 && (
             <div className="how">
-              <h3>Research chat</h3>
+              <h3>Create your first project</h3>
               <p className="muted">
-                Create a project to start. A project is a folder: the assistant reads and (with your approval) writes files there, runs commands, checks Lean,
-                searches the web and reads PDFs, starts proof runs and Ultramath once you approve, and keeps project memory for later chats.
+                A project is a folder: the assistant reads and (with your approval) writes files there, runs commands, checks Lean, searches the web and reads
+                PDFs, starts proof runs and Ultramath once you approve, and keeps project memory for later chats.
               </p>
+              <form
+                className="row gap-sm"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void create(newName);
+                }}
+              >
+                <input className="input grow" placeholder="Project name, e.g. odd-perfect" value={newName} onChange={(e) => setNewName(e.target.value)} />
+                <Button variant="primary" icon={FolderPlus} type="submit" disabled={!newName.trim()}>
+                  Create project
+                </Button>
+              </form>
+              {projectError && <div className="notice notice-bad small">{projectError}</div>}
             </div>
           )}
           {project && !session && (
@@ -330,8 +388,15 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
               <Spinner /> {status || "Working…"}
             </div>
           )}
-          {error && <div className="notice notice-bad">{error}</div>}
         </div>
+        {error && (
+          <div className="notice notice-bad chat-error">
+            {error}
+            <button className="icon-btn" onClick={() => setError("")} title="Dismiss">
+              <X size={13} />
+            </button>
+          </div>
+        )}
 
         <form
           className="chat-compose"

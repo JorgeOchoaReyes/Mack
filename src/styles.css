@@ -426,3 +426,5 @@ nav { display: flex; flex-direction: column; gap: 2px; }
 .spend-chip.warn { color: var(--warn); border-color: var(--warn); }
 .price-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .input.price { width: 80px; margin-left: 4px; }
+
+.chat-error { margin: 0 22px; display: flex; align-items: flex-start; gap: 8px; justify-content: space-between; }

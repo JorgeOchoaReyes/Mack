@@ -12,7 +12,7 @@ type Props = { health: Health | null; settings: Settings; onChanged: () => void;
 export function SetupPage({ health, settings, onChanged, saveSettings }: Props) {
   const leanReady = !!health?.lake && !!health?.hasProject && !!health?.hasMathlib;
   const keyReady = health?.keySource !== "none";
-  const modelReady = !!health?.model;
+  const modelReady = !!health?.model && !((settings.maxCostPerSession > 0 || settings.globalLimit > 0) && !settings.prices[health.model]);
   const done = [leanReady, keyReady, modelReady].filter(Boolean).length;
 
   return (

@@ -1,0 +1,12 @@
+name: Suggest an idea
+description: Something Mack could do.
+labels: [idea]
+body:
+  - type: textarea
+    attributes:
+      label: The idea
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Why it would help

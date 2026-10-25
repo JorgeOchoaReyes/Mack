@@ -1,4 +1,4 @@
-import { BookOpen, CircleDollarSign, Download, FlaskConical, Rows3, GitCompare, History, MessagesSquare, Settings as SettingsIcon, Wrench, X } from "lucide-react";
+import { BookOpen, CircleDollarSign, Download, FlaskConical, Lightbulb, Rows3, GitCompare, History, MessagesSquare, Settings as SettingsIcon, Wrench, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { api, type Health, type LedgerState, type Settings, type UpdateState, type Upstream } from "./api";
 import { formatUsd } from "../core/model/metered";
@@ -6,6 +6,7 @@ import { Logo } from "./components/Logo";
 import { Button, Dot } from "./components/ui";
 import { EXAMPLES } from "./examples";
 import { ChatPage } from "./pages/ChatPage";
+import { FeedbackPage } from "./pages/FeedbackPage";
 import { RunsPage } from "./pages/RunsPage";
 import { GuidePage } from "./pages/GuidePage";
 import { HistoryPage } from "./pages/HistoryPage";
@@ -14,7 +15,7 @@ import { SettingsPage } from "./pages/SettingsPage";
 import { SetupPage } from "./pages/SetupPage";
 import { UpstreamPage } from "./pages/UpstreamPage";
 
-type Page = "prove" | "chat" | "runs" | "history" | "upstream" | "setup" | "settings" | "guide";
+type Page = "prove" | "chat" | "runs" | "feedback" | "history" | "upstream" | "setup" | "settings" | "guide";
 
 const DRAFT_KEY = "mack.draft";
 const SEEN_GUIDE_KEY = "mack.seenGuide";
@@ -103,6 +104,7 @@ export function App() {
     { id: "setup", label: "Setup", icon: Wrench, badge: health !== null && !allReady },
     { id: "settings", label: "Settings", icon: SettingsIcon },
     { id: "guide", label: "Guide", icon: BookOpen },
+    { id: "feedback", label: "Feedback", icon: Lightbulb },
   ];
 
   return (
@@ -209,6 +211,7 @@ export function App() {
             />
           )}
           {page === "runs" && <RunsPage />}
+          {page === "feedback" && <FeedbackPage />}
           {page === "chat" && <ChatPage health={health} settings={settings} saveSettings={saveSettings} onGoSetup={() => setPage("setup")} />}
           {page === "history" && (
             <HistoryPage
