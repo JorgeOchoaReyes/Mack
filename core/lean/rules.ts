@@ -361,3 +361,8 @@ export function frozenObjection(source: string): string | undefined {
   }
   return undefined;
 }
+
+/** A problem is a Lean problem when it is a usable frozen file; anything else is an informal problem. */
+export function problemKind(problem: string): "lean" | "informal" {
+  return extractStatement(problem) && !frozenObjection(problem) ? "lean" : "informal";
+}

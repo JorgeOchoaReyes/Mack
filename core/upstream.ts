@@ -14,10 +14,15 @@ export type UpstreamChange = { path: string; status: string; area: string; mack:
 
 export type UpstreamCommit = { sha: string; message: string; date: string; url: string; touchesWatched: boolean };
 
+/** The newest Mack release and the upstream commit it is aligned with. */
+export type MackRelease = { version: string; baseline: string; url: string };
+
 export type UpstreamReport =
-  | { kind: "current"; baseline: string; head: string; checkedAt: number }
+  | { kind: "current"; baseline: string; head: string; checkedAt: number; release?: MackRelease }
   | {
       kind: "changed";
+      /** A newer Mack release that is aligned with a later upstream commit than this installation: updating Mack ports these changes. */
+      release?: MackRelease;
       baseline: string;
       head: string;
       checkedAt: number;
@@ -47,6 +52,37 @@ type CompareJson = {
 };
 
 type CommitJson = { files?: { filename: string }[] };
+
+export const MACK_REPO = "JorgeOchoaReyes/Mack";
+
+/** Compare dotted versions: positive when `a` is newer. */
+export function compareVersions(a: string, b: string): number {
+  const pa = a.replace(/^v/, "").split(/[.-]/).map((x) => Number(x) || 0);
+  const pb = b.replace(/^v/, "").split(/[.-]/).map((x) => Number(x) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) if ((pa[i] ?? 0) !== (pb[i] ?? 0)) return (pa[i] ?? 0) - (pb[i] ?? 0);
+  return 0;
+}
+
+/**
+ * The latest Mack release, when it is newer than `installed` and aligned with
+ * a different upstream commit: the `upstream.json` at that release's tag.
+ */
+export async function newerMackRelease(installed: string, fetchImpl: typeof fetch = fetch): Promise<MackRelease | undefined> {
+  const headers = { Accept: "application/vnd.github+json", "User-Agent": "mack-app" };
+  try {
+    const r = await fetchImpl(`https://api.github.com/repos/${MACK_REPO}/releases/latest`, { headers });
+    if (!r.ok) return undefined;
+    const rel = (await r.json()) as { tag_name?: string; html_url?: string };
+    if (!rel.tag_name || compareVersions(rel.tag_name, installed) <= 0) return undefined;
+    const u = await fetchImpl(`https://raw.githubusercontent.com/${MACK_REPO}/${rel.tag_name}/upstream.json`, { headers: { "User-Agent": "mack-app" } });
+    if (!u.ok) return undefined;
+    const baseline = ((await u.json()) as { baseline?: string }).baseline;
+    if (!baseline || baseline === UPSTREAM.baseline) return undefined;
+    return { version: rel.tag_name.replace(/^v/, ""), baseline, url: rel.html_url ?? `https://github.com/${MACK_REPO}/releases/tag/${rel.tag_name}` };
+  } catch {
+    return undefined;
+  }
+}
 
 export async function checkUpstream(fetchImpl: typeof fetch = fetch): Promise<UpstreamReport> {
   const checkedAt = Date.now();

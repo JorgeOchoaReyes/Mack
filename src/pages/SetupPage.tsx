@@ -1,7 +1,8 @@
 import { CircleCheck, Download, ExternalLink, FolderOpen, KeyRound, RefreshCw, Search, Sigma, Square, Trash2, Cpu } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { SETUP_STEPS, type SetupStep } from "../../core/lean/setup-steps";
-import { api, errorText, type Health, type SetupEvent, type Settings } from "../api";
+import { PROVIDERS, providerInfo } from "../../core/model/providers";
+import { api, errorText, type Health, type ProviderId, type SetupEvent, type Settings } from "../api";
 import { Button, Spinner } from "../components/ui";
 
 type StepState = "pending" | "running" | "done" | "skipped" | "failed";
@@ -27,7 +28,7 @@ export function SetupPage({ health, settings, onChanged, saveSettings }: Props) 
         </div>
       </div>
       <LeanStep health={health} settings={settings} ready={leanReady} onChanged={onChanged} saveSettings={saveSettings} />
-      <KeyStep health={health} ready={keyReady} onChanged={onChanged} />
+      <ProviderStep health={health} settings={settings} ready={keyReady} saveSettings={saveSettings} onChanged={onChanged} />
       <ModelStep settings={settings} ready={modelReady} keyReady={keyReady} saveSettings={saveSettings} onChanged={onChanged} />
     </div>
   );
@@ -191,26 +192,64 @@ function LeanStep({ health, settings, ready, onChanged, saveSettings }: { health
   );
 }
 
-function KeyStep({ health, ready, onChanged }: { health: Health | null; ready: boolean; onChanged: () => void }) {
+function ProviderStep({ health, settings, ready, saveSettings, onChanged }: { health: Health | null; settings: Settings; ready: boolean; saveSettings: (s: Partial<Settings>) => Promise<void>; onChanged: () => void }) {
   const [key, setKey] = useState("");
   const [error, setError] = useState("");
-  const fromEnv = health?.keySource === "env";
+  const [baseUrl, setBaseUrl] = useState(settings.customBaseUrl);
+  const info = providerInfo(settings.provider);
+  const source = health?.providers.find((p) => p.id === info.id)?.keySource ?? "none";
+
+  const pick = async (id: ProviderId) => {
+    setKey("");
+    setError("");
+    await saveSettings({ provider: id });
+    onChanged();
+  };
+
   return (
-    <StepCard n={2} icon={KeyRound} title="Fireworks API key" ready={ready}>
+    <StepCard n={2} icon={KeyRound} title="Model provider and key" ready={ready}>
       <p className="muted">
-        Mack calls models with your own Fireworks account. The key is encrypted with Windows' credential protection and only ever sent to Fireworks.
+        Mack calls models with your own account. Keys are encrypted with Windows' credential protection and only sent to the provider they belong to. You can
+        set up several and switch per run on the Prove screen.
       </p>
-      {fromEnv ? (
-        <div className="notice notice-ok">Using FIREWORKS_API_KEY from the .env file.</div>
-      ) : ready ? (
+      <div className="provider-tabs">
+        {PROVIDERS.map((p) => {
+          const st = health?.providers.find((x) => x.id === p.id);
+          return (
+            <button key={p.id} className={`provider-tab ${settings.provider === p.id ? "active" : ""}`} onClick={() => void pick(p.id)}>
+              <span>{p.label}</span>
+              {st?.usable && <CircleCheck size={13} className="ok" />}
+            </button>
+          );
+        })}
+      </div>
+      <p className="muted small">{info.blurb}</p>
+      {info.id === "custom" && (
+        <form
+          className="row gap-sm"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            await saveSettings({ customBaseUrl: baseUrl.trim() });
+            onChanged();
+          }}
+        >
+          <input className="input grow mono" placeholder="http://localhost:11434/v1" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} />
+          <Button type="submit" disabled={!/^https?:\/\//.test(baseUrl.trim()) || baseUrl.trim() === settings.customBaseUrl}>
+            Save endpoint
+          </Button>
+        </form>
+      )}
+      {source === "env" ? (
+        <div className="notice notice-ok">Using {info.keyEnv} from the .env file.</div>
+      ) : source === "saved" ? (
         <div className="row gap-sm">
-          <span className="key-saved">fw_••••••••••••••••</span>
+          <span className="key-saved">{info.label} key ••••••••••••</span>
           <Button
             size="sm"
             variant="ghost"
             icon={Trash2}
             onClick={async () => {
-              await api.clearKey();
+              await api.clearKey(info.id);
               onChanged();
             }}
           >
@@ -224,7 +263,7 @@ function KeyStep({ health, ready, onChanged }: { health: Health | null; ready: b
             e.preventDefault();
             setError("");
             try {
-              await api.setKey(key);
+              await api.setKey(info.id, key);
               setKey("");
               onChanged();
             } catch (err) {
@@ -232,16 +271,17 @@ function KeyStep({ health, ready, onChanged }: { health: Health | null; ready: b
             }
           }}
         >
-          <input className="input grow" type="password" placeholder="fw_…" value={key} onChange={(e) => setKey(e.target.value)} autoComplete="off" />
+          <input className="input grow" type="password" placeholder={info.keyPlaceholder} value={key} onChange={(e) => setKey(e.target.value)} autoComplete="off" />
           <Button variant="primary" type="submit" disabled={key.trim().length < 8}>
             Save key
           </Button>
         </form>
       )}
+      {!info.keyRequired && source === "none" && <p className="muted small">No key is needed if your server does not ask for one.</p>}
       {error && <div className="notice notice-bad">{error}</div>}
-      {!ready && (
-        <button className="link" onClick={() => void api.openExternal("https://app.fireworks.ai/settings/users/api-keys")}>
-          Get a key at fireworks.ai <ExternalLink size={12} />
+      {info.keyUrl && source === "none" && (
+        <button className="link" onClick={() => void api.openExternal(info.keyUrl!)}>
+          Get a key at {new URL(info.keyUrl).hostname} <ExternalLink size={12} />
         </button>
       )}
     </StepCard>
@@ -249,18 +289,22 @@ function KeyStep({ health, ready, onChanged }: { health: Health | null; ready: b
 }
 
 function ModelStep({ settings, ready, keyReady, saveSettings, onChanged }: { settings: Settings; ready: boolean; keyReady: boolean; saveSettings: (s: Partial<Settings>) => Promise<void>; onChanged: () => void }) {
+  const provider = settings.provider;
+  const info = providerInfo(provider);
+  const current = settings.models[provider];
   const [models, setModels] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
-  const [custom, setCustom] = useState(settings.model);
+  const [custom, setCustom] = useState(current);
 
   const load = async () => {
     setLoading(true);
     setError("");
     try {
-      setModels(await api.listModels());
+      setModels(await api.listModels(provider));
     } catch (e) {
+      setModels([]);
       setError(errorText(e));
     } finally {
       setLoading(false);
@@ -268,13 +312,15 @@ function ModelStep({ settings, ready, keyReady, saveSettings, onChanged }: { set
   };
 
   useEffect(() => {
-    if (keyReady && models.length === 0) void load();
-    // Load once the key exists.
+    setModels([]);
+    setCustom(settings.models[provider]);
+    if (keyReady) void load();
+    // Reload when the provider changes or its key appears.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [keyReady]);
+  }, [keyReady, provider, settings.customBaseUrl]);
 
   const choose = async (m: string) => {
-    await saveSettings({ model: m });
+    await saveSettings({ models: { ...settings.models, [provider]: m } });
     setCustom(m);
     onChanged();
   };
@@ -282,7 +328,7 @@ function ModelStep({ settings, ready, keyReady, saveSettings, onChanged }: { set
   const shown = models.filter((m) => m.toLowerCase().includes(query.toLowerCase()));
 
   return (
-    <StepCard n={3} icon={Cpu} title="Model" ready={ready}>
+    <StepCard n={3} icon={Cpu} title={`Model on ${info.label}`} ready={ready}>
       <p className="muted">Pick a strong reasoning or coding model. Stronger models solve more problems in fewer attempts, at a higher price per attempt.</p>
       {!keyReady ? (
         <p className="muted small">Add your key first to list the models your account can use.</p>
@@ -297,8 +343,8 @@ function ModelStep({ settings, ready, keyReady, saveSettings, onChanged }: { set
           {error && <div className="notice notice-bad">{error}</div>}
           {models.length > 0 && (
             <div className="model-list">
-              {shown.map((m) => (
-                <button key={m} className={`model-item ${settings.model === m ? "selected" : ""}`} onClick={() => void choose(m)}>
+              {shown.slice(0, 300).map((m) => (
+                <button key={m} className={`model-item ${current === m ? "selected" : ""}`} onClick={() => void choose(m)}>
                   <span className="model-name">{m.split("/").pop()}</span>
                   <span className="muted small">{m}</span>
                 </button>
@@ -313,8 +359,8 @@ function ModelStep({ settings, ready, keyReady, saveSettings, onChanged }: { set
               if (custom.trim()) void choose(custom.trim());
             }}
           >
-            <input className="input grow mono" placeholder="or type a model id: accounts/fireworks/models/…" value={custom} onChange={(e) => setCustom(e.target.value)} />
-            <Button type="submit" disabled={!custom.trim() || custom.trim() === settings.model}>
+            <input className="input grow mono" placeholder={`or type a model id: ${info.modelPlaceholder}`} value={custom} onChange={(e) => setCustom(e.target.value)} />
+            <Button type="submit" disabled={!custom.trim() || custom.trim() === current}>
               Use
             </Button>
           </form>

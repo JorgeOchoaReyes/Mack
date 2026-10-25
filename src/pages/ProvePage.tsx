@@ -1,9 +1,12 @@
-import { BookOpen, ChevronDown, FolderOpen, GitBranch, Play, Square, Sparkles, CircleCheck, CircleAlert, Cpu, Repeat } from "lucide-react";
+import { BookOpen, ChevronDown, FolderOpen, GitBranch, Play, Square, Sparkles, CircleCheck, CircleAlert, Cpu, Repeat, Users } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api, errorText, theoremName, type Health, type RunEvent, type Settings } from "../api";
+import { providerInfo } from "../../core/model/providers";
 import { CodeEditor } from "../components/CodeEditor";
 import { SolvedCard, Timeline } from "../components/RunView";
 import { TreeSummary, TreeView, type NodeEvent } from "../components/TreeView";
+import { AcceptedCard, UltramathView } from "../components/UltramathView";
+import { problemKind } from "../../core/lean/rules";
 import { Button, Spinner } from "../components/ui";
 import { EXAMPLES } from "../examples";
 
@@ -17,15 +20,17 @@ type Props = {
   settings: Settings;
   saveSettings: (s: Partial<Settings>) => Promise<void>;
   onGoSetup: () => void;
+  onHealthChange: () => void;
   onRunFinished: () => void;
 };
 
-export function ProvePage({ problem, setProblem, health, settings, saveSettings, onGoSetup, onRunFinished }: Props) {
+export function ProvePage({ problem, setProblem, health, settings, saveSettings, onGoSetup, onHealthChange, onRunFinished }: Props) {
   const maxAttempts = settings.maxAttempts;
   const [running, setRunning] = useState(false);
   const [status, setStatus] = useState("");
   const [attempts, setAttempts] = useState<Attempt[]>([]);
   const [nodes, setNodes] = useState<NodeEvent[]>([]);
+  const [swarm, setSwarm] = useState<RunEvent[]>([]);
   const [round, setRound] = useState(0);
   const [runMode, setRunMode] = useState(settings.mode);
   const [solved, setSolved] = useState<Solved | null>(null);
@@ -39,6 +44,7 @@ export function ProvePage({ problem, setProblem, health, settings, saveSettings,
     () =>
       api.onProveEvent((e) => {
         if (e.type === "status") setStatus(e.message);
+        if (["start", "direction", "refused", "post", "turn", "report", "accepted"].includes(e.type)) setSwarm((s) => [...s, e]);
         if (e.type === "attempt") setAttempts((a) => [...a, e]);
         if (e.type === "node") setNodes((n) => [...n, e]);
         if (e.type === "round") setRound(e.round);
@@ -62,11 +68,15 @@ export function ProvePage({ problem, setProblem, health, settings, saveSettings,
     return () => document.removeEventListener("mousedown", close);
   }, []);
 
-  const ready = !!health && !!health.lake && health.hasMathlib && health.keySource !== "none" && !!health.model;
+  const leanReady = !!health && !!health.lake && health.hasMathlib;
+  const needsLean = settings.mode !== "ultramath" || problemKind(problem) === "lean";
+  const ready = !!health && (leanReady || !needsLean) && health.keySource !== "none" && !!health.model;
+  const accepted = swarm.find((e): e is Extract<RunEvent, { type: "accepted" }> => e.type === "accepted");
 
   const run = async () => {
     setAttempts([]);
     setNodes([]);
+    setSwarm([]);
     setRound(0);
     setRunMode(settings.mode);
     setSolved(null);
@@ -85,7 +95,7 @@ export function ProvePage({ problem, setProblem, health, settings, saveSettings,
   };
 
   const elapsed = running ? Math.round((Date.now() - started) / 1000) : 0;
-  const shortModel = health?.model.split("/").pop() ?? "";
+  const usableProviders = health?.providers.filter((p) => p.usable) ?? [];
 
   return (
     <div className="prove">
@@ -95,12 +105,15 @@ export function ProvePage({ problem, setProblem, health, settings, saveSettings,
           <span className="theorem">{theoremName(problem)}</span>
         </div>
         <div className="toolbar-actions">
-          <div className="mode-switch" title="Single: one agent revises one proof. Search tree: parallel workers extend the most promising partial proofs.">
+          <div className="mode-switch" title="Single: one agent revises one proof. Search tree: parallel workers extend the most promising partial proofs. Ultramath: several members attack the problem from different directions and share a board.">
             <button className={settings.mode === "single" ? "active" : ""} disabled={running} onClick={() => void saveSettings({ mode: "single" })}>
               <Repeat size={13} /> Single
             </button>
             <button className={settings.mode === "search" ? "active" : ""} disabled={running} onClick={() => void saveSettings({ mode: "search" })}>
               <GitBranch size={13} /> Search tree
+            </button>
+            <button className={settings.mode === "ultramath" ? "active" : ""} disabled={running} onClick={() => void saveSettings({ mode: "ultramath" })}>
+              <Users size={13} /> Ultramath
             </button>
           </div>
           <div className="menu" ref={menu}>
@@ -162,16 +175,42 @@ export function ProvePage({ problem, setProblem, health, settings, saveSettings,
         <section className="pane run-pane">
           <div className="pane-head">
             <span>Run</span>
-            {shortModel && (
+            {usableProviders.length > 0 && (
               <span className="model-chip" title={health?.model}>
-                <Cpu size={13} /> {shortModel}
+                <Cpu size={13} />
+                <select
+                  className="model-select"
+                  value={settings.provider}
+                  disabled={running}
+                  onChange={async (e) => {
+                    await saveSettings({ provider: e.target.value as Settings["provider"] });
+                    onHealthChange();
+                  }}
+                >
+                  {!usableProviders.some((p) => p.id === settings.provider) && <option value={settings.provider}>{providerInfo(settings.provider).label}: not set up</option>}
+                  {usableProviders.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {providerInfo(p.id).label} · {p.model.split("/").pop()}
+                    </option>
+                  ))}
+                </select>
               </span>
             )}
           </div>
           <div className="run-scroll">
             {!ready && <SetupNudge health={health} onGoSetup={onGoSetup} />}
 
-            {ready && !running && attempts.length === 0 && nodes.length === 0 && !solved && !failure && <HowItWorks mode={settings.mode} />}
+            {ready && !running && attempts.length === 0 && nodes.length === 0 && swarm.length === 0 && !solved && !failure && <HowItWorks mode={settings.mode} />}
+
+            {runMode === "ultramath" && (running || swarm.length > 0) && (
+              <div className="progress">
+                <div className="progress-head">
+                  {running ? <Spinner /> : solved || accepted ? <CircleCheck size={16} className="ok" /> : <CircleAlert size={16} className="bad" />}
+                  <span className="progress-status">{running ? status : solved || accepted ? "Solved" : "Finished without an accepted solution"}</span>
+                  {running && <span className="muted small">{elapsed}s</span>}
+                </div>
+              </div>
+            )}
 
             {runMode === "search" && (running || nodes.length > 0) && (
               <div className="progress">
@@ -202,9 +241,17 @@ export function ProvePage({ problem, setProblem, health, settings, saveSettings,
             )}
 
             {failure && !running && <div className="notice notice-bad">{failure}</div>}
-            {solved && <SolvedCard solved={solved} problem={problem} where={runMode === "search" ? `Node ${solved.n} of the search tree` : undefined} />}
+            {solved && (
+              <SolvedCard
+                solved={solved}
+                problem={problem}
+                where={runMode === "search" ? `Node ${solved.n} of the search tree` : runMode === "ultramath" ? `Member ${solved.n}` : undefined}
+              />
+            )}
+            {accepted && <AcceptedCard accepted={accepted} />}
             {attempts.length > 0 && <Timeline attempts={attempts} />}
             {nodes.length > 0 && <TreeView nodes={nodes} />}
+            {swarm.length > 0 && <UltramathView events={swarm} />}
           </div>
         </section>
       </div>
@@ -215,7 +262,7 @@ export function ProvePage({ problem, setProblem, health, settings, saveSettings,
 function SetupNudge({ health, onGoSetup }: { health: Health | null; onGoSetup: () => void }) {
   const items = [
     { ok: !!health?.lake && !!health?.hasMathlib, label: "Lean and Mathlib installed" },
-    { ok: health?.keySource !== "none", label: "Fireworks API key added" },
+    { ok: health?.keySource !== "none", label: `${providerInfo(health?.provider ?? "fireworks").label} API key added` },
     { ok: !!health?.model, label: "Model chosen" },
   ];
   return (
@@ -237,12 +284,16 @@ function SetupNudge({ health, onGoSetup }: { health: Health | null; onGoSetup: (
 }
 
 function HowItWorks({ mode }: { mode: Settings["mode"] }) {
-  const steps = mode === "search" ? [
+  const steps = mode === "ultramath" ? [
+    ["Members pick directions", "Each member registers a line of attack; one that repeats a direction already on the board is refused."],
+    ["They share a board", "Lemmas, partial results, counterexamples and dead ends go on a shared board; helper lemmas Lean accepts are marked as checked."],
+    ["A judge decides", "With a Lean statement the strict verifier judges submissions; for a problem in plain words, a coordinating agent referees them."],
+  ] : mode === "search" ? [
     ["Workers branch out", "Several workers start from the statement, each writing a proof that may leave `sorry` gaps for later."],
     ["Lean scores every node", "Each file is checked; partial proofs score higher than broken ones, and a complete proof goes to the verifier."],
     ["The best branches grow", "Later rounds continue the most promising nodes instead of starting over, until the verifier accepts one."],
   ] : [
-    ["The model proposes", "Your Fireworks model writes a complete Lean proof of the frozen statement."],
+    ["The model proposes", "Your model writes a complete Lean proof of the frozen statement."],
     ["Lean checks", "Lean's errors and open goals go back to the model, which revises the proof."],
     ["The verifier decides", "A proof counts only if the statement is untouched, no axiom or sorry is used, and Lean accepts it."],
   ];

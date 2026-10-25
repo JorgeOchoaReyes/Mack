@@ -11,11 +11,19 @@
 // verifier in a fresh Lean process. Only `verifyText` makes a node solved.
 
 import { describeCheck, type LeanCheck, type LeanCheckRun } from "../lean/check";
-import { extractStatement, frozenObjection, protocolObjection } from "../lean/rules";
+import { extractStatement, frozenObjection, protocolObjection, theoremName } from "../lean/rules";
 import { describeRejection, pristineType, verifyText, type LeanRun } from "../lean/verify";
-import type { ChatMessage, ModelProvider } from "../model/provider";
+import type { ChatMessage, ModelProvider, ReasoningEffort } from "../model/provider";
+import { PlanBoard, runToolWorker } from "./toolworker";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { extractLean } from "../prove";
+import { complete } from "../lean/analysis";
+import { sketchScore, type Analysis } from "../lean/sketch";
 import { admit, initialPolicy, partialScore, scoreOf, SearchTree, type Limits, type NodeStatus, type SearchNode } from "./tree";
+
+/** What a rollout records, in order, so a run can be shown and resumed from it (upstream's `nodes.jsonl`/`rounds.jsonl`). */
+export type JournalEntry = { kind: "node"; node: SearchNode; calls: number } | { kind: "round"; round: number; batch: number[] } | { kind: "end"; outcome: "solved" | "exhausted" | "stopped" };
 
 export type SearchEvent =
   | { type: "status"; message: string }
@@ -33,6 +41,20 @@ export type SearchOptions = {
   /** The quick check: the resident REPL when built, else a fresh run. */
   check: LeanCheckRun;
   limits: Limits;
+  /** Run upstream's completion and the sketch analysis on partial nodes (scoring v3); off, partial nodes get the textual credit. */
+  analysis?: boolean;
+  /** Upstream's sketch analysis of a file on the resident REPL (core/lean/sketch.ts); absent without the REPL. */
+  sketch?: (file: string) => Promise<Analysis>;
+  /** "fixed": the fixed loop (putnam.j2); "tool": tool-loop workers in workspaces, with the plan board when w ≥ 2. */
+  worker?: "fixed" | "tool";
+  /** Where tool-loop workers get their workspaces (`<workspace>/<task>/`). */
+  workspace?: string;
+  /** The problem's name: the workspace file is `<problem>.lean`. */
+  problem?: string;
+  effort?: ReasoningEffort;
+  /** A rollout to continue: its recorded nodes, rounds done and model calls spent. */
+  resume?: { nodes: SearchNode[]; rounds: number; calls: number };
+  journal?: (e: JournalEntry) => void;
   temperature?: number;
   maxTokens?: number;
   signal?: AbortSignal;
@@ -88,7 +110,18 @@ function approachOf(reply: string): string {
   return (/^\s*Approach:\s*(.+)$/m.exec(reply.replace(/<think>[\s\S]*?<\/think>/g, ""))?.[1] ?? "").trim().slice(0, 300);
 }
 
-type Evaluation = { status: NodeStatus; score: number; detail: string; errors: number; sorries: number; check: LeanCheck | null; axioms?: string[] };
+type Evaluation = {
+  status: NodeStatus;
+  score: number;
+  detail: string;
+  errors: number;
+  sorries: number;
+  check: LeanCheck | null;
+  axioms?: string[];
+  analysis?: Analysis;
+  /** The harness's completed version of the file, when the completion suite closed every sorry and the verifier accepted it. */
+  completed?: string;
+};
 
 const rank = (e: Evaluation) => [e.score, -e.sorries, -e.errors];
 const better = (a: Evaluation, b: Evaluation) => {
@@ -108,9 +141,14 @@ export async function search(o: SearchOptions): Promise<void> {
   if (!pristine.ok) return o.onEvent({ type: "failed", message: `Lean could not check the problem file:\n${pristine.reason}` });
 
   const { w, k1, fanout, callsPerContinuation, modelCalls } = o.limits;
-  const tree = new SearchTree({ file: o.frozen, status: "sorries", score: 0.5, detail: "", errors: 0, sorries: 1, approach: "the frozen statement" });
+  const tree = o.resume?.nodes.length
+    ? SearchTree.from(o.resume.nodes)
+    : new SearchTree({ file: o.frozen, status: "sorries", score: 0.5, detail: "", errors: 0, sorries: 1, approach: "the frozen statement" });
+  // A resumed node's check is not kept: its worker is told it was not checked.
   const checks = new Map<number, LeanCheck | null>([[0, null]]);
-  let callsLeft = modelCalls;
+  let callsLeft = modelCalls - (o.resume?.calls ?? 0);
+  let taskSeq = tree.nodes.reduce((m, n) => Math.max(m, Number(n.task?.slice(1) ?? 0)), 0);
+  const problem = o.problem ?? (theoremName(statement) || "Problem");
   let solved = false;
 
   /** The harness's own evaluation of a file: textual rules, quick check, then the strict verifier for a complete file. */
@@ -125,6 +163,83 @@ export async function search(o: SearchOptions): Promise<void> {
     const verdict = await verifyText(o.frozen, pristine.type, file, o.run);
     if (verdict.ok) return { ...base, ...at("verified"), detail: "", axioms: verdict.axioms };
     return { ...base, ...at("rejected"), detail: describeRejection(verdict.rejection) };
+  };
+
+  /**
+   * The harness's last word on a partial node (scoring v3): try to complete it
+   * with the suite and verify the completed file; otherwise score its sketch.
+   */
+  const finalize = async (file: string, ev: Evaluation): Promise<Evaluation> => {
+    if (!o.analysis || ev.status !== "sorries" || o.signal?.aborted) return ev;
+    const c = await complete(file, o.check);
+    if (c.completed) {
+      const v = await verifyText(o.frozen, pristine.type, c.completed, o.run);
+      if (v.ok) return { ...ev, status: "verified", score: 1, sorries: 0, axioms: v.axioms, completed: c.completed, detail: `completed by the harness: ${c.closers.map((x) => x.tactic).join(", ")}` };
+    }
+    // Upstream's sketch analysis needs the REPL's proof states; without it the node keeps Mack's textual credit.
+    if (!o.sketch) return ev;
+    const a = await o.sketch(file);
+    const leaves = a.leaves.map((l) => `${l.verdict}${l.hollow_by ? ` by ${l.hollow_by}` : ""}`).join(", ");
+    const note = `sketch analysis (${a.suite}): ${a.counts.closed} closed step(s) count, of ${a.steps.length} (${a.steps.filter((x) => x.trivial_by || x.library_trivial_by).length} trivial, ${a.steps.filter((x) => x.unused).length} unused); ${a.counts.open} open, leaves: ${leaves || "none"}${a.error ? `; stopped: ${a.error}` : ""}`;
+    return { ...ev, analysis: a, score: sketchScore(a), detail: `${ev.detail}
+
+${note}` };
+  };
+
+  /** Record a node the harness evaluated, and report a solve once. */
+  const addNode = (parentId: number, round: number, file: string, ev: Evaluation, approach: string, started: number, tokens: number, calls: number, task?: string) => {
+    tree.nodes[parentId].continued++;
+    const node = tree.add(parentId, { file: ev.completed ?? file, status: ev.status, score: ev.score, detail: ev.detail, errors: ev.errors, sorries: ev.sorries, round, approach, ...(task ? { task } : {}) });
+    checks.set(node.id, ev.check);
+    o.journal?.({ kind: "node", node: { ...node }, calls });
+    o.onEvent({ type: "node", node: { ...node }, ms: Date.now() - started, tokens, calls });
+    if (ev.status === "verified" && !solved) {
+      solved = true;
+      o.onEvent({ type: "solved", n: node.id, proof: node.file, axioms: ev.axioms ?? [] });
+    }
+  };
+
+  /** CONTINUE(v) with a tool-loop worker in its own workspace; the harness evaluates what it hands over. */
+  const continueWithTools = async (parentId: number, round: number, siblings: SearchNode[], board?: PlanBoard): Promise<void> => {
+    const parent = tree.nodes[parentId];
+    const started = Date.now();
+    const task = `t${String(++taskSeq).padStart(6, "0")}`;
+    const ws = o.workspace!;
+    const parentState = parent.task && existsSync(join(ws, parent.task, "STATE.md")) ? readFileSync(join(ws, parent.task, "STATE.md"), "utf8") : undefined;
+    const pc = checks.get(parentId);
+    const budget = Math.min(callsPerContinuation, callsLeft);
+    callsLeft -= budget;
+    const r = await runToolWorker({
+      task,
+      problem,
+      fileName: `${problem}.lean`,
+      frozen: o.frozen,
+      statement,
+      parentNode: parentId,
+      parentFile: parent.file,
+      parentState,
+      parentCheck: pc ? describeCheck(pc) : parentId === 0 ? null : `status: ${parent.status}\n${parent.detail.slice(0, 3000)}`,
+      siblings: siblings.length ? `Other continuations already made from this same point (${siblings.length}): ${siblings.slice(-12).map((s) => `node ${s.id}: ${s.status} (${s.errors} error(s), ${s.sorries} sorry(ies))`).join("; ")}. Use their results to avoid repeating unsuccessful work.` : "",
+      branches: tree.nodes.filter((n) => n.task && n.id !== parentId).slice(-6).map((n) => ({ task: n.task!, node: n.id, status: n.status, errors: n.errors, sorries: n.sorries })),
+      dir: join(ws, task),
+      board,
+      provider: o.provider,
+      model: o.model,
+      effort: o.effort,
+      calls: budget,
+      check: o.check,
+      verify: async (file) => {
+        const ev = await evaluate(file);
+        return { accepted: ev.status === "verified", detail: ev.status === "verified" ? "" : `${ev.status}: ${ev.detail.slice(0, 1500)}` };
+      },
+      signal: o.signal,
+      onStatus: (s) => o.onEvent({ type: "status", message: s }),
+    });
+    // The collection phase may spend a little past the budget; it is counted.
+    callsLeft += budget - r.calls;
+    if (o.signal?.aborted) return;
+    const ev = await finalize(r.file, await evaluate(r.file));
+    addNode(parentId, round, r.file, ev, r.approach, started, r.tokens, r.calls, task);
   };
 
   /** CONTINUE(v): one worker's fixed loop, then the harness's evaluation of what it hands back. */
@@ -171,38 +286,39 @@ export async function search(o: SearchOptions): Promise<void> {
       });
     }
     if (!best || o.signal?.aborted) return;
-    parent.continued++;
-    const node = tree.add(parentId, {
-      file: best.file,
-      status: best.ev.status,
-      score: best.ev.score,
-      detail: best.ev.detail,
-      errors: best.ev.errors,
-      sorries: best.ev.sorries,
-      round,
-      approach: best.approach,
-    });
-    checks.set(node.id, best.ev.check);
-    o.onEvent({ type: "node", node: { ...node }, ms: Date.now() - started, tokens, calls });
-    if (best.ev.status === "verified" && !solved) {
-      solved = true;
-      o.onEvent({ type: "solved", n: node.id, proof: node.file, axioms: best.ev.axioms ?? [] });
-    }
+    best = { ...best, ev: await finalize(best.file, best.ev) };
+    addNode(parentId, round, best.file, best.ev, best.approach, started, tokens, calls);
   };
 
-  for (let round = 1; round <= k1; round++) {
-    if (o.signal?.aborted) return o.onEvent({ type: "failed", message: "Stopped." });
+  if (tree.solved()) return o.onEvent({ type: "solved", n: tree.solved()!.id, proof: tree.solved()!.file, axioms: [] });
+  for (let round = (o.resume?.rounds ?? 0) + 1; round <= k1; round++) {
+    if (o.signal?.aborted) {
+      o.journal?.({ kind: "end", outcome: "stopped" });
+      return o.onEvent({ type: "failed", message: "Stopped." });
+    }
     if (callsLeft <= 0) break;
     const affordable = Math.max(1, Math.floor(callsLeft / Math.max(1, callsPerContinuation)));
     const width = Math.min(w, affordable);
     const batch = admit(tree, initialPolicy(tree, width, fanout), width, fanout);
+    o.journal?.({ kind: "round", round, batch });
     o.onEvent({ type: "round", round, batch });
     o.onEvent({ type: "status", message: `Round ${round} of ${k1}: ${batch.length} worker${batch.length === 1 ? "" : "s"} continuing node${new Set(batch).size === 1 ? "" : "s"} ${[...new Set(batch)].join(", ")}…` });
     const siblingsOf = (id: number) => tree.nodes.filter((n) => n.parent === id);
-    await Promise.all(batch.map((id) => continueNode(id, round, siblingsOf(id))));
-    if (tree.solved()) return;
+    if (o.worker === "tool" && o.workspace) {
+      // The plan board is offered when the round has at least two workers: they coordinate on one problem.
+      const board = batch.length >= 2 ? new PlanBoard() : undefined;
+      await Promise.all(batch.map((id) => continueWithTools(id, round, siblingsOf(id), board)));
+    } else await Promise.all(batch.map((id) => continueNode(id, round, siblingsOf(id))));
+    if (tree.solved()) {
+      o.journal?.({ kind: "end", outcome: "solved" });
+      return;
+    }
   }
-  if (o.signal?.aborted) return o.onEvent({ type: "failed", message: "Stopped." });
+  if (o.signal?.aborted) {
+    o.journal?.({ kind: "end", outcome: "stopped" });
+    return o.onEvent({ type: "failed", message: "Stopped." });
+  }
+  o.journal?.({ kind: "end", outcome: "exhausted" });
   const best = tree.nodes.slice(1).sort((a, b) => b.score - a.score || a.sorries - b.sorries)[0];
   o.onEvent({
     type: "failed",

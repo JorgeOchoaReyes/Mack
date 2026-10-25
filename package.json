@@ -1,6 +1,6 @@
 {
   "name": "mack",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A desktop math-research harness: open models propose, Lean decides. Modelled on Open Math Harness.",
   "license": "Apache-2.0",
   "private": true,
@@ -13,7 +13,8 @@
     "icons": "node scripts/make-icons.mjs",
     "dist": "npm run build && electron-builder --win",
     "setup:lean": "tsc -p tsconfig.electron.json && node dist-electron/scripts/setup-lean.js",
-    "upstream": "tsc -p tsconfig.electron.json && node dist-electron/scripts/upstream.js"
+    "upstream": "tsc -p tsconfig.electron.json && node dist-electron/scripts/upstream.js",
+    "release": "npm run build && electron-builder --win --publish always"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.4",
@@ -23,9 +24,11 @@
     "@codemirror/view": "^6.43.15",
     "@lezer/highlight": "^1.2.5",
     "codemirror": "^6.0.2",
+    "electron-updater": "6.8.10",
     "lucide-react": "^1.61.0",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "react-dom": "^19.3.1",
+    "unpdf": "1.8.1"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
@@ -62,7 +65,16 @@
       "perMachine": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Mack"
-    }
+      "shortcutName": "Mack",
+      "artifactName": "Mack-Setup-${version}.${ext}"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "JorgeOchoaReyes",
+        "repo": "Mack",
+        "releaseType": "release"
+      }
+    ]
   }
 }

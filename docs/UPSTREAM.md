@@ -33,10 +33,27 @@ upstream module.
 | `interfaces/lean/src/rules.rs` (forbidden tokens, frozen statement, preamble) | `core/lean/rules.ts` | Ported |
 | `program-files/lean/src/verify.rs` (strict verify: axioms, `pp.all` type match, report marker) | `core/lean/verify.ts` | Ported |
 | `program-files/lean` `check` on a resident Lean REPL | `core/lean/repl.ts` (leanprover-community/repl, built by setup) and `core/lean/check.ts`; `core/lean/runner.ts` as the fallback | Adapted: the community REPL instead of upstream's own |
-| `program-files/discovery` (rollout, `admit`, `InitialPolicy`) + `interfaces/explore` (CONTINUE(v)) | `core/search/tree.ts`, `core/search/search.ts` | Adapted: in-process workers; no plan board or resume yet |
-| `interfaces/discovery/src/scoring.rs` (scoring v3) | `core/search/tree.ts` (`scoreOf`, `partialScore`) | Simplified: closed `have` steps count without the automation-suite and hollow-leaf analysis |
+| `program-files/discovery` (rollout, `admit`, `InitialPolicy`) + `interfaces/explore` (CONTINUE(v)) | `core/search/tree.ts`, `core/search/search.ts` | Adapted: in-process workers |
+| `interfaces/discovery/src/scoring.rs` (scoring v3) | `core/search/tree.ts` (`scoreOf`), `core/lean/sketch.ts` (`sketchScore`) | Ported table and credit |
+| `program-files/lean` `complete` (completion.rs) | `core/lean/analysis.ts` `complete` | Ported: same suite, splicing, heartbeat cap |
+| `program-files/lean` `analyze` (sketch.rs) | `core/lean/sketch.ts` `analyzeSketch` | Ported: renamed copy with `allTactics`, statement states, suite + `exact?`, linter rounds on `leaf_hole`, clear/revert, `Iff.mp`, text route, vacuity control; accepts Lean 4.36's unused-variable wording |
+| `interfaces/explore` plan board, `submit`, collection phase; `prover-agent.j2` (tool loop) | `core/search/toolworker.ts` | Adapted: workers use the chat's tool loop in their own workspaces |
+| `interfaces/discovery` runs (problem sets, journal, status, failure reasons, stop, resume) | `core/search/runs.ts`, `core/search/run-tools.ts`, Runs screen | Adapted: no policy programs, built-in policy only |
 | `program-files/prover/prompts/putnam.j2` (fixed-loop worker prompt) | `core/search/search.ts` (`workerSystem`) | Ported, competition framing made general |
-| `interfaces/swarm` (Ultramath) | — | Planned, roadmap step 3 |
-| `program-files/chat-agent`, tools, `program-files/memory`, `program-files/approvals` | — | Planned, roadmap step 4 |
+| `interfaces/swarm` v6 (start, status, verdict, stop, resume, records; members' board, register, abandon, post, submit) + `records.rs` + `roles/swarm-member.toml` + `swarm/coordinator.md`, `duplicate_check.md` | `core/ultramath/service.ts` (from Chat), `core/ultramath/swarm.ts` (Prove screen) | Adapted: the chat's agent judges; Lean submissions are checked by the verifier first, whose rejection is the verdict |
+| `program-files/chat-agent` (agent loop and tools: fs, lean, web, pdf) | `core/chat/agent.ts`, `core/chat/tools.ts`, `core/chat/web.ts`, `electron/chat.ts` | Adapted: a text tool protocol so any model works; tools confined to the project folder in-process |
+| `program-files/chat-agent` `stream.rs`, `retry.rs`, nudge, "Between steps", `reminders.rs`, `attachments.rs`, `images.rs`, `reply_images.rs`, `jobs.rs` | `core/chat/agent.ts`, `core/model/openai-compatible.ts`, `core/chat/shell.ts`, `electron/chat.ts`, `src/pages/ChatPage.tsx` | Adapted |
+| `interfaces/shell` (`exec`, background jobs) | `core/chat/shell.ts` (PowerShell in the project folder; every command approved) | Adapted |
+| `interfaces/web` `request` | `core/chat/executor.ts` `http_request` (protected) | Ported |
+| `interfaces/skills` + `program-files/skills` | `core/chat/skills.ts`; `/skill` in `electron/chat.ts` | Adapted: load from a SKILL.md URL; no catalogs yet |
+| `interfaces/suggestions` + `prompts/templates/suggest/*` | `core/chat/suggestions.ts` | Ported |
+| `prompts/templates/compact/*` (context checkpoint) | `core/chat/suggestions.ts`, `core/chat/agent.ts` | Ported |
+| `interfaces/memory` `used` (citations) | `core/chat/memory.ts` `recordCitations` | Adapted: counts feed consolidation |
+| `program-files/mcp` (stdio + Streamable HTTP adapter) | `core/mcp/client.ts` | Ported: mapped tools only, 1 MiB bounds, no OAuth |
+| `program-files/chat-agent/src/plugins.rs` + `program-files/plugin-development` | `core/mcp/plugins.ts`, `plugin_*` and `mcp_connect` tools | Adapted: plugins are stdio MCP servers; instances belong to one chat and end with it |
+| `interfaces/diffs` (Review of uncommitted changes) | `core/git.ts`, Review panel in `src/pages/ChatPage.tsx` | Ported: read-only |
+| `interfaces/publish` + `program-files/publish` rules v1 (secret scan) | `core/secrets.ts` | Adapted: no platform; marks messages, masks memory input and exports |
+| `interfaces/approvals` + `program-files/approvals` (guard runs the recorded call) | `core/chat/executor.ts` | Adapted: per-tool ask/allow policy; approvals are single-use and bound to the recorded call |
+| `program-files/memory` + `memories/write` and `memories/read` templates (extract, consolidate, read path) | `core/chat/memory.ts` | Adapted: extraction and consolidation are model calls returning files |
 | `kernel/` + `platform/` (capability microkernel, bubblewrap confinement) | — | Not ported: Linux-only. Mack restricts each agent's tools in-process instead, which is weaker. |
-| `program-files/openrouter` | `core/model/fireworks.ts` behind `core/model/provider.ts` | Replaced: Fireworks |
+| `program-files/openrouter` | `core/model/openai-compatible.ts` behind `core/model/provider.ts`; `core/model/providers.ts` lists Fireworks, OpenRouter and a custom endpoint | Adapted: any OpenAI-compatible provider, OpenRouter among them |

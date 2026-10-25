@@ -28,7 +28,11 @@ export type SearchNode = {
   round: number;
   /** The worker's own one-line description of its approach: untrusted text. */
   approach: string;
+  /** The tool-loop task whose workspace holds this node's files (`t000001`), when a tool-loop worker made it. */
+  task?: string;
 };
+
+/** Partial credit without the Lean analysis: see `partialScore`. With it, `sketchScore` in core/lean/sketch.ts. */
 
 export type Limits = {
   /** Width: most continuations per round. */
@@ -85,6 +89,14 @@ export class SearchTree {
 
   constructor(root: Omit<SearchNode, "id" | "parent" | "depth" | "continued" | "round">) {
     this.nodes.push({ ...root, id: 0, parent: null, depth: 0, continued: 0, round: 0 });
+  }
+
+  /** A tree rebuilt from its journal, for a resume: the nodes as recorded, in id order. */
+  static from(nodes: SearchNode[]): SearchTree {
+    const t = new SearchTree(nodes[0]);
+    t.nodes.length = 0;
+    t.nodes.push(...nodes.map((n) => ({ ...n })));
+    return t;
   }
 
   add(parent: number, child: Omit<SearchNode, "id" | "parent" | "depth" | "continued">): SearchNode {

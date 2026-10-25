@@ -56,3 +56,26 @@ describe("upstream methodology check", () => {
     expect((await checkUpstream(fakeGithub({}, 403))).kind).toBe("error");
   });
 });
+
+describe("comparing against the installed version", () => {
+  const releases = (tag: string, baseline: string) =>
+    (async (url: string) => {
+      if (url.includes("/releases/latest")) return new Response(JSON.stringify({ tag_name: tag, html_url: `https://github.com/x/releases/${tag}` }));
+      if (url.includes("raw.githubusercontent.com")) return new Response(JSON.stringify({ baseline }));
+      return new Response("", { status: 404 });
+    }) as unknown as typeof fetch;
+
+  it("orders versions", async () => {
+    const { compareVersions } = await import("../core/upstream");
+    expect(compareVersions("v0.10.0", "0.9.3")).toBeGreaterThan(0);
+    expect(compareVersions("0.2.0", "v0.2.0")).toBe(0);
+    expect(compareVersions("0.2.0", "0.2.1")).toBeLessThan(0);
+  });
+
+  it("names a newer release aligned with a later upstream commit, and nothing otherwise", async () => {
+    const { newerMackRelease } = await import("../core/upstream");
+    expect(await newerMackRelease("0.2.0", releases("v0.3.0", "abc123"))).toMatchObject({ version: "0.3.0", baseline: "abc123" });
+    expect(await newerMackRelease("0.3.0", releases("v0.3.0", "abc123"))).toBeUndefined();
+    expect(await newerMackRelease("0.2.0", releases("v0.3.0", UPSTREAM.baseline))).toBeUndefined();
+  });
+});
