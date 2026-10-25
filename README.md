@@ -20,6 +20,13 @@ and how Mack keeps up with upstream.
   branch out from the statement in parallel. Each hands back one file, which
   may keep `sorry` gaps; Lean scores it, and later rounds continue the most
   promising nodes instead of starting over, until the verifier accepts one.
+- **Proof-search runs.** Runs over sets of problems, each with its own tree
+  and journal, that can be watched, stopped and resumed (Runs screen, or
+  `discovery_*` in Chat). Workers can use the fixed loop or a tool loop in
+  their own workspaces with upstream's shared plan board. Partial proofs are
+  scored with Lean as upstream's scoring v3 does: automation tries to finish
+  each, and only real closed steps earn credit while hollow `sorry`s earn
+  none.
 - **Ultramath.** Several members attack one hard problem, each on a
   direction no other holds (a duplicate is refused), sharing a board of
   lemmas, counterexamples and dead ends. With a Lean statement the strict

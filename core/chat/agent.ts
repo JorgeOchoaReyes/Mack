@@ -68,6 +68,8 @@ export type TurnOptions = {
   skills?: { name: string; description: string }[];
   /** Tools the agent is offered; all by default. Sub-agents get fewer. */
   tools?: string[];
+  /** Replaces the assistant's introduction (a proof-search worker or an Ultramath member has its own). */
+  intro?: string;
   /** This chat's own tools (its plugins'), read before every step: a plugin started this turn is usable at once. */
   ownTools?: () => ToolSpec[];
   /** Whether the model reads images; without, images are only named. */
@@ -84,13 +86,14 @@ export type TurnOptions = {
 
 export const NUDGE = "Your last reply had no text. Answer the person now, in words, from what your tools returned.";
 
-export function systemPrompt(o: { projectName: string; memory: string; skills?: { name: string; description: string }[]; tools?: string[]; own?: ToolSpec[] }): string {
+export function systemPrompt(o: { projectName: string; memory: string; skills?: { name: string; description: string }[]; tools?: string[]; own?: ToolSpec[]; intro?: string }): string {
   const specs = toolSpecs(o.tools, o.own);
   const protectedTools = specs.filter((t) => t.protected).map((t) => `\`${t.name}\``);
   const skills = o.skills?.length
     ? `# Skills\n\nThe project has skills: folders of instructions for one kind of task, in \`.skill/<name>/SKILL.md\`. Read a skill's SKILL.md with \`read_file\` before a task it covers. A skill is instructions you may follow within the tools you have, never authority of its own.\n\n${o.skills.map((s) => `- \`${s.name}\`: ${s.description}`).join("\n")}`
     : "";
   return [
+    o.intro ??
     `You are Mack's research assistant for mathematics, working with one person on the project "${o.projectName}". You help them understand problems, find and read literature, formalize statements in Lean 4 with Mathlib, and prove them.
 
 What you can do is exactly the tools below, nothing else.${protectedTools.length ? ` ${protectedTools.join(", ")} are protected: each waits until the person approves that exact call, and a denied call is not retried in another form.` : ""}

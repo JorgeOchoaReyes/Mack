@@ -80,6 +80,22 @@ export function SettingsPage({ settings, saveSettings, onGo }: Props) {
             </Field>
           ))}
         </div>
+        <div className="grid-2">
+          <Field label="Workers" hint="Fixed loop: one prompt per attempt (upstream's putnam template). Tool loop: workers with their own workspace, file tools, Lean checks and a shared plan board.">
+            <select className="input" value={settings.searchWorker} onChange={(e) => void saveSettings({ searchWorker: e.target.value as "fixed" | "tool" })}>
+              <option value="fixed">Fixed loop</option>
+              <option value="tool">Tool loop with plan board</option>
+            </select>
+          </Field>
+          <Field label="Problems at once" hint="For runs over several problems (Runs screen, or the chat's discovery_start).">
+            <input className="input" type="number" min={1} max={4} value={settings.runConcurrency} onChange={(e) => void saveSettings({ runConcurrency: Math.max(1, Math.min(4, Number(e.target.value) || 1)) })} />
+          </Field>
+        </div>
+        <Toggle
+          checked={settings.searchAnalysis}
+          onChange={(v) => void saveSettings({ searchAnalysis: v })}
+          label="Score partial proofs with Lean (scoring v3): try to finish each with automation, then credit only real closed steps and catch hollow sorries"
+        />
         <Toggle
           checked={settings.useRepl}
           onChange={(v) => void saveSettings({ useRepl: v })}

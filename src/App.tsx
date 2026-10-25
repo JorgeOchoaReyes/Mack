@@ -1,10 +1,11 @@
-import { BookOpen, Download, FlaskConical, GitCompare, History, MessagesSquare, Settings as SettingsIcon, Wrench, X } from "lucide-react";
+import { BookOpen, Download, FlaskConical, Rows3, GitCompare, History, MessagesSquare, Settings as SettingsIcon, Wrench, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { api, type Health, type Settings, type UpdateState, type Upstream } from "./api";
 import { Logo } from "./components/Logo";
 import { Button, Dot } from "./components/ui";
 import { EXAMPLES } from "./examples";
 import { ChatPage } from "./pages/ChatPage";
+import { RunsPage } from "./pages/RunsPage";
 import { GuidePage } from "./pages/GuidePage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { ProvePage } from "./pages/ProvePage";
@@ -12,7 +13,7 @@ import { SettingsPage } from "./pages/SettingsPage";
 import { SetupPage } from "./pages/SetupPage";
 import { UpstreamPage } from "./pages/UpstreamPage";
 
-type Page = "prove" | "chat" | "history" | "upstream" | "setup" | "settings" | "guide";
+type Page = "prove" | "chat" | "runs" | "history" | "upstream" | "setup" | "settings" | "guide";
 
 const DRAFT_KEY = "mack.draft";
 const SEEN_GUIDE_KEY = "mack.seenGuide";
@@ -89,6 +90,7 @@ export function App() {
   const nav: { id: Page; label: string; icon: typeof FlaskConical; badge?: boolean }[] = [
     { id: "prove", label: "Prove", icon: FlaskConical },
     { id: "chat", label: "Chat", icon: MessagesSquare },
+    { id: "runs", label: "Runs", icon: Rows3 },
     { id: "history", label: "History", icon: History },
     { id: "upstream", label: "Upstream", icon: GitCompare, badge: showBanner },
     { id: "setup", label: "Setup", icon: Wrench, badge: health !== null && !allReady },
@@ -181,6 +183,7 @@ export function App() {
               onRunFinished={() => setRunsVersion((v) => v + 1)}
             />
           )}
+          {page === "runs" && <RunsPage />}
           {page === "chat" && <ChatPage health={health} settings={settings} saveSettings={saveSettings} onGoSetup={() => setPage("setup")} />}
           {page === "history" && (
             <HistoryPage

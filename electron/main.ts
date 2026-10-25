@@ -18,6 +18,12 @@ import { DEFAULT_LIMITS, type Limits } from "../core/search/tree";
 import { DEFAULT_ULTRAMATH, problemKind, ultramath, type UltramathEvent, type UltramathLimits } from "../core/ultramath/swarm";
 import { checkUpstream } from "../core/upstream";
 import { registerChat } from "./chat";
+import { RunManager, type Problem, type RunStatus } from "../core/search/runs";
+import { RUN_TOOLS } from "../core/search/run-tools";
+import { confine, registerTools } from "../core/chat/tools";
+import { frozenObjection } from "../core/lean/rules";
+import { basename } from "node:path";
+import { statSync } from "node:fs";
 import { registerUpdates } from "./updates";
 import { newerMackRelease } from "../core/upstream";
 import type { ApprovalPolicy } from "../core/chat/executor";
@@ -38,6 +44,12 @@ export type Settings = {
   ultramath: UltramathLimits;
   /** Use the resident Lean REPL for quick checks when it is built. */
   useRepl: boolean;
+  /** Proof-search workers: the fixed loop, or tool-loop workers in workspaces with the plan board. */
+  searchWorker: "fixed" | "tool";
+  /** Upstream's completion and sketch analysis on partial nodes (scoring v3). */
+  searchAnalysis: boolean;
+  /** Problems a proof-search run explores at once. */
+  runConcurrency: number;
   /** What the chat may do without asking, per protected tool; absent means ask. */
   approvals: Partial<Record<string, ApprovalPolicy>>;
   /** Models that read images: attachments and `view_image` reach only these. */
@@ -110,6 +122,9 @@ const DEFAULTS: Settings = {
   suggestions: true,
   autoUpdate: true,
   useRepl: true,
+  searchWorker: "fixed",
+  searchAnalysis: true,
+  runConcurrency: 1,
   upstreamCheck: true,
   upstreamDismissed: "",
 };
@@ -348,7 +363,19 @@ async function runProof(problem: string, mode: RunMode, forward: (ev: RunEvent) 
     } else if (s.mode === "search") {
       // Up to two REPLs for parallel workers: each holds Mathlib in memory.
       const check = quickCheck(s, Math.min(2, s.search.w)) ?? (async (src: string) => checkFromRun(await run(src)));
-      await search({ frozen: problem, provider, model, run, check, limits: s.search, signal: proving.signal, onEvent: send });
+      await search({
+        frozen: problem,
+        provider,
+        model,
+        run,
+        check,
+        limits: s.search,
+        analysis: s.searchAnalysis,
+        worker: s.searchWorker,
+        workspace: userData("prove-workspaces", record.id),
+        signal: proving.signal,
+        onEvent: send,
+      });
     } else {
       await prove({
         frozen: problem,
@@ -420,6 +447,44 @@ ipcMain.handle("file:openLean", async (e) => {
 
 registerUpdates(() => readSettings().autoUpdate);
 
+/** Who started a run from a chat, to wake that chat when the run ends. */
+const runOwners = new Map<string, { projectId: string; sessionId: string }>();
+
+const runs = new RunManager(
+  userData("discovery"),
+  async ({ problem, task, workspace, resume, journal, onEvent, signal }) => {
+    const s = readSettings();
+    if (!hasProject(s.leanWorkspace)) throw new Error("Install Lean and Mathlib in Setup first.");
+    const run = leanRunner({ workspace: s.leanWorkspace, timeoutMs: s.timeoutMs });
+    const check = quickCheck(s, Math.min(2, task.limits.w * Math.max(1, task.concurrency))) ?? (async (src: string) => checkFromRun(await run(src)));
+    await search({
+      frozen: problem.frozen,
+      problem: problem.id,
+      provider: makeProvider(s, s.provider),
+      model: s.models[s.provider],
+      run,
+      check,
+      limits: task.limits,
+      analysis: task.analysis,
+      worker: task.worker,
+      workspace,
+      resume,
+      journal,
+      signal,
+      onEvent,
+    });
+  },
+  (status) => {
+    const owner = runOwners.get(status.name);
+    if (!owner) return;
+    runOwners.delete(status.name);
+    const lines = status.problems.map((p) => `${p.id}: ${p.state}${p.state === "solved" ? " (verified)" : ""}, ${p.nodes} node(s), best ${p.best.toFixed(2)}`);
+    chat.wake(owner.projectId, owner.sessionId, "job", `Proof-search run ${status.name} ${status.state}.\n${lines.join("\n")}`);
+  },
+);
+
+registerTools(RUN_TOOLS);
+
 const chat = registerChat({
   userData,
   readSettings,
@@ -430,12 +495,89 @@ const chat = registerChat({
     return { run, check: quickCheck(s, 1) };
   },
   runProof,
+  extraTools: ({ projectId, root, sessionId }) => (call) => runTool(call, { projectId, root, sessionId }),
+});
+
+/** The chat's `discovery_*` tools: start, watch, stop and resume proof-search runs of the chat's project. */
+function runTool(call: { name: string; args: Record<string, unknown> }, ctx: { projectId: string; root: string; sessionId: string }): Promise<string> | undefined {
+  const a = call.args;
+  const name = () => {
+    if (typeof a.run !== "string" || !a.run) throw new Error("`run` names the run");
+    const st = runs.status(a.run);
+    if (st.project !== ctx.projectId) throw new Error(`no run named ${a.run} in this project`);
+    return a.run;
+  };
+  const fmt = (st: RunStatus) =>
+    `${st.name}: ${st.state}\n${st.problems.map((p) => `- ${p.id}: ${p.state}, ${p.nodes} node(s), best score ${p.best.toFixed(2)}${p.message ? ` — ${p.message.slice(0, 200)}` : ""}`).join("\n")}${
+      st.failureReasons.length ? `\nWhat keeps going wrong:\n${st.failureReasons.map((f) => `- ${f.count}× ${f.reason}`).join("\n")}` : ""
+    }`;
+  switch (call.name) {
+    case "discovery_start":
+      return (async () => {
+        const s = readSettings();
+        const paths = Array.isArray(a.problems) ? a.problems.filter((x): x is string => typeof x === "string") : typeof a.problems === "string" ? [a.problems] : [];
+        if (!paths.length) throw new Error("`problems` lists .lean files (or folders of them) of the project");
+        const problems: Problem[] = [];
+        for (const p of paths) {
+          const full = await confine(ctx.root, p);
+          const files = statSync(full).isDirectory() ? readdirSync(full).filter((f) => f.endsWith(".lean")).map((f) => join(full, f)) : [full];
+          for (const f of files) problems.push({ id: basename(f, ".lean").replace(/[^a-zA-Z0-9._-]/g, "_"), frozen: readFileSync(f, "utf8") });
+        }
+        for (const p of problems) {
+          const objection = frozenObjection(p.frozen);
+          if (objection) throw new Error(`${p.id} is not a usable frozen file: ${objection}`);
+        }
+        const limits = { ...s.search, ...(typeof a.width === "number" ? { w: a.width } : {}), ...(typeof a.rounds === "number" ? { k1: a.rounds } : {}) };
+        const runName = typeof a.run === "string" && a.run ? a.run : `run-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}`;
+        const st = runs.start({ name: runName, project: ctx.projectId, problems, limits, worker: a.worker === "tool" || a.worker === "fixed" ? a.worker : s.searchWorker, concurrency: Math.max(1, Math.min(4, Number(a.concurrency) || s.runConcurrency)), analysis: s.searchAnalysis });
+        runOwners.set(st.name, { projectId: ctx.projectId, sessionId: ctx.sessionId });
+        return `started run ${st.name} on ${problems.length} problem(s): ${problems.map((p) => p.id).join(", ")}. It runs on its own; this chat is told when it ends. Set a reminder to check discovery_status meanwhile.`;
+      })();
+    case "discovery_status":
+      return (async () => fmt(runs.status(name())))();
+    case "discovery_list":
+      return (async () => runs.list(ctx.projectId).map((st) => `${st.name}: ${st.state}, ${st.problems.length} problem(s), ${st.problems.filter((p) => p.state === "solved").length} solved`).join("\n") || "no runs in this project")();
+    case "discovery_tree":
+      return (async () => {
+        const nodes = runs.tree(name(), String(a.problem ?? ""));
+        return nodes.map((n) => `node ${n.id}${n.parent === null ? " (root)" : ` ← ${n.parent}`}: ${n.status}, score ${n.score.toFixed(2)}, ${n.sorries} sorry, ${n.errors} error(s)${n.approach ? ` — ${n.approach.slice(0, 120)}` : ""}`).join("\n");
+      })();
+    case "discovery_stop":
+      return (async () => (runs.stop(name()), `stopping ${a.run}`))();
+    case "discovery_resume":
+      return (async () => {
+        const st = runs.resume(name());
+        runOwners.set(st.name, { projectId: ctx.projectId, sessionId: ctx.sessionId });
+        return `resumed ${st.name}; this chat is told when it ends.`;
+      })();
+    default:
+      return undefined;
+  }
+}
+
+ipcMain.handle("discovery:list", () => runs.list());
+ipcMain.handle("discovery:status", (_e, run: string) => runs.status(run));
+ipcMain.handle("discovery:tree", (_e, run: string, problem: string) => runs.tree(run, problem));
+ipcMain.handle("discovery:stop", (_e, run: string) => runs.stop(run));
+ipcMain.handle("discovery:resume", (_e, run: string) => runs.resume(run));
+ipcMain.handle("discovery:startFiles", async (e) => {
+  const win = BrowserWindow.fromWebContents(e.sender);
+  const r = await dialog.showOpenDialog(win!, { properties: ["openFile", "multiSelections"], filters: [{ name: "Lean", extensions: ["lean"] }], title: "Problems for a proof-search run" });
+  if (r.canceled || !r.filePaths.length) return null;
+  const s = readSettings();
+  const problems: Problem[] = r.filePaths.map((f) => ({ id: basename(f, ".lean").replace(/[^a-zA-Z0-9._-]/g, "_"), frozen: readFileSync(f, "utf8") }));
+  for (const p of problems) {
+    const objection = frozenObjection(p.frozen);
+    if (objection) throw new Error(`${p.id} is not a usable frozen file: ${objection}`);
+  }
+  return runs.start({ name: `run-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}`, project: "", problems, limits: s.search, worker: s.searchWorker, concurrency: s.runConcurrency, analysis: s.searchAnalysis });
 });
 
 loadDotEnv();
 void app.whenReady().then(createWindow);
 app.on("window-all-closed", () => app.quit());
 app.on("will-quit", () => {
+  runs.stopAll();
   repl?.pool.stop();
   chat.stopAll();
 });
