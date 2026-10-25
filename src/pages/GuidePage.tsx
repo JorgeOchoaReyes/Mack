@@ -21,7 +21,7 @@ export function GuidePage({ onGo }: Props) {
         <div>
           <h2>1. Set up once</h2>
           <p>
-            In <strong>Setup</strong>, install Lean and Mathlib (one click, about 5 GB), paste your Fireworks API key, and pick a model. The first time Lean
+            In <strong>Setup</strong>, install Lean and Mathlib (one click, about 5 GB), choose a model provider (Fireworks, OpenRouter or any OpenAI-compatible server), paste your key, and pick a model. The first time Lean
             loads Mathlib it can take several minutes; after that a check takes seconds.
           </p>
           <Button size="sm" icon={ArrowRight} onClick={() => onGo("setup")}>
@@ -127,7 +127,7 @@ sorry`}</pre>
         <div>
           <h2>Costs</h2>
           <p>
-            Each attempt is one call to your Fireworks model, billed to your account. Every attempt shows its token count. Lower <em>Attempts per run</em> in
+            Each attempt is one call to your model, billed to your provider account. Every attempt shows its token count. Lower <em>Attempts per run</em> (single) or the <em>model-call budget</em> (search tree) in
             Settings to cap spend per problem.
           </p>
         </div>
@@ -140,7 +140,7 @@ sorry`}</pre>
         <div>
           <h2>Privacy</h2>
           <p>
-            Your key is encrypted on this computer and only sent to Fireworks. Your statements go to Fireworks to be proved; everything else, including the
+            Your key is encrypted on this computer and only sent to the provider it belongs to. Your statements go to that provider to be proved; everything else, including the
             run history, stays on this computer. The only other network calls Mack makes are the upstream check to GitHub and the one-time Lean download.
           </p>
         </div>

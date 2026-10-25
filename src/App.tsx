@@ -157,6 +157,7 @@ export function App() {
               settings={settings}
               saveSettings={saveSettings}
               onGoSetup={() => setPage("setup")}
+              onHealthChange={refreshHealth}
               onRunFinished={() => setRunsVersion((v) => v + 1)}
             />
           )}

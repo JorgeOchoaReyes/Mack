@@ -10,14 +10,19 @@ import { hasRepl, replPool, type ReplPool } from "../core/lean/repl";
 import { leanRunner } from "../core/lean/runner";
 import { DEFAULT_WORKSPACE, hasMathlib, hasProject, runSetup, verifyWorkspace, type SetupEvent } from "../core/lean/setup";
 import { lakeVersion } from "../core/lean/toolchain";
-import { FireworksProvider } from "../core/model/fireworks";
+import { OpenAICompatibleProvider } from "../core/model/openai-compatible";
+import { PROVIDERS, providerInfo, type ProviderId } from "../core/model/providers";
 import { prove, type ProveEvent } from "../core/prove";
 import { search, type SearchEvent } from "../core/search/search";
 import { DEFAULT_LIMITS, type Limits } from "../core/search/tree";
 import { checkUpstream } from "../core/upstream";
 
 export type Settings = {
-  model: string;
+  /** The provider runs use; each provider remembers its own model. */
+  provider: ProviderId;
+  models: Record<ProviderId, string>;
+  /** The custom OpenAI-compatible endpoint, such as http://localhost:11434/v1. */
+  customBaseUrl: string;
   leanWorkspace: string;
   timeoutMs: number;
   maxAttempts: number;
@@ -44,8 +49,11 @@ export type Health = {
   hasProject: boolean;
   hasMathlib: boolean;
   hasRepl: boolean;
+  provider: ProviderId;
+  /** The active provider's key and model. */
   keySource: KeySource;
   model: string;
+  providers: { id: ProviderId; keySource: KeySource; model: string; usable: boolean }[];
 };
 
 export type RunRecord = {
@@ -53,6 +61,8 @@ export type RunRecord = {
   startedAt: number;
   finishedAt: number;
   model: string;
+  /** Absent on runs recorded before providers were selectable: those used Fireworks. */
+  provider?: ProviderId;
   /** Absent on runs recorded before the search tree: those were "single". */
   mode?: RunMode;
   problem: string;
@@ -67,7 +77,9 @@ export type RunSummary = Pick<RunRecord, "id" | "startedAt" | "finishedAt" | "mo
 };
 
 const DEFAULTS: Settings = {
-  model: "",
+  provider: "fireworks",
+  models: { fireworks: "", openrouter: "", custom: "" },
+  customBaseUrl: "http://localhost:11434/v1",
   leanWorkspace: DEFAULT_WORKSPACE,
   timeoutMs: 300_000,
   maxAttempts: 8,
@@ -80,7 +92,7 @@ const DEFAULTS: Settings = {
 
 const userData = (...p: string[]) => join(app.getPath("userData"), ...p);
 const settingsPath = () => userData("settings.json");
-const keyPath = () => userData("fireworks.key");
+const keyPath = (id: ProviderId) => userData(`${id}.key`);
 const runsDir = () => {
   const d = userData("runs");
   mkdirSync(d, { recursive: true });
@@ -99,10 +111,14 @@ function loadDotEnv(): void {
 
 function readSettings(): Settings {
   try {
-    const saved = JSON.parse(readFileSync(settingsPath(), "utf8")) as Partial<Settings>;
+    const saved = JSON.parse(readFileSync(settingsPath(), "utf8")) as Partial<Settings> & { model?: string };
+    // Before providers were selectable the one model was a Fireworks model.
+    const { model: legacyModel, ...rest } = saved;
+    const models = { ...DEFAULTS.models, ...(legacyModel ? { fireworks: legacyModel } : {}), ...saved.models };
     return {
       ...DEFAULTS,
-      ...saved,
+      ...rest,
+      models,
       search: { ...DEFAULTS.search, ...saved.search },
       leanWorkspace: saved.leanWorkspace || DEFAULTS.leanWorkspace,
     };
@@ -111,20 +127,36 @@ function readSettings(): Settings {
   }
 }
 
-function keySource(): KeySource {
-  return process.env.FIREWORKS_API_KEY ? "env" : existsSync(keyPath()) ? "saved" : "none";
+function keySource(id: ProviderId): KeySource {
+  return process.env[providerInfo(id).keyEnv] ? "env" : existsSync(keyPath(id)) ? "saved" : "none";
 }
 
 /** The environment variable wins; otherwise the key saved in the app, encrypted with the OS keystore. */
-function readKey(): string {
-  if (process.env.FIREWORKS_API_KEY) return process.env.FIREWORKS_API_KEY;
-  if (!existsSync(keyPath())) return "";
+function readKey(id: ProviderId): string {
+  const env = process.env[providerInfo(id).keyEnv];
+  if (env) return env;
+  if (!existsSync(keyPath(id))) return "";
   try {
-    return safeStorage.decryptString(readFileSync(keyPath()));
+    return safeStorage.decryptString(readFileSync(keyPath(id)));
   } catch {
     return "";
   }
 }
+
+/** Whether a provider has what a run needs: a key when it requires one, and a model. */
+function usable(s: Settings, id: ProviderId): boolean {
+  return !!s.models[id] && (!providerInfo(id).keyRequired || keySource(id) !== "none");
+}
+
+function makeProvider(s: Settings, id: ProviderId): OpenAICompatibleProvider {
+  const info = providerInfo(id);
+  const key = readKey(id);
+  if (info.keyRequired && !key) throw new Error(`Add your ${info.label} API key in Setup first.`);
+  const headers: Record<string, string> = id === "openrouter" ? { "HTTP-Referer": "https://github.com/JorgeOchoaReyes/Mack", "X-Title": "Mack" } : {};
+  return new OpenAICompatibleProvider(info.label, info.baseUrl ?? s.customBaseUrl, key, headers);
+}
+
+const isProvider = (id: unknown): id is ProviderId => PROVIDERS.some((p) => p.id === id);
 
 function theoremOf(problem: string): string {
   return /^theorem\s+([^\s:({[]+)/m.exec(problem)?.[1] ?? "untitled";
@@ -177,15 +209,17 @@ ipcMain.handle("settings:set", (_e, s: Partial<Settings>) => {
   return next;
 });
 
-ipcMain.handle("key:set", (_e, key: string) => {
-  if (!safeStorage.isEncryptionAvailable()) throw new Error("OS encryption is unavailable; set FIREWORKS_API_KEY in .env instead");
-  writeFileSync(keyPath(), safeStorage.encryptString(key.trim()));
-  return keySource();
+ipcMain.handle("key:set", (_e, id: ProviderId, key: string) => {
+  if (!isProvider(id)) throw new Error("unknown provider");
+  if (!safeStorage.isEncryptionAvailable()) throw new Error(`OS encryption is unavailable; set ${providerInfo(id).keyEnv} in .env instead`);
+  writeFileSync(keyPath(id), safeStorage.encryptString(key.trim()));
+  return keySource(id);
 });
 
-ipcMain.handle("key:clear", () => {
-  rmSync(keyPath(), { force: true });
-  return keySource();
+ipcMain.handle("key:clear", (_e, id: ProviderId) => {
+  if (!isProvider(id)) throw new Error("unknown provider");
+  rmSync(keyPath(id), { force: true });
+  return keySource(id);
 });
 
 ipcMain.handle("health:get", async (): Promise<Health> => {
@@ -196,8 +230,10 @@ ipcMain.handle("health:get", async (): Promise<Health> => {
     hasProject: hasProject(s.leanWorkspace),
     hasMathlib: hasMathlib(s.leanWorkspace),
     hasRepl: hasRepl(s.leanWorkspace),
-    keySource: keySource(),
-    model: s.model,
+    provider: s.provider,
+    keySource: providerInfo(s.provider).keyRequired ? keySource(s.provider) : "saved",
+    model: s.models[s.provider],
+    providers: PROVIDERS.map((p) => ({ id: p.id, keySource: keySource(p.id), model: s.models[p.id], usable: usable(s, p.id) })),
   };
 });
 
@@ -233,27 +269,31 @@ ipcMain.handle("upstream:check", async () => {
 });
 
 ipcMain.handle("open:external", (_e, url: string) => {
-  if (!/^https:\/\/(github\.com|fireworks\.ai|app\.fireworks\.ai|leanprover-community\.github\.io)\//.test(url)) {
+  if (!/^https:\/\/(github\.com|fireworks\.ai|app\.fireworks\.ai|openrouter\.ai|leanprover-community\.github\.io)\//.test(url)) {
     throw new Error("Mack only opens known links");
   }
   return shell.openExternal(url);
 });
 
-ipcMain.handle("models:list", async () => new FireworksProvider(readKey()).listModels());
+ipcMain.handle("models:list", async (_e, id?: ProviderId) => {
+  const s = readSettings();
+  return makeProvider(s, isProvider(id) ? id : s.provider).listModels();
+});
 
 ipcMain.handle("prove:start", async (e, problem: string) => {
   if (proving) throw new Error("a proof run is already in progress");
   const s = readSettings();
-  if (!readKey()) throw new Error("Add your Fireworks API key in Setup first.");
-  if (!s.model) throw new Error("Choose a model in Setup first.");
+  const model = s.models[s.provider];
+  if (!model) throw new Error(`Choose a ${providerInfo(s.provider).label} model in Setup first.`);
   if (!hasProject(s.leanWorkspace)) throw new Error("Install Lean and Mathlib in Setup first.");
-  const provider = new FireworksProvider(readKey());
+  const provider = makeProvider(s, s.provider);
   proving = new AbortController();
   const record: RunRecord = {
     id: `${Date.now()}`,
     startedAt: Date.now(),
     finishedAt: 0,
-    model: s.model,
+    model,
+    provider: s.provider,
     mode: s.mode,
     problem,
     outcome: "failed",
@@ -271,12 +311,12 @@ ipcMain.handle("prove:start", async (e, problem: string) => {
     if (s.mode === "search") {
       // Up to two REPLs for parallel workers: each holds Mathlib in memory.
       const check = quickCheck(s, Math.min(2, s.search.w)) ?? (async (src: string) => checkFromRun(await run(src)));
-      await search({ frozen: problem, provider, model: s.model, run, check, limits: s.search, signal: proving.signal, onEvent: send });
+      await search({ frozen: problem, provider, model, run, check, limits: s.search, signal: proving.signal, onEvent: send });
     } else {
       await prove({
         frozen: problem,
         provider,
-        model: s.model,
+        model,
         run,
         check: quickCheck(s, 1),
         maxAttempts: s.maxAttempts,

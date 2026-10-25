@@ -80,7 +80,7 @@ export function SettingsPage({ settings, saveSettings, onGo }: Props) {
 
       <section className="settings-group">
         <h2>Lean, key and model</h2>
-        <p className="muted">The Lean workspace, your Fireworks key and the model are managed in Setup.</p>
+        <p className="muted">The Lean workspace, your model provider keys and models are managed in Setup.</p>
         <div className="row gap-sm">
           <Button icon={ArrowRight} onClick={() => onGo("setup")}>
             Open Setup

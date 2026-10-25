@@ -1,6 +1,7 @@
 import { BookOpen, ChevronDown, FolderOpen, GitBranch, Play, Square, Sparkles, CircleCheck, CircleAlert, Cpu, Repeat } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api, errorText, theoremName, type Health, type RunEvent, type Settings } from "../api";
+import { providerInfo } from "../../core/model/providers";
 import { CodeEditor } from "../components/CodeEditor";
 import { SolvedCard, Timeline } from "../components/RunView";
 import { TreeSummary, TreeView, type NodeEvent } from "../components/TreeView";
@@ -17,10 +18,11 @@ type Props = {
   settings: Settings;
   saveSettings: (s: Partial<Settings>) => Promise<void>;
   onGoSetup: () => void;
+  onHealthChange: () => void;
   onRunFinished: () => void;
 };
 
-export function ProvePage({ problem, setProblem, health, settings, saveSettings, onGoSetup, onRunFinished }: Props) {
+export function ProvePage({ problem, setProblem, health, settings, saveSettings, onGoSetup, onHealthChange, onRunFinished }: Props) {
   const maxAttempts = settings.maxAttempts;
   const [running, setRunning] = useState(false);
   const [status, setStatus] = useState("");
@@ -85,7 +87,7 @@ export function ProvePage({ problem, setProblem, health, settings, saveSettings,
   };
 
   const elapsed = running ? Math.round((Date.now() - started) / 1000) : 0;
-  const shortModel = health?.model.split("/").pop() ?? "";
+  const usableProviders = health?.providers.filter((p) => p.usable) ?? [];
 
   return (
     <div className="prove">
@@ -162,9 +164,25 @@ export function ProvePage({ problem, setProblem, health, settings, saveSettings,
         <section className="pane run-pane">
           <div className="pane-head">
             <span>Run</span>
-            {shortModel && (
+            {usableProviders.length > 0 && (
               <span className="model-chip" title={health?.model}>
-                <Cpu size={13} /> {shortModel}
+                <Cpu size={13} />
+                <select
+                  className="model-select"
+                  value={settings.provider}
+                  disabled={running}
+                  onChange={async (e) => {
+                    await saveSettings({ provider: e.target.value as Settings["provider"] });
+                    onHealthChange();
+                  }}
+                >
+                  {!usableProviders.some((p) => p.id === settings.provider) && <option value={settings.provider}>{providerInfo(settings.provider).label}: not set up</option>}
+                  {usableProviders.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {providerInfo(p.id).label} · {p.model.split("/").pop()}
+                    </option>
+                  ))}
+                </select>
               </span>
             )}
           </div>
@@ -215,7 +233,7 @@ export function ProvePage({ problem, setProblem, health, settings, saveSettings,
 function SetupNudge({ health, onGoSetup }: { health: Health | null; onGoSetup: () => void }) {
   const items = [
     { ok: !!health?.lake && !!health?.hasMathlib, label: "Lean and Mathlib installed" },
-    { ok: health?.keySource !== "none", label: "Fireworks API key added" },
+    { ok: health?.keySource !== "none", label: `${providerInfo(health?.provider ?? "fireworks").label} API key added` },
     { ok: !!health?.model, label: "Model chosen" },
   ];
   return (
@@ -242,7 +260,7 @@ function HowItWorks({ mode }: { mode: Settings["mode"] }) {
     ["Lean scores every node", "Each file is checked; partial proofs score higher than broken ones, and a complete proof goes to the verifier."],
     ["The best branches grow", "Later rounds continue the most promising nodes instead of starting over, until the verifier accepts one."],
   ] : [
-    ["The model proposes", "Your Fireworks model writes a complete Lean proof of the frozen statement."],
+    ["The model proposes", "Your model writes a complete Lean proof of the frozen statement."],
     ["Lean checks", "Lean's errors and open goals go back to the model, which revises the proof."],
     ["The verifier decides", "A proof counts only if the statement is untouched, no axiom or sorry is used, and Lean accepts it."],
   ];

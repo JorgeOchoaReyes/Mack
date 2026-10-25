@@ -39,4 +39,4 @@ upstream module.
 | `interfaces/swarm` (Ultramath) | — | Planned, roadmap step 3 |
 | `program-files/chat-agent`, tools, `program-files/memory`, `program-files/approvals` | — | Planned, roadmap step 4 |
 | `kernel/` + `platform/` (capability microkernel, bubblewrap confinement) | — | Not ported: Linux-only. Mack restricts each agent's tools in-process instead, which is weaker. |
-| `program-files/openrouter` | `core/model/fireworks.ts` behind `core/model/provider.ts` | Replaced: Fireworks |
+| `program-files/openrouter` | `core/model/openai-compatible.ts` behind `core/model/provider.ts`; `core/model/providers.ts` lists Fireworks, OpenRouter and a custom endpoint | Adapted: any OpenAI-compatible provider, OpenRouter among them |

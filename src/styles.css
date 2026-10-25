@@ -355,3 +355,10 @@ nav { display: flex; flex-direction: column; gap: 2px; }
 .tree-id { font-family: var(--mono, ui-monospace, monospace); font-size: 12px; min-width: 22px; padding: 1px 6px; border-radius: 6px; background: var(--sunken); text-align: center; }
 .tree-score { font-family: var(--mono, ui-monospace, monospace); font-size: 12px; color: var(--muted); }
 .tree-approach { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+
+/* Model providers */
+.provider-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.provider-tab { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 9px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); cursor: pointer; font-size: 13px; }
+.provider-tab.active { border-color: var(--accent-edge); background: var(--accent); color: #111; font-weight: 600; }
+.provider-tab.active .ok { color: #111; }
+.model-select { border: 1px solid var(--border); border-radius: 99px; background: var(--surface-2); color: var(--text); font-size: 12px; padding: 3px 8px; max-width: 300px; }

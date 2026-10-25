@@ -2,6 +2,7 @@
 
 import type { SetupEvent } from "../core/lean/setup-steps";
 import type { ProveEvent } from "../core/prove";
+import type { ProviderId } from "../core/model/providers";
 import type { UpstreamReport } from "../core/upstream";
 import type { Health, KeySource, RunEvent, RunMode, RunRecord, RunSummary, Settings } from "../electron/main";
 import type { MackApi } from "../electron/preload";
@@ -13,6 +14,7 @@ declare global {
 }
 
 export type Upstream = (UpstreamReport & { dismissed?: boolean }) | { kind: "off" };
+export type { ProviderId };
 export type { Health, KeySource, ProveEvent, RunEvent, RunMode, RunRecord, RunSummary, SetupEvent, Settings };
 
 const m = () => window.mack;
@@ -20,8 +22,8 @@ const m = () => window.mack;
 export const api = {
   getSettings: () => m().getSettings() as Promise<Settings>,
   setSettings: (s: Partial<Settings>) => m().setSettings(s) as Promise<Settings>,
-  setKey: (k: string) => m().setKey(k) as Promise<KeySource>,
-  clearKey: () => m().clearKey() as Promise<KeySource>,
+  setKey: (provider: ProviderId, k: string) => m().setKey(provider, k) as Promise<KeySource>,
+  clearKey: (provider: ProviderId) => m().clearKey(provider) as Promise<KeySource>,
   health: () => m().health() as Promise<Health>,
   verifyWorkspace: () => m().verifyWorkspace(),
   pickWorkspace: () => m().pickWorkspace(),
@@ -30,7 +32,7 @@ export const api = {
   onSetupEvent: (cb: (e: SetupEvent) => void) => m().onSetupEvent((e) => cb(e as SetupEvent)),
   checkUpstream: () => m().checkUpstream() as Promise<Upstream>,
   openExternal: (url: string) => m().openExternal(url),
-  listModels: () => m().listModels(),
+  listModels: (provider?: ProviderId) => m().listModels(provider),
   startProve: (problem: string) => m().startProve(problem),
   stopProve: () => m().stopProve(),
   onProveEvent: (cb: (e: RunEvent) => void) => m().onProveEvent((e) => cb(e as RunEvent)),

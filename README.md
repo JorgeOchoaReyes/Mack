@@ -1,8 +1,8 @@
 # Mack ⚡
 
 A Windows desktop app for Lean-checked math research. Open models (through
-[Fireworks](https://fireworks.ai)) propose proofs; **Lean decides** whether
-they hold.
+[Fireworks](https://fireworks.ai), [OpenRouter](https://openrouter.ai) or any
+OpenAI-compatible server) propose proofs; **Lean decides** whether they hold.
 
 Mack follows the methodology of
 [Open Math Harness](https://github.com/openmathmodel/open-math-harness), the
@@ -31,6 +31,9 @@ and how Mack keeps up with upstream.
   - Lean elaborates it;
   - it depends only on `propext`, `Classical.choice` and `Quot.sound`;
   - its fully elaborated type matches the original statement exactly.
+- **Your choice of model provider.** Fireworks, OpenRouter, or any
+  OpenAI-compatible endpoint (Ollama, LM Studio, vLLM), each with its own key
+  and model, switchable per run from the Prove screen.
 - **One-click setup.** Mack installs Lean (elan) and a Mathlib workspace with
   its prebuilt cache, with progress shown in the app.
 - **History.** Every run is kept locally, with each attempt and what Lean said.
@@ -60,7 +63,7 @@ upstream module each comes from.
   per-project memory across sessions, with protected actions waiting for
   your approval. From upstream `program-files/chat-agent`,
   `program-files/memory`, `program-files/approvals`.
-- [ ] **5. More model providers.** OpenRouter and other OpenAI-compatible
+- [x] **5. More model providers.** OpenRouter and other OpenAI-compatible
   endpoints next to Fireworks, chosen per run.
 - [ ] **6. Distribution.** A code-signed installer (no SmartScreen warning),
   GitHub Releases with auto-update, and the upstream check comparing against
@@ -73,8 +76,9 @@ weaker, and step 4 will state exactly what each agent can do.
 ## Install
 
 You need Windows 10 or 11, [Git](https://git-scm.com) (Lake fetches Mathlib
-with it), about 10 GB of free disk, and **your own Fireworks API key**. No key
-or credential ships with Mack.
+with it), about 10 GB of free disk, and **your own model provider key**
+(Fireworks or OpenRouter), or a local OpenAI-compatible server. No key or
+credential ships with Mack.
 
 From source:
 
@@ -90,10 +94,11 @@ desktop shortcuts. Then open Mack and follow **Setup**:
 
 1. **Lean and Mathlib**: click *Install*. It takes 5–20 minutes and about
    5 GB, mostly Mathlib's prebuilt cache.
-2. **Fireworks API key**: paste your key. It is encrypted with Windows'
-   credential protection and only sent to Fireworks. For development you can
-   instead copy `.env.example` to `.env` and set `FIREWORKS_API_KEY`;
-   `.env` is gitignored.
+2. **Model provider and key**: pick Fireworks, OpenRouter or a custom
+   endpoint and paste your key. It is encrypted with Windows' credential
+   protection and only sent to that provider. For development you can instead
+   copy `.env.example` to `.env` and set `FIREWORKS_API_KEY`,
+   `OPENROUTER_API_KEY` or `CUSTOM_API_KEY`; `.env` is gitignored.
 3. **Model**: pick one from your account's list.
 
 ## Development
