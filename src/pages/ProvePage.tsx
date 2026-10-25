@@ -73,8 +73,7 @@ export function ProvePage({ problem, setProblem, health, settings, saveSettings,
 
   const leanReady = !!health && !!health.lake && health.hasMathlib;
   const needsLean = settings.mode !== "ultramath" || problemKind(problem) === "lean";
-  const priceMissing = !!health?.model && (settings.maxCostPerSession > 0 || settings.globalLimit > 0) && !settings.prices[health.model];
-  const ready = !!health && (leanReady || !needsLean) && health.keySource !== "none" && !!health.model && !priceMissing;
+  const ready = !!health && (leanReady || !needsLean) && health.keySource !== "none" && !!health.model;
   const accepted = swarm.find((e): e is Extract<RunEvent, { type: "accepted" }> => e.type === "accepted");
 
   const run = async () => {
@@ -203,7 +202,7 @@ export function ProvePage({ problem, setProblem, health, settings, saveSettings,
             )}
           </div>
           <div className="run-scroll">
-            {!ready && <SetupNudge health={health} priceMissing={priceMissing} onGoSetup={onGoSetup} />}
+            {!ready && <SetupNudge health={health} onGoSetup={onGoSetup} />}
 
             {ready && !running && attempts.length === 0 && nodes.length === 0 && swarm.length === 0 && !solved && !failure && <HowItWorks mode={settings.mode} />}
 
@@ -267,12 +266,11 @@ export function ProvePage({ problem, setProblem, health, settings, saveSettings,
   );
 }
 
-function SetupNudge({ health, priceMissing, onGoSetup }: { health: Health | null; priceMissing: boolean; onGoSetup: () => void }) {
+function SetupNudge({ health, onGoSetup }: { health: Health | null; onGoSetup: () => void }) {
   const items = [
     { ok: !!health?.lake && !!health?.hasMathlib, label: "Lean and Mathlib installed" },
     { ok: health?.keySource !== "none", label: `${providerInfo(health?.provider ?? "fireworks").label} API key added` },
     { ok: !!health?.model, label: "Model chosen" },
-    { ok: !priceMissing, label: "Model price set (the spending limits need it)" },
   ];
   return (
     <div className="nudge">

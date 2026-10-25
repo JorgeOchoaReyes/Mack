@@ -54,3 +54,17 @@ describe("spending cap", () => {
     expect(meter.spent).toBe(1);
   });
 });
+
+describe("assumed price", () => {
+  it("counts an unpriced model at the high assumed price, and a priced one at its own", async () => {
+    const { priceFor, ASSUMED_PRICE } = await import("../core/model/metered");
+    expect(priceFor({}, "m")).toEqual({ price: ASSUMED_PRICE, assumed: true });
+    expect(priceFor({ m: { input: 0.2, output: 0.6 } }, "m")).toEqual({ price: { input: 0.2, output: 0.6 }, assumed: false });
+    const meter: Meter = { spent: 0, limit: 1, estimated: false };
+    const p = metered(provider(), priceFor({}, "m").price, meter);
+    await p.chat({ model: "m", messages: [] });
+    // 1M input × $10 + 0.5M output × $30: far past a $1 limit, so the next call is refused.
+    expect(meter.spent).toBe(25);
+    await expect(p.chat({ model: "m", messages: [] })).rejects.toBeInstanceOf(SpendCapReached);
+  });
+});

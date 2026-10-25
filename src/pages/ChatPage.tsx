@@ -56,9 +56,9 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
   sessionRef.current = session;
 
   const project = projects.find((p) => p.id === projectId);
-  // A spending limit needs the model's price; without it every send is refused, so say so up front.
-  const priceMissing = !!health?.model && (settings.maxCostPerSession > 0 || settings.globalLimit > 0) && !settings.prices[health.model];
-  const ready = !!health && health.keySource !== "none" && !!health.model && !priceMissing;
+  // Without the model's own price the meters count a high assumed one: limits stop early, never late.
+  const priceAssumed = !!health?.model && !settings.prices[health.model];
+  const ready = !!health && health.keySource !== "none" && !!health.model;
 
   const create = async (name: string) => {
     setProjectError("");
@@ -317,25 +317,24 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
         {panel === "tools" && <ToolsPanel health={health} settings={settings} saveSettings={saveSettings} sessionId={session?.id} onClose={() => setPanel("none")} />}
 
         <div className="chat-scroll" ref={scroller}>
-          {priceMissing ? (
-            <div className="notice notice-bad">
-              <b>Set your model's price to chat.</b> The spending limits count cost from the price of <code>{health?.model.split("/").pop()}</code>, which isn't set,
-              so Mack won't start calls it can't count. Enter it in{" "}
+          {!ready && (
+            <div className="notice">
+              Choose a model provider, key and model in{" "}
+              <button className="link" onClick={onGoSetup}>
+                Setup
+              </button>{" "}
+              to chat.
+            </div>
+          )}
+          {ready && priceAssumed && (
+            <div className="notice small">
+              Spend is counted at an assumed {formatUsd(settings.assumedPrice.input)} / {formatUsd(settings.assumedPrice.output)} per million tokens, higher than{" "}
+              <code>{health?.model.split("/").pop()}</code> likely costs, so the limits stop early, never late. For exact numbers enter its real price in{" "}
               <button className="link" onClick={onGoSetup}>
                 Setup → Model
-              </button>{" "}
-              (USD per million tokens, from your provider's pricing page), or turn the limits off in Settings → Spending.
+              </button>
+              .
             </div>
-          ) : (
-            !ready && (
-              <div className="notice">
-                Choose a model provider, key and model in{" "}
-                <button className="link" onClick={onGoSetup}>
-                  Setup
-                </button>{" "}
-                to chat.
-              </div>
-            )
           )}
           {projects.length === 0 && (
             <div className="how">

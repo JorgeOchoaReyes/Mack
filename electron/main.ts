@@ -20,7 +20,7 @@ import { DEFAULT_ULTRAMATH, problemKind, ultramath, type UltramathEvent, type Ul
 import { checkUpstream } from "../core/upstream";
 import { diagnosticsText, issueUrl, openIssues, type Diagnostics, type FeedbackKind } from "../core/feedback";
 import os from "node:os";
-import { formatUsd, metered, type Meter, type Price } from "../core/model/metered";
+import { ASSUMED_PRICE, formatUsd, metered, priceFor, type Meter, type Price } from "../core/model/metered";
 import { Ledger, type Period } from "../core/model/ledger";
 import type { ModelProvider } from "../core/model/provider";
 import { registerChat } from "./chat";
@@ -72,6 +72,8 @@ export type Settings = {
   maxCostPerSession: number;
   /** Model prices, USD per million tokens, by model id. */
   prices: Record<string, Price>;
+  /** The price counted for a model with none entered: high, so limits stop an unpriced model early. */
+  assumedPrice: Price;
   /** Download and install new Mack releases from GitHub. */
   autoUpdate: boolean;
   /** Check Open Math Harness for methodology changes on every launch. */
@@ -144,6 +146,7 @@ const DEFAULTS: Settings = {
   globalLimit: 10,
   globalPeriod: "month",
   prices: {},
+  assumedPrice: ASSUMED_PRICE,
   useRepl: true,
   searchWorker: "fixed",
   searchAnalysis: true,
@@ -224,7 +227,7 @@ const broadcastSpend = () => {
 /** A provider for model calls: every call is priced into the global ledger, and refused once it reaches its limit. */
 function makeProvider(s: Settings, id: ProviderId): ModelProvider {
   const base = makeBaseProvider(s, id);
-  return metered(base, s.prices[s.models[id]], ledger, { scope: "global", onCharge: broadcastSpend, onCap: broadcastSpend });
+  return metered(base, priceFor(s.prices, s.models[id], s.assumedPrice).price, ledger, { scope: "global", onCharge: broadcastSpend, onCap: broadcastSpend });
 }
 
 function makeBaseProvider(s: Settings, id: ProviderId): OpenAICompatibleProvider {
@@ -404,10 +407,9 @@ ipcMain.handle("models:list", async (_e, id?: ProviderId) => {
   return models;
 });
 
-/** A session's meter, refusing to start when a cap is set and the model has no price (its spend could not be counted). */
+/** A session's meter, priced at the model's price or the assumed one; refused when the global limit is already reached. */
 function newMeter(s: Settings, model: string, spent = 0): { meter: Meter; price: Price | undefined } {
-  const price = s.prices[model];
-  if ((s.maxCostPerSession > 0 || s.globalLimit > 0) && !price) throw new Error(`Set the price of ${model} in Setup → Model (the spending limits need it), or turn the limits off in Settings.`);
+  const { price } = priceFor(s.prices, model, s.assumedPrice);
   if (s.globalLimit > 0 && ledger.spent >= s.globalLimit)
     throw new Error(`The global spending limit (${formatUsd(s.globalLimit)}${s.globalPeriod === "total" ? "" : ` per ${s.globalPeriod}`}) is reached. Raise or reset it in Settings → Spending.`);
   return { meter: { spent, limit: s.maxCostPerSession, estimated: false }, price };
