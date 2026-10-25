@@ -1,0 +1,43 @@
+# Weekly: opens an issue when Open Math Harness changed a path Mack follows
+# (upstream.json `watched`) since the commit Mack is aligned with (`baseline`).
+name: Upstream watch
+on:
+  schedule:
+    - cron: "0 14 * * 1"
+  workflow_dispatch:
+permissions:
+  issues: write
+  contents: read
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npx tsc -p tsconfig.electron.json
+      - name: Compare with upstream
+        id: compare
+        run: |
+          node -e "
+            require('./dist-electron/core/upstream.js').checkUpstream().then(r => {
+              const fs = require('fs');
+              fs.writeFileSync('report.json', JSON.stringify(r));
+              fs.appendFileSync(process.env.GITHUB_OUTPUT, 'kind=' + r.kind + '\n');
+              if (r.kind === 'error') process.exit(1);
+            });
+          "
+      - name: Open an issue
+        if: steps.compare.outputs.kind == 'changed'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          head=$(node -p "require('./report.json').head.slice(0,7)")
+          title="Upstream methodology changed (through $head)"
+          if gh issue list --state open --search "in:title \"$title\"" --json number --jq '.[0].number' | grep -q .; then
+            echo "Issue already open"; exit 0
+          fi
+          body=$(node -p "const r=require('./report.json'); ['Open Math Harness has ' + r.commits + ' new commits since baseline ' + r.baseline.slice(0,7) + '.', '', 'Changed paths Mack follows:', ...r.files.map(f => '- ' + f.path + ' (' + f.status + ')'), '', 'Diff: ' + r.compareUrl, '', 'Port what applies, update docs/UPSTREAM.md, and bump baseline in upstream.json.'].join('\n')")
+          gh issue create --title "$title" --body "$body"

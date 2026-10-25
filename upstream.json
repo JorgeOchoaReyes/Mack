@@ -1,0 +1,19 @@
+{
+  "repo": "openmathmodel/open-math-harness",
+  "branch": "main",
+  "baseline": "687f2a20dc6ff552d3c881e10910b46c13e84e2a",
+  "watched": [
+    "AGENTS.md",
+    "interfaces/lean/",
+    "program-files/lean/",
+    "program-files/prover/",
+    "program-files/discovery/",
+    "interfaces/discovery/",
+    "interfaces/explore/",
+    "interfaces/swarm/",
+    "prompts/",
+    "memories/",
+    "program-files/memory/",
+    "interfaces/memory/"
+  ]
+}

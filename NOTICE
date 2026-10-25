@@ -1,0 +1,12 @@
+Mack
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This project adapts material from Open Math Harness
+(https://github.com/openmathmodel/open-math-harness), Copyright its authors,
+licensed under the Apache License, Version 2.0. Adapted parts, translated from
+Rust to TypeScript and modified:
+
+- core/lean/rules.ts   from interfaces/lean/src/rules.rs
+- core/lean/verify.ts  from program-files/lean/src/verify.rs
+
+The upstream commit these were adapted from is recorded in upstream.json.
