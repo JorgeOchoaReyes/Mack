@@ -124,7 +124,7 @@ class ReplProcess {
     if (c) killTree(c);
   }
 
-  private send(command: object, timeoutMs: number): Promise<ReplReply> {
+  private send<T = ReplReply>(command: object, timeoutMs: number): Promise<T> {
     const child = this.child ?? this.start();
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -135,9 +135,31 @@ class ReplProcess {
       this.waiting = (r) => {
         clearTimeout(timer);
         if (r instanceof Error) reject(r);
-        else resolve(r);
+        else resolve(r as T);
       };
       child.stdin.write(`${JSON.stringify(command)}\n\n`);
+    });
+  }
+
+  private async headerEnv(header: string, importTimeoutMs: number): Promise<number | ReplReply> {
+    const known = this.envs.get(header);
+    if (known !== undefined) return known;
+    const r = await this.send({ cmd: header }, importTimeoutMs);
+    if (r.env === undefined || (r.messages ?? []).some((m) => m.severity === "error")) return r;
+    this.envs.set(header, r.env);
+    return r.env;
+  }
+
+  /** Exclusive use of this process for a procedure that drives the REPL itself (environments, `allTactics`, tactic mode). */
+  async session<T>(header: string, importTimeoutMs: number, timeoutMs: number, fn: (s: ReplSession) => Promise<T>): Promise<T> {
+    if (this.used >= this.recycleAfter) this.stop();
+    const env = await this.headerEnv(header, importTimeoutMs);
+    if (typeof env !== "number") throw new Error(`the imports do not elaborate: ${checkFromReply(env).output.slice(0, 500)}`);
+    this.used++;
+    return fn({
+      mathlibEnv: env,
+      command: (cmd, onEnv, allTactics = false, ms = timeoutMs) => this.send<RawCommand>({ cmd, env: onEnv, ...(allTactics ? { allTactics: true } : {}) }, ms),
+      tactic: (tactic, proofState, ms = timeoutMs) => this.send<RawTactic>({ tactic, proofState }, ms),
     });
   }
 
@@ -160,7 +182,25 @@ class ReplProcess {
   }
 }
 
-export type ReplPool = { check: LeanCheckRun; stop: () => void };
+export type ReplPos = { line: number; column: number };
+export type RawMessage = { severity: string; pos: ReplPos; endPos?: ReplPos | null; data: string };
+export type RawCommand = {
+  env?: number;
+  message?: string;
+  messages?: RawMessage[];
+  sorries?: { pos: ReplPos; endPos?: ReplPos; goal: string; proofState?: number }[];
+  tactics?: { tactic: string; proofState?: number; pos: ReplPos; endPos: ReplPos; goals: string }[];
+};
+export type RawTactic = { proofState?: number; goals?: string[]; messages?: RawMessage[]; message?: string; proofStatus?: string };
+
+/** A REPL held for one procedure: commands on chosen environments, `allTactics`, and tactics on proof states. */
+export type ReplSession = {
+  mathlibEnv: number;
+  command: (cmd: string, env: number, allTactics?: boolean, timeoutMs?: number) => Promise<RawCommand>;
+  tactic: (tactic: string, proofState: number, timeoutMs?: number) => Promise<RawTactic>;
+};
+
+export type ReplPool = { check: LeanCheckRun; session: <T>(header: string, fn: (s: ReplSession) => Promise<T>) => Promise<T>; stop: () => void };
 
 /** `size` REPL processes sharing a queue; each check goes to the next free one. */
 export function replPool(opts: { workspace: string; size: number; timeoutMs: number; importTimeoutMs?: number; recycleAfter?: number }): ReplPool {
@@ -178,6 +218,14 @@ export function replPool(opts: { workspace: string; size: number; timeoutMs: num
       const p = await acquire();
       try {
         return await p.check(source, opts.importTimeoutMs ?? Math.max(opts.timeoutMs, 900_000), opts.timeoutMs);
+      } finally {
+        release(p);
+      }
+    },
+    session: async (header, fn) => {
+      const p = await acquire();
+      try {
+        return await p.session(header, opts.importTimeoutMs ?? Math.max(opts.timeoutMs, 900_000), opts.timeoutMs, fn);
       } finally {
         release(p);
       }
