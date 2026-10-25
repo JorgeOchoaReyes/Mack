@@ -48,6 +48,10 @@ const api = {
   updateMemory: (projectId: string) => ipcRenderer.invoke("memory:update", projectId),
   forgetMemory: (projectId: string) => ipcRenderer.invoke("memory:forget", projectId),
   chatTools: () => ipcRenderer.invoke("chat:tools"),
+  subscribeUpdates: () => ipcRenderer.invoke("update:subscribe"),
+  checkUpdates: () => ipcRenderer.invoke("update:check"),
+  installUpdate: () => ipcRenderer.invoke("update:install"),
+  onUpdateEvent: (cb: (e: unknown) => void) => subscribe("update:event", cb),
 };
 
 contextBridge.exposeInMainWorld("mack", api);

@@ -6,6 +6,7 @@ import type { ProviderId } from "../core/model/providers";
 import type { ChatEvent, ChatSession, StoredMessage, ToolOutcome } from "../core/chat/agent";
 import type { ToolSpec } from "../core/chat/tools";
 import type { ChatWire, PendingApproval, Project, SessionSummary } from "../electron/chat";
+import type { UpdateState } from "../electron/updates";
 import type { UpstreamReport } from "../core/upstream";
 import type { Health, KeySource, RunEvent, RunMode, RunRecord, RunSummary, Settings } from "../electron/main";
 import type { MackApi } from "../electron/preload";
@@ -17,7 +18,7 @@ declare global {
 }
 
 export type Upstream = (UpstreamReport & { dismissed?: boolean }) | { kind: "off" };
-export type { ProviderId };
+export type { ProviderId, UpdateState };
 export type { ChatEvent, ChatSession, ChatWire, PendingApproval, Project, SessionSummary, StoredMessage, ToolOutcome, ToolSpec };
 export type { Health, KeySource, ProveEvent, RunEvent, RunMode, RunRecord, RunSummary, SetupEvent, Settings };
 
@@ -61,6 +62,10 @@ export const api = {
   updateMemory: (projectId: string) => m().updateMemory(projectId) as Promise<{ extracted: number; consolidated: boolean }>,
   forgetMemory: (projectId: string) => m().forgetMemory(projectId) as Promise<void>,
   chatTools: () => m().chatTools() as Promise<ToolSpec[]>,
+  subscribeUpdates: () => m().subscribeUpdates() as Promise<UpdateState & { appVersion: string }>,
+  checkUpdates: () => m().checkUpdates() as Promise<UpdateState>,
+  installUpdate: () => m().installUpdate() as Promise<void>,
+  onUpdateEvent: (cb: (e: UpdateState) => void) => m().onUpdateEvent((e) => cb(e as UpdateState)),
 };
 
 /** The error message of a failed IPC call, without Electron's wrapper text. */

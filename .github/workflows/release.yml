@@ -1,0 +1,31 @@
+name: Release
+# Push a tag like v0.2.0 (matching package.json's version) to build the
+# Windows installer and publish it as a GitHub Release, which installed
+# copies of Mack update from. The installer is signed when signing secrets
+# are set (see docs/RELEASING.md); without them it is published unsigned.
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Tag matches package.json
+        shell: bash
+        run: test "v$(node -p "require('./package.json').version")" = "${GITHUB_REF_NAME}"
+      - run: npm run typecheck
+      - run: npm test
+      - name: Build and publish
+        run: npm run release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # A code-signing certificate (.pfx, base64) and its password, when you have one.
+          CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}

@@ -18,6 +18,8 @@ import { DEFAULT_LIMITS, type Limits } from "../core/search/tree";
 import { DEFAULT_ULTRAMATH, problemKind, ultramath, type UltramathEvent, type UltramathLimits } from "../core/ultramath/swarm";
 import { checkUpstream } from "../core/upstream";
 import { registerChat } from "./chat";
+import { registerUpdates } from "./updates";
+import { newerMackRelease } from "../core/upstream";
 import type { ApprovalPolicy } from "../core/chat/executor";
 
 export type Settings = {
@@ -37,6 +39,8 @@ export type Settings = {
   useRepl: boolean;
   /** What the chat may do without asking, per protected tool; absent means ask. */
   approvals: Partial<Record<"write_file" | "start_proof", ApprovalPolicy>>;
+  /** Download and install new Mack releases from GitHub. */
+  autoUpdate: boolean;
   /** Check Open Math Harness for methodology changes on every launch. */
   upstreamCheck: boolean;
   /** An upstream head the user chose to stay behind; no banner until upstream moves past it. */
@@ -93,6 +97,7 @@ const DEFAULTS: Settings = {
   search: DEFAULT_LIMITS,
   ultramath: DEFAULT_ULTRAMATH,
   approvals: {},
+  autoUpdate: true,
   useRepl: true,
   upstreamCheck: true,
   upstreamDismissed: "",
@@ -273,8 +278,12 @@ ipcMain.handle("upstream:check", async () => {
   const s = readSettings();
   if (!s.upstreamCheck) return { kind: "off" };
   const report = await checkUpstream();
-  if (report.kind === "changed" && report.head === s.upstreamDismissed) return { ...report, dismissed: true };
-  return report;
+  if (report.kind === "error") return report;
+  // Compare against the installed version: a newer Mack release may already port what changed.
+  const release = await newerMackRelease(app.getVersion());
+  const withRelease = release ? { ...report, release } : report;
+  if (withRelease.kind === "changed" && withRelease.head === s.upstreamDismissed) return { ...withRelease, dismissed: true };
+  return withRelease;
 });
 
 ipcMain.handle("open:external", (_e, url: string) => {
@@ -394,6 +403,8 @@ ipcMain.handle("file:openLean", async (e) => {
   const r = await dialog.showOpenDialog(win!, { properties: ["openFile"], filters: [{ name: "Lean", extensions: ["lean"] }] });
   return r.canceled ? null : readFileSync(r.filePaths[0], "utf8");
 });
+
+registerUpdates(() => readSettings().autoUpdate);
 
 registerChat({
   userData,

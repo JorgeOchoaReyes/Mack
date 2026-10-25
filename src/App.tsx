@@ -1,6 +1,6 @@
-import { BookOpen, FlaskConical, GitCompare, History, MessagesSquare, Settings as SettingsIcon, Wrench, X } from "lucide-react";
+import { BookOpen, Download, FlaskConical, GitCompare, History, MessagesSquare, Settings as SettingsIcon, Wrench, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { api, type Health, type Settings, type Upstream } from "./api";
+import { api, type Health, type Settings, type UpdateState, type Upstream } from "./api";
 import { Logo } from "./components/Logo";
 import { Button, Dot } from "./components/ui";
 import { EXAMPLES } from "./examples";
@@ -44,6 +44,12 @@ export function App() {
   const [upstream, setUpstream] = useState<Upstream | null>(null);
   const [problem, setProblemState] = useState(loadDraft);
   const [runsVersion, setRunsVersion] = useState(0);
+  const [update, setUpdate] = useState<UpdateState | null>(null);
+
+  useEffect(() => {
+    void api.subscribeUpdates().then(setUpdate);
+    return api.onUpdateEvent(setUpdate);
+  }, []);
 
   const refreshHealth = useCallback(() => void api.health().then(setHealth), []);
   const recheckUpstream = useCallback(async () => setUpstream(await api.checkUpstream()), []);
@@ -125,12 +131,24 @@ export function App() {
       </aside>
 
       <main className="content">
+        {update?.state === "ready" && (
+          <div className="banner">
+            <Download size={16} />
+            <div className="banner-text">
+              <strong>Mack {update.version} is ready.</strong> It installs when you quit Mack, or now if you restart.
+            </div>
+            <Button size="sm" onClick={() => void api.installUpdate()}>
+              Restart and update
+            </Button>
+          </div>
+        )}
         {showBanner && upstream.kind === "changed" && (
           <div className="banner">
             <GitCompare size={16} />
             <div className="banner-text">
               <strong>Open Math Harness updated its methodology.</strong> {upstream.commits} new commit{upstream.commits === 1 ? "" : "s"} change{" "}
-              {upstream.files.length} file{upstream.files.length === 1 ? "" : "s"} Mack follows. Mack keeps working as it is until they are ported.
+              {upstream.files.length} file{upstream.files.length === 1 ? "" : "s"} Mack follows.{" "}
+              {upstream.release ? `Mack ${upstream.release.version} is aligned with a newer upstream version: updating Mack brings what it ports.` : "Mack keeps working as it is until they are ported."}
             </div>
             <Button size="sm" onClick={() => setPage("upstream")}>
               See what changed

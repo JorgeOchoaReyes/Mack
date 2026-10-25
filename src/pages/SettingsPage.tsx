@@ -2,6 +2,8 @@ import { ArrowRight, ExternalLink } from "lucide-react";
 import { UPSTREAM } from "../../core/upstream";
 import { api, type Settings } from "../api";
 import { Button, Field, Toggle } from "../components/ui";
+import { useEffect, useState } from "react";
+import type { UpdateState } from "../api";
 import type { Limits } from "../../core/search/tree";
 import type { UltramathLimits } from "../../core/ultramath/swarm";
 
@@ -130,9 +132,11 @@ export function SettingsPage({ settings, saveSettings, onGo }: Props) {
         </div>
       </section>
 
+      <UpdatesSection settings={settings} saveSettings={saveSettings} />
+
       <section className="settings-group">
         <h2>About</h2>
-        <p className="muted">Mack 0.1 · Apache-2.0 · adapts Open Math Harness (Apache-2.0).</p>
+        <p className="muted">Mack · Apache-2.0 · adapts Open Math Harness (Apache-2.0).</p>
         <div className="row gap-sm">
           <button className="link" onClick={() => void api.openExternal("https://github.com/JorgeOchoaReyes/Mack")}>
             Mack on GitHub <ExternalLink size={12} />
@@ -143,5 +147,57 @@ export function SettingsPage({ settings, saveSettings, onGo }: Props) {
         </div>
       </section>
     </div>
+  );
+}
+
+function UpdatesSection({ settings, saveSettings }: { settings: Settings; saveSettings: (s: Partial<Settings>) => Promise<void> }) {
+  const [state, setState] = useState<UpdateState | null>(null);
+  const [version, setVersion] = useState("");
+  useEffect(() => {
+    void api.subscribeUpdates().then((s) => {
+      setVersion(s.appVersion);
+      setState(s);
+    });
+    return api.onUpdateEvent(setState);
+  }, []);
+  const line =
+    !state || state.state === "idle"
+      ? ""
+      : state.state === "dev"
+        ? "This is a development build; only an installed Mack updates itself."
+        : state.state === "checking"
+          ? "Checking GitHub Releases…"
+          : state.state === "none"
+            ? "Mack is up to date."
+            : state.state === "available"
+              ? `Mack ${state.version} is available; downloading…`
+              : state.state === "downloading"
+                ? `Downloading Mack ${state.version}: ${state.percent}%`
+                : state.state === "ready"
+                  ? `Mack ${state.version} is ready and installs when you quit Mack.`
+                  : `Could not check for updates: ${state.message}`;
+  return (
+    <section className="settings-group">
+      <h2>Updates</h2>
+      <p className="muted">
+        You have Mack {version}. New versions come from{" "}
+        <button className="link" onClick={() => void api.openExternal("https://github.com/JorgeOchoaReyes/Mack/releases")}>
+          GitHub Releases
+        </button>
+        .
+      </p>
+      <Toggle checked={settings.autoUpdate} onChange={(v) => void saveSettings({ autoUpdate: v })} label="Download and install updates automatically" />
+      <div className="row gap-sm">
+        <Button size="sm" onClick={() => void api.checkUpdates().then(setState)}>
+          Check now
+        </Button>
+        {state?.state === "ready" && (
+          <Button size="sm" variant="primary" onClick={() => void api.installUpdate()}>
+            Restart and update
+          </Button>
+        )}
+        {line && <span className="muted small">{line}</span>}
+      </div>
+    </section>
   );
 }

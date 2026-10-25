@@ -49,6 +49,7 @@ and how Mack keeps up with upstream.
 - **One-click setup.** Mack installs Lean (elan) and a Mathlib workspace with
   its prebuilt cache, with progress shown in the app.
 - **History.** Every run is kept locally, with each attempt and what Lean said.
+- **Auto-update.** Installed copies update themselves from GitHub Releases.
 - **Upstream tracking.** On launch, Mack checks whether Open Math Harness
   changed its methodology. The check is optional, and you can stay on your
   current version.
@@ -77,9 +78,12 @@ upstream module each comes from.
   `program-files/memory`, `program-files/approvals`.
 - [x] **5. More model providers.** OpenRouter and other OpenAI-compatible
   endpoints next to Fireworks, chosen per run.
-- [ ] **6. Distribution.** A code-signed installer (no SmartScreen warning),
-  GitHub Releases with auto-update, and the upstream check comparing against
-  the installed version.
+- [x] **6. Distribution.** GitHub Releases built by a tag-triggered
+  workflow, auto-update in the app, and the upstream check comparing against
+  the installed version. See [docs/RELEASING.md](docs/RELEASING.md).
+  - [ ] A code-signed installer (no SmartScreen warning): the release
+    workflow signs once a certificate is added as a repository secret, which
+    only the maintainer can obtain.
 
 Not planned: upstream's capability microkernel and bubblewrap sandboxing are
 Linux-only. Mack limits each agent's tools inside the app instead, which is
@@ -101,7 +105,7 @@ From source:
 git clone https://github.com/JorgeOchoaReyes/Mack.git
 cd Mack
 npm install
-npm run dist        # builds release\Mack Setup <version>.exe
+npm run dist        # builds release\Mack-Setup-<version>.exe
 ```
 
 Run the installer. It installs Mack for your user and adds Start-menu and
