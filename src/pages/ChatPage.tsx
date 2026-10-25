@@ -56,8 +56,6 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
   sessionRef.current = session;
 
   const project = projects.find((p) => p.id === projectId);
-  // Without the model's own price the meters count a high assumed one: limits stop early, never late.
-  const priceAssumed = !!health?.model && !settings.prices[health.model];
   const ready = !!health && health.keySource !== "none" && !!health.model;
 
   const create = async (name: string) => {
@@ -324,16 +322,6 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
                 Setup
               </button>{" "}
               to chat.
-            </div>
-          )}
-          {ready && priceAssumed && (
-            <div className="notice small">
-              Spend is counted at an assumed {formatUsd(settings.assumedPrice.input)} / {formatUsd(settings.assumedPrice.output)} per million tokens, higher than{" "}
-              <code>{health?.model.split("/").pop()}</code> likely costs, so the limits stop early, never late. For exact numbers enter its real price in{" "}
-              <button className="link" onClick={onGoSetup}>
-                Setup → Model
-              </button>
-              .
             </div>
           )}
           {projects.length === 0 && (
