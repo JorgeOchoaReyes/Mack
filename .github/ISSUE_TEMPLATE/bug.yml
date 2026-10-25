@@ -1,0 +1,19 @@
+name: Report a problem
+description: Something in Mack does not work as it should.
+labels: [bug]
+body:
+  - type: textarea
+    attributes:
+      label: What happened
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: What I expected
+  - type: textarea
+    attributes:
+      label: Steps to reproduce
+  - type: textarea
+    attributes:
+      label: Diagnostics
+      description: Mack fills this in from Feedback. Never paste an API key.

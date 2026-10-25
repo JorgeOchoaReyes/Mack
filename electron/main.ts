@@ -18,6 +18,8 @@ import { search, type SearchEvent } from "../core/search/search";
 import { DEFAULT_LIMITS, type Limits } from "../core/search/tree";
 import { DEFAULT_ULTRAMATH, problemKind, ultramath, type UltramathEvent, type UltramathLimits } from "../core/ultramath/swarm";
 import { checkUpstream } from "../core/upstream";
+import { diagnosticsText, issueUrl, openIssues, type Diagnostics, type FeedbackKind } from "../core/feedback";
+import os from "node:os";
 import { formatUsd, metered, type Meter, type Price } from "../core/model/metered";
 import { Ledger, type Period } from "../core/model/ledger";
 import type { ModelProvider } from "../core/model/provider";
@@ -301,6 +303,18 @@ ipcMain.handle("settings:set", (_e, s: Partial<Settings>) => {
   broadcastSpend();
   return next;
 });
+
+async function feedbackDiagnostics(): Promise<Diagnostics> {
+  const s = readSettings();
+  return { app: app.getVersion(), os: `${process.platform === "win32" ? "Windows" : process.platform} ${os.release()}`, lean: await lakeVersion(s.leanWorkspace), provider: providerInfo(s.provider).label, mode: s.mode, repl: hasRepl(s.leanWorkspace) };
+}
+
+ipcMain.handle("feedback:diagnostics", async () => diagnosticsText(await feedbackDiagnostics()));
+ipcMain.handle("feedback:open", async (_e, kind: FeedbackKind, title: string, body: string) => {
+  if (kind !== "bug" && kind !== "idea") throw new Error("unknown kind");
+  return shell.openExternal(issueUrl(kind, String(title), String(body), await feedbackDiagnostics()));
+});
+ipcMain.handle("feedback:issues", () => openIssues());
 
 ipcMain.handle("spend:get", () => ledger.state());
 ipcMain.handle("spend:reset", () => {
