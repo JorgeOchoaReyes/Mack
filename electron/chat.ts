@@ -39,8 +39,8 @@ type Deps = {
   userData: (...p: string[]) => string;
   readSettings: () => Settings;
   makeProvider: (s: Settings) => ModelProvider;
-  /** A meter for one session, and the model's price; throws when a cap is set and the model has no price. */
-  newMeter: (s: Settings, model: string, spent?: number) => { meter: Meter; price: Price | undefined };
+  /** A meter for one session, and the model's price; throws when the global limit is reached. `capped: false` leaves out the per-session cap. */
+  newMeter: (s: Settings, model: string, spent?: number, capped?: boolean) => { meter: Meter; price: Price | undefined };
   lean: (s: Settings) => { run: LeanRun; check?: LeanCheckRun } | undefined;
   runProof: (problem: string, mode: RunMode, forward: (ev: RunEvent) => void) => Promise<RunRecord>;
   /** Runs the tools other features register (Ultramath, proof search, MCP) for one session. */
@@ -161,14 +161,14 @@ export function registerChat(d: Deps): ChatControl {
     startTurn(projectId, session);
   }
 
-  /** The settings, model and provider for a chat; with a session, the provider is metered against that chat's cap. */
+  /** The settings, model and provider for a chat; with a session, the provider counts that chat's spend. Only the global limit stops a chat. */
   const settingsFor = (session?: ChatSession, ctl?: AbortController) => {
     const s = d.readSettings();
     const model = s.models[s.provider];
     if (!model) throw new Error("Choose a model in Setup first.");
     let provider = d.makeProvider(s);
     if (session) {
-      const { meter, price } = d.newMeter(s, model, session.costUsd ?? 0);
+      const { meter, price } = d.newMeter(s, model, session.costUsd ?? 0, false);
       provider = metered(provider, price, meter, {
         onCharge: (m) => {
           session.costUsd = m.spent;
@@ -436,10 +436,9 @@ export function registerChat(d: Deps): ChatControl {
   ipcMain.handle("chat:send", async (_e, projectId: string, sessionId: string | null, text: string, opts: SendOptions = {}) => {
     const p = project(projectId);
     const pre = sessionId ? live.get(sessionId)?.session ?? loadSession(p.id, sessionId) : null;
-    // Refuse before anything is stored: a cap with no price, or a chat that has spent its cap.
+    // Refuse before anything is stored when the global limit is reached.
     const { s: st, model: md } = settingsFor();
-    const { meter } = d.newMeter(st, md, pre?.costUsd ?? 0);
-    if (meter.limit > 0 && meter.spent >= meter.limit) throw new Error(`This chat has spent its cap of $${meter.limit.toFixed(2)}. Start a new chat, or raise the cap in Settings.`);
+    d.newMeter(st, md, pre?.costUsd ?? 0, false);
     const attachments = await Promise.all((opts.attachments ?? []).map((a) => attachment(p.folder, a)));
     const message: StoredMessage = { role: "user", content: text, at: Date.now(), source: "person", ...(attachments.length ? { attachments } : {}) };
     const l = sessionId ? live.get(sessionId) : undefined;

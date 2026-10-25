@@ -452,7 +452,7 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
               setSession({ ...session, effort: v });
             } else await saveSettings({ chatEffort: v });
           }}
-          spend={session?.costUsd !== undefined ? `${formatUsd(session.costUsd)}${settings.maxCostPerSession > 0 ? ` of ${formatUsd(settings.maxCostPerSession)}` : ""}` : undefined}
+          spend={session?.costUsd !== undefined ? formatUsd(session.costUsd) : undefined}
         />
       </section>
     </div>

@@ -292,6 +292,7 @@ nav { display: flex; flex-direction: column; gap: 2px; }
 .model-item.selected { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
 .model-item.selected .model-name { color: var(--accent-text); }
 .model-name { font-weight: 560; font-family: var(--mono); font-size: 13px; }
+.model-cheap { margin-left: 8px; font-family: var(--sans); font-size: 11px; padding: 0 7px; vertical-align: 1px; }
 
 .settings-group { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 20px; display: grid; gap: 14px; box-shadow: var(--shadow); }
 .settings-group h2 { font-size: 15px; }

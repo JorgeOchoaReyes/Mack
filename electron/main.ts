@@ -407,12 +407,12 @@ ipcMain.handle("models:list", async (_e, id?: ProviderId) => {
   return models;
 });
 
-/** A session's meter, priced at the model's price or the assumed one; refused when the global limit is already reached. */
-function newMeter(s: Settings, model: string, spent = 0): { meter: Meter; price: Price | undefined } {
+/** A session's meter, priced at the model's price or the assumed one; refused when the global limit is already reached. Chats pass `capped: false`: only the global limit bounds them. */
+function newMeter(s: Settings, model: string, spent = 0, capped = true): { meter: Meter; price: Price | undefined } {
   const { price } = priceFor(s.prices, model, s.assumedPrice);
   if (s.globalLimit > 0 && ledger.spent >= s.globalLimit)
     throw new Error(`The global spending limit (${formatUsd(s.globalLimit)}${s.globalPeriod === "total" ? "" : ` per ${s.globalPeriod}`}) is reached. Raise or reset it in Settings → Spending.`);
-  return { meter: { spent, limit: s.maxCostPerSession, estimated: false }, price };
+  return { meter: { spent, limit: capped ? s.maxCostPerSession : 0, estimated: false }, price };
 }
 
 /** One proof run in the given mode, recorded in the run history. Shared by the Prove screen and the chat's `start_proof`. */

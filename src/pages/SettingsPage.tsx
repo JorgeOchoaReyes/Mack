@@ -90,7 +90,7 @@ export function SettingsPage({ settings, saveSettings, onGo }: Props) {
           </Field>
         </div>
         <div className="grid-2">
-          <Field label="Max cost per session (USD)" hint="0 turns the cap off.">
+          <Field label="Max cost per run (USD)" hint="Each proof run, search and swarm. Chats are bounded only by the global limit. 0 turns the cap off.">
             <input
               className="input"
               type="number"
