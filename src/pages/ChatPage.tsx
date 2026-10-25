@@ -1,7 +1,7 @@
 import { UltramathView } from "../components/UltramathView";
 import type { RunEvent, SwarmRecord } from "../api";
-import { AlarmClock, Brain, ChevronRight, Users, Download, GitCompare, KeyRound, FolderOpen, FolderPlus, Lightbulb, MessageSquarePlus, Paperclip, Send, ShieldAlert, Square, Terminal, Trash2, Wrench, X, Zap } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { AlarmClock, Brain, ChevronRight, Users, Download, GitCompare, KeyRound, FolderOpen, FolderPlus, MessageSquarePlus, ShieldAlert, Terminal, Trash2, Wrench, X } from "lucide-react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import {
   api,
   errorText,
@@ -20,6 +20,10 @@ import {
   type ToolSpec,
 } from "../api";
 import { CodeEditor } from "../components/CodeEditor";
+import { Activity } from "../components/chat/Activity";
+import { Composer, type SlashCommand } from "../components/chat/Composer";
+import { Markdown, visible } from "../components/chat/Markdown";
+import { Logo } from "../components/Logo";
 import { formatUsd } from "../../core/model/metered";
 import { Badge, Button, Spinner, timeAgo, Toggle } from "../components/ui";
 
@@ -191,6 +195,27 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
     }
   };
 
+  const [skills, setSkills] = useState<{ name: string; description: string }[]>([]);
+  useEffect(() => {
+    if (projectId) void api.listSkills(projectId).then(setSkills).catch(() => setSkills([]));
+  }, [projectId, session?.messages.length]);
+
+  const commands: SlashCommand[] = [
+    { name: "/skill", hint: "List this project's skills", group: "Skills", send: true },
+    ...skills.map((k) => ({ name: `/skill ${k.name}`, hint: k.description || "Load this skill", group: "Skills" as const, send: true })),
+    { name: "/skill https://", hint: "Load a published skill from its SKILL.md URL", group: "Skills", insert: "/skill https://" },
+    { name: "/prove", hint: "Formalize a statement in Lean and run a proof search", group: "Start", insert: "Write the Lean 4 statement of the following, check that it compiles, then start a proof search on it: " },
+    { name: "/ultramath", hint: "Put several agents on a hard problem", group: "Start", insert: "Start Ultramath with 4 members on: " },
+    { name: "/research", hint: "Find and summarize the literature on a topic", group: "Start", insert: "Find the key papers on the following, save them to the project, and summarize what each proves in notes/literature.md: " },
+    { name: "/remind", hint: "Have the assistant come back to something later", group: "Start", insert: "In 30 minutes, remind yourself to " },
+    { name: "/new", hint: "Start a new chat", group: "Chat", run: () => void openSession(null) },
+    { name: "/export", hint: "Save this chat as Markdown, secrets masked", group: "Chat", run: () => session && void api.exportSession(projectId, session.id) },
+    { name: "/memory", hint: "What this project remembers", group: "Panels", run: () => setPanel("memory") },
+    { name: "/review", hint: "Uncommitted changes in the project", group: "Panels", run: () => setPanel("review") },
+    { name: "/tools", hint: "What the assistant can do, and approvals", group: "Panels", run: () => setPanel("tools") },
+    { name: "/swarms", hint: "This chat's Ultramath swarms", group: "Panels", run: () => setPanel("swarms") },
+  ];
+
   const sessionApprovals = approvals.filter((a) => a.sessionId === session?.id);
   const otherApprovals = approvals.filter((a) => a.sessionId !== session?.id);
   const effort = session?.effort ?? settings.chatEffort;
@@ -244,8 +269,10 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
           New chat
         </Button>
         <div className="chat-sessions">
-          {sessions.map((s) => (
-            <div key={s.id} className={`chat-session ${session?.id === s.id ? "active" : ""}`}>
+          {sessions.map((s, idx) => (
+            <Fragment key={s.id}>
+            {(idx === 0 || dayGroup(sessions[idx - 1].updatedAt) !== dayGroup(s.updatedAt)) && <div className="session-group">{dayGroup(s.updatedAt)}</div>}
+            <div className={`chat-session ${session?.id === s.id ? "active" : ""}`}>
               <button onClick={() => void openSession(s.id)}>
                 <span className="chat-session-title">
                   {s.busy && <Spinner size={11} />} {s.title}
@@ -264,6 +291,7 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
                 <Trash2 size={13} />
               </button>
             </div>
+            </Fragment>
           ))}
         </div>
         <div className="chat-side-foot">
@@ -347,37 +375,56 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
             </div>
           )}
           {project && !session && (
-            <div className="how">
-              <h3>{project.name}</h3>
-              <p className="muted">
-                Ask about a problem, a paper or a proof. Attach PDFs, images and .lean files with the clip, or put them in the project folder. Type{" "}
-                <code>/skill</code> to list the project's skills.
-              </p>
+            <div className="welcome fade-in">
+              <div className="welcome-logo">
+                <Logo />
+              </div>
+              <h2>{project.name}</h2>
+              <p className="muted">Ask about a problem, a paper or a proof. Type <kbd>/</kbd> for commands and skills; attach PDFs, images and .lean files with the clip.</p>
+              <div className="starters">
+                {[
+                  ["Formalize & prove", "Write the Lean 4 statement that every prime power is not a perfect number, check it compiles, then start a proof search."],
+                  ["Survey the literature", "Find the key papers on odd perfect numbers, save them here, and summarize what each proves."],
+                  ["Plan an attack", "Plan how to formalize Euler's theorem on the form of odd perfect numbers as a chain of Lean lemmas."],
+                  ["Explore with Ultramath", "Start Ultramath with 4 members on: find a new necessary condition on odd perfect numbers."],
+                ].map(([t, q]) => (
+                  <button key={t} className="starter" onClick={() => setDraft(q)}>
+                    <b>{t}</b>
+                    <span>{q}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           )}
-          {session?.messages.map((m, i) => (
-            <div key={i} className="chat-row">
-              <Message m={m} projectId={projectId} />
-              {secretMarks[i] && <SecretMark findings={secretMarks[i]} />}
-            </div>
-          ))}
-          {streaming && (
-            <div className="chat-msg chat-assistant">
-              <RichText text={streaming} projectId={projectId} />
+          {session && <Conversation messages={session.messages} projectId={projectId} secretMarks={secretMarks} busy={busy} />}
+          {streaming && visible(streaming) && (
+            <div className="msg assistant fade-in">
+              <div className="avatar">
+                <Logo />
+              </div>
+              <div className="msg-body">
+                <Markdown text={visible(streaming)} projectId={projectId} />
+                <span className="cursor" />
+              </div>
             </div>
           )}
           {sessionApprovals.map((a) => (
             <ApprovalCard key={a.id} approval={a} />
           ))}
           {otherApprovals.length > 0 && <div className="notice">Another chat is waiting for your approval.</div>}
-          {busy && (
-            <div className="chat-status">
-              <Spinner /> {status || "Working…"}
+          {busy && !(streaming && visible(streaming)) && (
+            <div className="thinking fade-in">
+              <span className="dots">
+                <i />
+                <i />
+                <i />
+              </span>
+              {status || "Thinking"}
             </div>
           )}
         </div>
         {error && (
-          <div className="notice notice-bad chat-error">
+          <div className="notice notice-bad chat-error fade-in">
             {error}
             <button className="icon-btn" onClick={() => setError("")} title="Dismiss">
               <X size={13} />
@@ -385,211 +432,112 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
           </div>
         )}
 
-        <form
-          className="chat-compose"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void sendMessage(false);
+        <Composer
+          value={draft}
+          onChange={setDraft}
+          onSend={(now) => void sendMessage(now)}
+          onStop={() => session && void api.stopChat(session.id)}
+          onAttach={async () => setFiles([...files, ...(await api.attachFiles(projectId))])}
+          files={files}
+          onRemoveFile={(f) => setFiles(files.filter((x) => x !== f))}
+          commands={commands}
+          busy={busy && !!session}
+          disabled={!project || !ready}
+          placeholder={project ? (busy ? "Add to the conversation…" : `Message the assistant about ${project.name}…`) : "Create a project first"}
+          suggestion={suggestion}
+          effort={effort}
+          onEffort={async (v) => {
+            if (session) {
+              await api.setEffort(projectId, session.id, v);
+              setSession({ ...session, effort: v });
+            } else await saveSettings({ chatEffort: v });
           }}
-        >
-          <div className="chat-compose-main">
-            {!draft && suggestion && !busy && (
-              <button type="button" className="suggestion" onClick={() => setDraft(suggestion)} title="A suggestion: click to put it in the box">
-                <Lightbulb size={13} /> {suggestion}
-              </button>
-            )}
-            {files.length > 0 && (
-              <div className="row gap-sm">
-                {files.map((f) => (
-                  <span key={f} className="file-chip">
-                    {f}
-                    <button type="button" className="icon-btn" onClick={() => setFiles(files.filter((x) => x !== f))}>
-                      <X size={11} />
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-            <textarea
-              className="input grow"
-              rows={3}
-              placeholder={project ? (busy ? "The assistant is working. Send now reaches it between steps; Queue waits for its answer." : `Message the assistant about ${project.name}…`) : "Create a project first"}
-              value={draft}
-              disabled={!project || !ready}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  void sendMessage(busy);
-                }
-              }}
-            />
-            <div className="row gap-sm chat-compose-bar">
-              <button type="button" className="icon-btn" title="Attach files" disabled={!project} onClick={async () => setFiles([...files, ...(await api.attachFiles(projectId))])}>
-                <Paperclip size={15} />
-              </button>
-              {session?.costUsd !== undefined && (
-                <span className="spend-chip" title="What this chat's model calls have cost, sub-agents and suggestions included">
-                  {formatUsd(session.costUsd)}
-                  {settings.maxCostPerSession > 0 ? ` of ${formatUsd(settings.maxCostPerSession)}` : ""}
-                </span>
-              )}
-              <label className="muted small row gap-sm" title="How deeply the model thinks in this chat">
-                Reasoning
-                <select
-                  className="model-select"
-                  value={effort}
-                  onChange={async (e) => {
-                    const v = e.target.value as ReasoningEffort;
-                    if (session) {
-                      await api.setEffort(projectId, session.id, v);
-                      setSession({ ...session, effort: v });
-                    } else await saveSettings({ chatEffort: v });
-                  }}
-                >
-                  {EFFORTS.map((x) => (
-                    <option key={x} value={x}>
-                      {x}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-          </div>
-          {busy && session ? (
-            <div className="chat-compose-actions">
-              <Button variant="primary" icon={Zap} type="button" disabled={!draft.trim() && !files.length} onClick={() => void sendMessage(true)} title="Reaches the assistant between its steps">
-                Send now
-              </Button>
-              <Button type="button" disabled={!draft.trim() && !files.length} onClick={() => void sendMessage(false)} title="Waits until the assistant answers">
-                Queue
-              </Button>
-              <Button variant="danger" icon={Square} type="button" onClick={() => void api.stopChat(session.id)}>
-                Stop
-              </Button>
-            </div>
-          ) : (
-            <Button variant="primary" icon={Send} type="submit" disabled={(!draft.trim() && !files.length) || !project || !ready}>
-              Send
-            </Button>
-          )}
-        </form>
+          spend={session?.costUsd !== undefined ? `${formatUsd(session.costUsd)}${settings.maxCostPerSession > 0 ? ` of ${formatUsd(settings.maxCostPerSession)}` : ""}` : undefined}
+        />
       </section>
     </div>
   );
 }
 
-/** Text with Markdown images of project files: the image is read through the main process, confined to the project. */
-function TextWithImages({ text, projectId }: { text: string; projectId: string }) {
-  const parts = text.split(/(!\[[^\]]*\]\([^)\s]+(?:\s+"[^"]*")?\))/g);
-  return (
-    <div className="chat-text">
-      {parts.map((p, i) => {
-        const m = /^!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)$/.exec(p);
-        return m && !/^[a-z]+:/i.test(m[2]) ? <ProjectImage key={i} alt={m[1]} path={m[2]} projectId={projectId} /> : <span key={i}>{p}</span>;
-      })}
-    </div>
-  );
+function dayGroup(t: number): string {
+  const d = new Date(t);
+  const now = new Date();
+  const days = Math.floor((new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() - new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()) / 86_400_000);
+  return days <= 0 ? "Today" : days === 1 ? "Yesterday" : days < 7 ? "This week" : "Earlier";
 }
 
-function ProjectImage({ alt, path, projectId }: { alt: string; path: string; projectId: string }) {
-  const [src, setSrc] = useState<string | null | undefined>(undefined);
-  useEffect(() => void api.projectImage(projectId, path).then(setSrc), [projectId, path]);
-  if (src === undefined) return <span className="muted small">[loading {path}]</span>;
-  if (src === null) return <span className="muted small">[image {path} could not be shown]</span>;
-  return <img className="chat-image" src={src} alt={alt} title={path} />;
+type Item =
+  | { kind: "user"; m: Extract<StoredMessage, { role: "user" }>; index: number }
+  | { kind: "assistant"; text: string; index: number }
+  | { kind: "activity"; results: ToolOutcome[]; index: number };
+
+/** The stored messages as the person reads them: tool work between two answers folded into one activity line. */
+function items(messages: StoredMessage[]): Item[] {
+  const out: Item[] = [];
+  messages.forEach((m, index) => {
+    if (m.role === "user") {
+      if (m.content.startsWith("Your last reply had no text")) return;
+      out.push({ kind: "user", m, index });
+    } else if (m.role === "assistant") {
+      const text = visible(m.content);
+      if (text) out.push({ kind: "assistant", text, index });
+    } else {
+      const last = out[out.length - 1];
+      if (last?.kind === "activity") last.results.push(...m.results);
+      else out.push({ kind: "activity", results: [...m.results], index });
+    }
+  });
+  return out;
 }
 
-/** Prose with fenced code: Lean blocks in the editor, tool blocks and citations folded away, the rest as text. */
-function RichText({ text, projectId }: { text: string; projectId: string }) {
-  const clean = text
-    .replace(/<think>[\s\S]*?<\/think>/g, "")
-    .replace(/<think>[\s\S]*$/, "")
-    .replace(/<citation_entries>[\s\S]*?(<\/citation_entries>|$)/g, "")
-    .trim();
-  const parts = clean.split(/(```[a-zA-Z0-9]*\s*\n[\s\S]*?(?:```|$))/g);
+function Conversation({ messages, projectId, secretMarks, busy }: { messages: StoredMessage[]; projectId: string; secretMarks: Record<number, Finding[]>; busy: boolean }) {
+  const list = items(messages);
   return (
     <>
-      {parts.map((p, i) => {
-        const m = /^```([a-zA-Z0-9]*)\s*\n([\s\S]*?)(?:```)?$/.exec(p);
-        if (!m) return p.trim() ? <TextWithImages key={i} text={p.trim()} projectId={projectId} /> : null;
-        if (m[1] === "tool") return null;
-        if (m[1].startsWith("lean"))
+      {list.map((it, k) => {
+        const mark = secretMarks[it.index] && <SecretMark findings={secretMarks[it.index]} />;
+        if (it.kind === "activity") return <Activity key={k} results={it.results} running={busy && k === list.length - 1} />;
+        if (it.kind === "assistant")
           return (
-            <div key={i} className="code-frame">
-              <CodeEditor value={m[2]} readOnly />
+            <div key={k} className="msg assistant fade-in">
+              <div className="avatar">
+                <Logo />
+              </div>
+              <div className="msg-body">
+                <Markdown text={it.text} projectId={projectId} />
+                {mark}
+              </div>
+            </div>
+          );
+        const m = it.m;
+        if (m.source === "reminder" || m.source === "job")
+          return (
+            <div key={k} className="event-note fade-in">
+              {m.source === "reminder" ? <AlarmClock size={13} /> : <Terminal size={13} />}
+              <span>
+                <b>{m.source === "reminder" ? "Reminder" : "Background work"}</b> {m.content.split("\n")[0].slice(0, 300)}
+              </span>
             </div>
           );
         return (
-          <pre key={i} className="lean-output">
-            {m[2]}
-          </pre>
+          <div key={k} className="msg user fade-in">
+            <div className="msg-body">
+              <div className="user-text">{m.content}</div>
+              {m.attachments && m.attachments.length > 0 && (
+                <div className="composer-files">
+                  {m.attachments.map((a) => (
+                    <span key={a.path} className="file-chip">
+                      {a.path.split("/").pop()}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {mark}
+            </div>
+          </div>
         );
       })}
     </>
-  );
-}
-
-function Message({ m, projectId }: { m: StoredMessage; projectId: string }) {
-  if (m.role === "user") {
-    if (m.source === "reminder" || m.source === "job")
-      return (
-        <div className="chat-note">
-          {m.source === "reminder" ? <AlarmClock size={13} /> : <Terminal size={13} />} {m.source === "reminder" ? "Reminder" : "Background command"}: {m.content.slice(0, 400)}
-        </div>
-      );
-    return (
-      <div className="chat-msg chat-user">
-        {m.content}
-        {m.attachments?.map((a) => (
-          <span key={a.path} className="file-chip">
-            {a.path}
-          </span>
-        ))}
-      </div>
-    );
-  }
-  if (m.role === "assistant") {
-    const calls = (m.content.match(/```tool/g) ?? []).length;
-    const visible = m.content.replace(/```tool[\s\S]*?```/g, "").replace(/<think>[\s\S]*?<\/think>/g, "").trim();
-    if (!visible && calls) return <div className="muted small">Using {calls} tool{calls === 1 ? "" : "s"}…</div>;
-    return (
-      <div className="chat-msg chat-assistant">
-        <RichText text={m.content} projectId={projectId} />
-      </div>
-    );
-  }
-  return (
-    <div className="chat-tools">
-      {m.results.map((r, i) => (
-        <ToolCard key={i} r={r} />
-      ))}
-    </div>
-  );
-}
-
-function argSummary(args: Record<string, unknown>): string {
-  return Object.entries(args)
-    .filter(([k]) => k !== "content" && k !== "source" && k !== "body")
-    .map(([k, v]) => `${k}: ${typeof v === "string" ? v.slice(0, 80) : JSON.stringify(v).slice(0, 80)}`)
-    .join(", ");
-}
-
-function ToolCard({ r }: { r: ToolOutcome }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className={`tool-card tone-${r.ok ? "ok" : "bad"} ${open ? "open" : ""}`}>
-      <button className="tree-row" onClick={() => setOpen(!open)}>
-        <ChevronRight size={13} className="chev" />
-        <code>{r.name}</code>
-        <span className="muted small tree-approach">{argSummary(r.args)}</span>
-        {r.decision === "approved" && <Badge tone="ok">approved</Badge>}
-        {r.decision === "auto" && <Badge>allowed by policy</Badge>}
-        {r.decision === "denied" && <Badge tone="bad">denied</Badge>}
-        {!r.ok && r.decision !== "denied" && <Badge tone="bad">failed</Badge>}
-      </button>
-      {open && <pre className="lean-output">{r.output}</pre>}
-    </div>
   );
 }
 
