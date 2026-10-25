@@ -19,6 +19,8 @@ import { DEFAULT_LIMITS, type Limits } from "../core/search/tree";
 import { DEFAULT_ULTRAMATH, problemKind, ultramath, type UltramathEvent, type UltramathLimits } from "../core/ultramath/swarm";
 import { checkUpstream } from "../core/upstream";
 import { formatUsd, metered, type Meter, type Price } from "../core/model/metered";
+import { Ledger, type Period } from "../core/model/ledger";
+import type { ModelProvider } from "../core/model/provider";
 import { registerChat } from "./chat";
 import { RunManager, type Problem, type RunStatus } from "../core/search/runs";
 import { RUN_TOOLS } from "../core/search/run-tools";
@@ -61,6 +63,9 @@ export type Settings = {
   chatEffort: ReasoningEffort;
   /** Offer a likely next message in an empty composer, and title new chats. */
   suggestions: boolean;
+  /** USD all of Mack may spend in `globalPeriod`, every session and background call together; 0 means no limit. */
+  globalLimit: number;
+  globalPeriod: Period;
   /** USD one session (a chat, a proof run, a search run, an Ultramath swarm) may spend; 0 means no cap. */
   maxCostPerSession: number;
   /** Model prices, USD per million tokens, by model id. */
@@ -134,6 +139,8 @@ const DEFAULTS: Settings = {
   suggestions: true,
   autoUpdate: true,
   maxCostPerSession: 2,
+  globalLimit: 10,
+  globalPeriod: "month",
   prices: {},
   useRepl: true,
   searchWorker: "fixed",
@@ -202,7 +209,23 @@ function usable(s: Settings, id: ProviderId): boolean {
   return !!s.models[id] && (!providerInfo(id).keyRequired || keySource(id) !== "none");
 }
 
-function makeProvider(s: Settings, id: ProviderId): OpenAICompatibleProvider {
+/** Every model call Mack makes, charged against the global limit. */
+const ledger = new Ledger(userData("spend.json"), () => {
+  const s = readSettings();
+  return { limit: s.globalLimit, period: s.globalPeriod };
+});
+
+const broadcastSpend = () => {
+  for (const w of BrowserWindow.getAllWindows()) if (!w.webContents.isDestroyed()) w.webContents.send("spend:global", ledger.state());
+};
+
+/** A provider for model calls: every call is priced into the global ledger, and refused once it reaches its limit. */
+function makeProvider(s: Settings, id: ProviderId): ModelProvider {
+  const base = makeBaseProvider(s, id);
+  return metered(base, s.prices[s.models[id]], ledger, { scope: "global", onCharge: broadcastSpend, onCap: broadcastSpend });
+}
+
+function makeBaseProvider(s: Settings, id: ProviderId): OpenAICompatibleProvider {
   const info = providerInfo(id);
   const key = readKey(id);
   if (info.keyRequired && !key) throw new Error(`Add your ${info.label} API key in Setup first.`);
@@ -273,7 +296,18 @@ function writeSettings(patch: Partial<Settings>): Settings {
   return next;
 }
 
-ipcMain.handle("settings:set", (_e, s: Partial<Settings>) => writeSettings(s));
+ipcMain.handle("settings:set", (_e, s: Partial<Settings>) => {
+  const next = writeSettings(s);
+  broadcastSpend();
+  return next;
+});
+
+ipcMain.handle("spend:get", () => ledger.state());
+ipcMain.handle("spend:reset", () => {
+  ledger.reset();
+  broadcastSpend();
+  return ledger.state();
+});
 
 ipcMain.handle("key:set", (_e, id: ProviderId, key: string) => {
   if (!isProvider(id)) throw new Error("unknown provider");
@@ -347,7 +381,7 @@ ipcMain.handle("open:external", (_e, url: string) => {
 
 ipcMain.handle("models:list", async (_e, id?: ProviderId) => {
   const s = readSettings();
-  const provider = makeProvider(s, isProvider(id) ? id : s.provider);
+  const provider = makeBaseProvider(s, isProvider(id) ? id : s.provider);
   const models = await provider.listModels();
   // A catalogue that publishes prices fills in the ones the person has not set.
   const published = await provider.listPrices().catch(() => ({}));
@@ -359,7 +393,9 @@ ipcMain.handle("models:list", async (_e, id?: ProviderId) => {
 /** A session's meter, refusing to start when a cap is set and the model has no price (its spend could not be counted). */
 function newMeter(s: Settings, model: string, spent = 0): { meter: Meter; price: Price | undefined } {
   const price = s.prices[model];
-  if (s.maxCostPerSession > 0 && !price) throw new Error(`Set the price of ${model} in Setup → Model (the spending cap needs it), or turn the cap off in Settings.`);
+  if ((s.maxCostPerSession > 0 || s.globalLimit > 0) && !price) throw new Error(`Set the price of ${model} in Setup → Model (the spending limits need it), or turn the limits off in Settings.`);
+  if (s.globalLimit > 0 && ledger.spent >= s.globalLimit)
+    throw new Error(`The global spending limit (${formatUsd(s.globalLimit)}${s.globalPeriod === "total" ? "" : ` per ${s.globalPeriod}`}) is reached. Raise or reset it in Settings → Spending.`);
   return { meter: { spent, limit: s.maxCostPerSession, estimated: false }, price };
 }
 
@@ -373,11 +409,11 @@ async function runProof(problem: string, mode: RunMode, forward: (ev: RunEvent) 
   if (needsLean && !hasProject(s.leanWorkspace)) throw new Error("Install Lean and Mathlib in Setup first.");
   const { meter, price } = newMeter(s, model);
   const ctl = new AbortController();
-  let capped = false;
+  let capped = "";
   const provider = metered(makeProvider(s, s.provider), price, meter, {
     onCharge: (m) => send({ type: "spend", usd: m.spent, limit: m.limit, estimated: m.estimated }),
-    onCap: () => {
-      capped = true;
+    onCap: (why) => {
+      capped = why;
       ctl.abort();
     },
   });
@@ -398,7 +434,7 @@ async function runProof(problem: string, mode: RunMode, forward: (ev: RunEvent) 
     if (ev.type !== "status") record.events.push(ev);
     if (ev.type === "solved" || ev.type === "accepted") record.outcome = "solved";
     if (ev.type === "failed") {
-      if (capped) ev = { ...ev, message: `Stopped: the spending cap of ${formatUsd(meter.limit)} for this run is reached.` };
+      if (capped) ev = { ...ev, message: `Stopped: ${capped}.` };
       record.message = ev.message;
     }
     if (ev.type === "spend") record.spentUsd = ev.usd;
@@ -518,7 +554,14 @@ const runs = new RunManager(
       problem: problem.id,
       provider: metered(makeProvider(s, s.provider), meter.price, meter.meter, {
         onCharge: (x) => runs.recordSpend(task.name, x.spent),
-        onCap: () => runs.stop(task.name),
+        onCap: () => {
+          // Several workers can hit the cap at once; the first stop is the one that counts.
+          try {
+            runs.stop(task.name);
+          } catch {
+            // Already stopping.
+          }
+        },
       }),
       model: s.models[s.provider],
       run,
@@ -555,7 +598,7 @@ const swarms: SwarmService = new SwarmService({
     const model = s.models[s.provider];
     let m = swarmMeters.get(swarm);
     if (!m) swarmMeters.set(swarm, (m = newMeter(s, model)));
-    return { provider: metered(makeProvider(s, s.provider), m.price, m.meter, { onCap: () => swarms.capReached(swarm, m!.meter.limit) }), model };
+    return { provider: metered(makeProvider(s, s.provider), m.price, m.meter, { onCap: (why) => swarms.capReached(swarm, why) }), model };
   },
   lean: () => {
     const s = readSettings();

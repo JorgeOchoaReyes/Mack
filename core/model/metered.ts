@@ -24,8 +24,12 @@ export type Meter = {
 };
 
 export class SpendCapReached extends Error {
-  constructor(meter: Meter) {
-    super(`the spending cap for this session ($${meter.limit.toFixed(2)}) is reached: $${meter.spent.toFixed(4)} spent`);
+  constructor(meter: Meter, scope: "session" | "global" = "session") {
+    super(
+      scope === "global"
+        ? `the global spending limit ($${meter.limit.toFixed(2)}) is reached: $${meter.spent.toFixed(4)} spent. Raise or reset it in Settings → Spending.`
+        : `the spending cap for this session ($${meter.limit.toFixed(2)}) is reached: $${meter.spent.toFixed(4)} spent`,
+    );
   }
 }
 
@@ -36,16 +40,31 @@ export function callCost(price: Price, promptTokens: number, completionTokens: n
 }
 
 /** `provider` with every call priced into `meter`; `onCharge` hears each charge, `onCap` when the cap stops a call. */
-export function metered(provider: ModelProvider, price: Price | undefined, meter: Meter, hooks: { onCharge?: (m: Meter) => void; onCap?: () => void } = {}): ModelProvider {
+export function metered(
+  provider: ModelProvider,
+  price: Price | undefined,
+  meter: Meter,
+  hooks: { onCharge?: (m: Meter) => void; onCap?: (why: string) => void; scope?: "session" | "global" } = {},
+): ModelProvider {
   return {
     name: provider.name,
     listModels: () => provider.listModels(),
     chat: async (request: ChatRequest): Promise<ChatResponse> => {
       if (meter.limit > 0 && meter.spent >= meter.limit) {
-        hooks.onCap?.();
-        throw new SpendCapReached(meter);
+        const e = new SpendCapReached(meter, hooks.scope);
+        hooks.onCap?.(e.message);
+        throw e;
       }
-      const r = await provider.chat(request);
+      // A limit that cannot be counted is not a limit: refuse rather than spend uncounted.
+      if (meter.limit > 0 && !price) throw new Error(`Set the price of ${request.model} in Setup → Model: a spending limit needs it.`);
+      let r: ChatResponse;
+      try {
+        r = await provider.chat(request);
+      } catch (e) {
+        // A limit further in (the global one) stops this session too.
+        if (e instanceof SpendCapReached) hooks.onCap?.(e.message);
+        throw e;
+      }
       if (price) {
         let usage = r.usage;
         if (!usage) {
