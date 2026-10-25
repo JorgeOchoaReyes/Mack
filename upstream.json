@@ -3,17 +3,17 @@
   "branch": "main",
   "baseline": "687f2a20dc6ff552d3c881e10910b46c13e84e2a",
   "watched": [
-    "AGENTS.md",
-    "interfaces/lean/",
-    "program-files/lean/",
-    "program-files/prover/",
-    "program-files/discovery/",
-    "interfaces/discovery/",
-    "interfaces/explore/",
-    "interfaces/swarm/",
-    "prompts/",
-    "memories/",
-    "program-files/memory/",
-    "interfaces/memory/"
+    { "path": "AGENTS.md", "area": "Engineering rules", "mack": "docs/UPSTREAM.md" },
+    { "path": "interfaces/lean/", "area": "Lean rules", "mack": "core/lean/rules.ts" },
+    { "path": "program-files/lean/", "area": "Lean verification", "mack": "core/lean/verify.ts, core/lean/runner.ts" },
+    { "path": "program-files/prover/", "area": "Prover agent", "mack": "core/prove.ts" },
+    { "path": "program-files/discovery/", "area": "Proof search", "mack": "planned: proof search tree" },
+    { "path": "interfaces/discovery/", "area": "Proof search", "mack": "planned: proof search tree" },
+    { "path": "interfaces/explore/", "area": "Proof search", "mack": "planned: proof search tree" },
+    { "path": "interfaces/swarm/", "area": "Ultramath", "mack": "planned: Ultramath" },
+    { "path": "prompts/", "area": "Prompts", "mack": "core/prove.ts (SYSTEM prompt)" },
+    { "path": "memories/", "area": "Memory", "mack": "planned: project memory" },
+    { "path": "program-files/memory/", "area": "Memory", "mack": "planned: project memory" },
+    { "path": "interfaces/memory/", "area": "Memory", "mack": "planned: project memory" }
   ]
 }

@@ -1,31 +1,15 @@
-import { ExternalLink, GitCompare, RefreshCw } from "lucide-react";
-import { useState } from "react";
+import { ArrowRight, ExternalLink } from "lucide-react";
 import { UPSTREAM } from "../../core/upstream";
-import { api, type Settings, type Upstream } from "../api";
-import { Button, Field, Toggle } from "../components/ui";
+import { api, type Settings } from "../api";
+import { Button, Field } from "../components/ui";
 
 type Props = {
   settings: Settings;
   saveSettings: (s: Partial<Settings>) => Promise<void>;
-  upstream: Upstream | null;
-  recheckUpstream: () => Promise<void>;
+  onGo: (page: "upstream" | "setup") => void;
 };
 
-export function SettingsPage({ settings, saveSettings, upstream, recheckUpstream }: Props) {
-  const [checking, setChecking] = useState(false);
-  const status =
-    upstream === null
-      ? "Checking…"
-      : upstream.kind === "off"
-        ? "Off"
-        : upstream.kind === "current"
-          ? "Up to date with upstream"
-          : upstream.kind === "changed"
-            ? upstream.dismissed
-              ? "Staying on the current methodology"
-              : `${upstream.files.length} upstream change${upstream.files.length === 1 ? "" : "s"} not yet in Mack`
-            : `Could not check: ${upstream.message}`;
-
+export function SettingsPage({ settings, saveSettings, onGo }: Props) {
   return (
     <div className="page">
       <div className="page-head">
@@ -35,7 +19,7 @@ export function SettingsPage({ settings, saveSettings, upstream, recheckUpstream
       <section className="settings-group">
         <h2>Prover</h2>
         <div className="grid-2">
-          <Field label="Attempts per run" hint="How many times the model may revise its proof.">
+          <Field label="Attempts per run" hint="How many times the model may revise its proof. Each attempt is one billed model call.">
             <input
               className="input"
               type="number"
@@ -58,56 +42,24 @@ export function SettingsPage({ settings, saveSettings, upstream, recheckUpstream
       </section>
 
       <section className="settings-group">
-        <h2>Methodology updates</h2>
-        <p className="muted">
-          Mack follows the methodology of Open Math Harness. On launch it can check whether upstream changed its Lean rules, verification, proof search,
-          Ultramath, prompts or memory. The check only reports changes; Mack keeps its current behaviour until they are ported.
-        </p>
-        <Toggle
-          checked={settings.upstreamCheck}
-          onChange={async (v) => {
-            await saveSettings({ upstreamCheck: v });
-            await recheckUpstream();
-          }}
-          label="Check for upstream methodology changes each time Mack opens"
-        />
-        <div className="kv">
-          <span>Status</span>
-          <span>{status}</span>
-          <span>Aligned with</span>
-          <span>
-            <code>{UPSTREAM.repo}</code> at <code>{UPSTREAM.baseline.slice(0, 7)}</code>
-          </span>
-        </div>
+        <h2>Lean, key and model</h2>
+        <p className="muted">The Lean workspace, your Fireworks key and the model are managed in Setup.</p>
         <div className="row gap-sm">
-          <Button
-            icon={RefreshCw}
-            loading={checking}
-            disabled={!settings.upstreamCheck}
-            onClick={async () => {
-              setChecking(true);
-              await recheckUpstream();
-              setChecking(false);
-            }}
-          >
-            Check now
+          <Button icon={ArrowRight} onClick={() => onGo("setup")}>
+            Open Setup
           </Button>
-          {upstream?.kind === "changed" && (
-            <Button icon={GitCompare} onClick={() => void api.openExternal(upstream.compareUrl)}>
-              View upstream changes
-            </Button>
-          )}
-          {upstream?.kind === "changed" && upstream.dismissed && (
-            <Button
-              variant="ghost"
-              onClick={async () => {
-                await saveSettings({ upstreamDismissed: "" });
-                await recheckUpstream();
-              }}
-            >
-              Show the update banner again
-            </Button>
-          )}
+        </div>
+      </section>
+
+      <section className="settings-group">
+        <h2>Upstream methodology</h2>
+        <p className="muted">
+          Automatic checks of Open Math Harness are {settings.upstreamCheck ? "on" : "off"}. Change this and see what changed upstream in Upstream.
+        </p>
+        <div className="row gap-sm">
+          <Button icon={ArrowRight} onClick={() => onGo("upstream")}>
+            Open Upstream
+          </Button>
         </div>
       </section>
 

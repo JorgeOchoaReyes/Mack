@@ -8,16 +8,23 @@ Mack is aligned with (`baseline`) and the paths that count as methodology
 
 ## How updates reach Mack
 
-1. **In the app.** Each time Mack opens, it asks GitHub what changed in the
-   watched paths since `baseline`. If something did, a banner lists the
-   files and links to the diff. Users can turn the check off in Settings, or
-   click **Stay on this version** to stay on their current methodology until
-   upstream changes again. The check only reports changes; it never changes
-   Mack's behaviour.
+1. **In the app.** Mack asks GitHub what changed in the watched paths since
+   `baseline` when it opens and every 6 hours while it runs. If something
+   changed, a yellow banner appears, and the **Upstream** screen lists the
+   changed files by area, shows which Mack module each maps to, and lists the
+   recent upstream commits. Users can turn the checks off, or choose **Stay on
+   the current version** to hide the notice until upstream changes again.
+   The check only reports changes; it never changes Mack's behaviour.
 2. **In the repo.** `.github/workflows/upstream-watch.yml` runs weekly and
    opens an issue when watched paths changed.
-3. **Porting.** A maintainer ports the change, updates the mapping below,
-   and bumps `baseline` in `upstream.json` in the same commit.
+3. **Porting.** A maintainer runs `npm run upstream` to see the changes
+   grouped by Mack module, ports what applies, runs
+   `npm run upstream -- --accept` to move `baseline` to the upstream head,
+   and commits that together with the port and any update to the map below.
+
+`upstream.json` lists each watched upstream path with its area and the Mack
+module it maps to. Add an entry there when Mack starts following a new
+upstream module.
 
 ## Module map
 
