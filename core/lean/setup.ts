@@ -1,13 +1,15 @@
-// Installs Lean + Mathlib for Mack, natively on Windows, in four steps:
-// elan (the official toolchain manager, from its GitHub releases), a Lake
-// project that depends on Mathlib, Mathlib's prebuilt cache (so nothing
-// compiles), and a check that `import Mathlib` works. Each step is skipped
+// Installs Lean + Mathlib for Mack, natively on Windows: elan (the official
+// toolchain manager, from its GitHub releases), a Lake project that depends
+// on Mathlib, Mathlib's prebuilt cache (so nothing compiles), a check that
+// `import Mathlib` works, and optionally the resident Lean REPL used for
+// quick checks. Each step is skipped
 // when already done, so re-running is safe and resumes after a failure.
 
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
+import { hasRepl, REPL_DIR } from "./repl";
 import { hasElan, lakeCommand, runStreaming } from "./toolchain";
 
 export const DEFAULT_WORKSPACE = join(homedir(), "mack-lean");
@@ -15,6 +17,7 @@ export const DEFAULT_WORKSPACE = join(homedir(), "mack-lean");
 export { SETUP_STEPS, type SetupEvent, type SetupStep } from "./setup-steps";
 import type { SetupEvent, SetupStep } from "./setup-steps";
 
+const REPL_GIT = "https://github.com/leanprover-community/repl";
 const ELAN_ZIP = "https://github.com/leanprover/elan/releases/latest/download/elan-x86_64-pc-windows-msvc.zip";
 
 export function hasProject(workspace: string): boolean {
@@ -95,11 +98,42 @@ export async function runSetup(workspace: string, emit: (e: SetupEvent) => void,
         if (!ok) throw new Error("Lean could not import Mathlib in the workspace");
       },
     );
+    // Optional: without the REPL every quick check starts `lake env lean`.
+    current = "repl";
+    if (hasRepl(workspace)) emit({ type: "step", step: "repl", state: "skipped" });
+    else {
+      emit({ type: "step", step: "repl", state: "running" });
+      try {
+        await buildRepl(workspace, log, signal);
+        emit({ type: "step", step: "repl", state: "done" });
+      } catch (e) {
+        emit({ type: "step", step: "repl", state: "failed", message: `${(e as Error).message}. Mack works without it, with slower checks.` });
+      }
+    }
     return true;
   } catch (e) {
     emit({ type: "step", step: current, state: "failed", message: (e as Error).message });
     return false;
   }
+}
+
+/**
+ * Clone leanprover-community/repl at the tag matching the workspace's
+ * toolchain into `<workspace>/.mack/repl` and build it. It has no
+ * dependencies, so the workspace's own lakefile is left alone.
+ */
+export async function buildRepl(workspace: string, log: (l: string) => void, signal?: AbortSignal): Promise<void> {
+  const toolchain = (await readFile(join(workspace, "lean-toolchain"), "utf8")).trim();
+  const tag = toolchain.split(":").pop() ?? "";
+  if (!/^v\d+\.\d+\.\d+(-rc\d+)?$/.test(tag)) throw new Error(`no REPL release matches the toolchain ${toolchain}`);
+  const dir = REPL_DIR(workspace);
+  await rm(dir, { recursive: true, force: true });
+  await mkdir(dirname(dir), { recursive: true });
+  log(`Cloning the Lean REPL ${tag}`);
+  const clone = await runStreaming("git", ["clone", "--depth", "1", "--branch", tag, REPL_GIT, dir], { onLine: log, signal });
+  if (clone.code !== 0) throw new Error(`could not clone the REPL at ${tag}`);
+  const build = await runStreaming(lakeCommand(), ["build"], { cwd: dir, onLine: log, signal });
+  if (build.code !== 0 || !hasRepl(workspace)) throw new Error(`lake build of the REPL exited with ${build.code}`);
 }
 
 /** Whether `lake env lean` in `workspace` elaborates `import Mathlib`. */

@@ -1,13 +1,13 @@
 import { ChevronRight, Coins, FileDown, ShieldCheck, Timer } from "lucide-react";
 import { useState } from "react";
-import { api, theoremName, type ProveEvent } from "../api";
+import { api, theoremName, type RunEvent } from "../api";
 import { CodeEditor } from "./CodeEditor";
 import { Badge, CopyButton, formatMs, OutcomeBadge, outcomeTone, Button } from "./ui";
 
-type Attempt = Extract<ProveEvent, { type: "attempt" }>;
-type Solved = Extract<ProveEvent, { type: "solved" }>;
+type Attempt = Extract<RunEvent, { type: "attempt" }>;
+type Solved = Extract<RunEvent, { type: "solved" }>;
 
-export function SolvedCard({ solved, problem }: { solved: Solved; problem: string }) {
+export function SolvedCard({ solved, problem, where }: { solved: Solved; problem: string; where?: string }) {
   return (
     <div className="solved-card">
       <div className="solved-head">
@@ -17,7 +17,7 @@ export function SolvedCard({ solved, problem }: { solved: Solved; problem: strin
         <div>
           <div className="solved-title">Verified by Lean</div>
           <div className="solved-sub">
-            Attempt {solved.n} · the statement is unchanged, nothing is assumed, and Lean's kernel accepts the proof.
+            {where ?? `Attempt ${solved.n}`} · the statement is unchanged, nothing is assumed, and Lean's kernel accepts the proof.
           </div>
         </div>
       </div>

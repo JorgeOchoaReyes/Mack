@@ -51,7 +51,7 @@ function StepCard({ n, icon: Icon, title, ready, children }: { n: number; icon: 
 }
 
 function LeanStep({ health, settings, ready, onChanged, saveSettings }: { health: Health | null; settings: Settings; ready: boolean; onChanged: () => void; saveSettings: (s: Partial<Settings>) => Promise<void> }) {
-  const [states, setStates] = useState<Record<SetupStep, StepState>>({ elan: "pending", project: "pending", cache: "pending", verify: "pending" });
+  const [states, setStates] = useState<Record<SetupStep, StepState>>({ elan: "pending", project: "pending", cache: "pending", verify: "pending", repl: "pending" });
   const [log, setLog] = useState<string[]>([]);
   const [running, setRunning] = useState(false);
   const [failure, setFailure] = useState("");
@@ -78,7 +78,7 @@ function LeanStep({ health, settings, ready, onChanged, saveSettings }: { health
   const start = async () => {
     setLog([]);
     setFailure("");
-    setStates({ elan: "pending", project: "pending", cache: "pending", verify: "pending" });
+    setStates({ elan: "pending", project: "pending", cache: "pending", verify: "pending", repl: "pending" });
     setRunning(true);
     try {
       await api.startSetup();
@@ -122,6 +122,14 @@ function LeanStep({ health, settings, ready, onChanged, saveSettings }: { health
         </span>
         <span>Mathlib</span>
         <span>{health?.hasMathlib ? "installed" : <span className="muted">not installed</span>}</span>
+        <span>Lean REPL</span>
+        <span>
+          {health?.hasRepl ? (
+            "installed: quick checks reuse a loaded Mathlib"
+          ) : (
+            <span className="muted">not installed{ready ? ": click Repair or update to add it (a few minutes)" : ""}</span>
+          )}
+        </span>
       </div>
 
       {(running || log.length > 0) && (

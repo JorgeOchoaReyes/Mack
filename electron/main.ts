@@ -5,11 +5,15 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, safeStorage, shell } from "electron";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { checkFromRun } from "../core/lean/check";
+import { hasRepl, replPool, type ReplPool } from "../core/lean/repl";
 import { leanRunner } from "../core/lean/runner";
 import { DEFAULT_WORKSPACE, hasMathlib, hasProject, runSetup, verifyWorkspace, type SetupEvent } from "../core/lean/setup";
 import { lakeVersion } from "../core/lean/toolchain";
 import { FireworksProvider } from "../core/model/fireworks";
 import { prove, type ProveEvent } from "../core/prove";
+import { search, type SearchEvent } from "../core/search/search";
+import { DEFAULT_LIMITS, type Limits } from "../core/search/tree";
 import { checkUpstream } from "../core/upstream";
 
 export type Settings = {
@@ -17,11 +21,20 @@ export type Settings = {
   leanWorkspace: string;
   timeoutMs: number;
   maxAttempts: number;
+  /** "single": one agent revises one proof; "search": the proof search tree. */
+  mode: RunMode;
+  search: Limits;
+  /** Use the resident Lean REPL for quick checks when it is built. */
+  useRepl: boolean;
   /** Check Open Math Harness for methodology changes on every launch. */
   upstreamCheck: boolean;
   /** An upstream head the user chose to stay behind; no banner until upstream moves past it. */
   upstreamDismissed: string;
 };
+
+export type RunMode = "single" | "search";
+
+export type RunEvent = ProveEvent | SearchEvent;
 
 export type KeySource = "env" | "saved" | "none";
 
@@ -30,6 +43,7 @@ export type Health = {
   workspace: string;
   hasProject: boolean;
   hasMathlib: boolean;
+  hasRepl: boolean;
   keySource: KeySource;
   model: string;
 };
@@ -39,13 +53,15 @@ export type RunRecord = {
   startedAt: number;
   finishedAt: number;
   model: string;
+  /** Absent on runs recorded before the search tree: those were "single". */
+  mode?: RunMode;
   problem: string;
   outcome: "solved" | "failed";
   message: string;
-  events: ProveEvent[];
+  events: RunEvent[];
 };
 
-export type RunSummary = Pick<RunRecord, "id" | "startedAt" | "finishedAt" | "model" | "outcome" | "message"> & {
+export type RunSummary = Pick<RunRecord, "id" | "startedAt" | "finishedAt" | "model" | "mode" | "outcome" | "message"> & {
   theorem: string;
   attempts: number;
 };
@@ -55,6 +71,9 @@ const DEFAULTS: Settings = {
   leanWorkspace: DEFAULT_WORKSPACE,
   timeoutMs: 300_000,
   maxAttempts: 8,
+  mode: "single",
+  search: DEFAULT_LIMITS,
+  useRepl: true,
   upstreamCheck: true,
   upstreamDismissed: "",
 };
@@ -81,7 +100,12 @@ function loadDotEnv(): void {
 function readSettings(): Settings {
   try {
     const saved = JSON.parse(readFileSync(settingsPath(), "utf8")) as Partial<Settings>;
-    return { ...DEFAULTS, ...saved, leanWorkspace: saved.leanWorkspace || DEFAULTS.leanWorkspace };
+    return {
+      ...DEFAULTS,
+      ...saved,
+      search: { ...DEFAULTS.search, ...saved.search },
+      leanWorkspace: saved.leanWorkspace || DEFAULTS.leanWorkspace,
+    };
   } catch {
     return { ...DEFAULTS };
   }
@@ -107,6 +131,22 @@ function theoremOf(problem: string): string {
 }
 
 let proving: AbortController | null = null;
+let repl: { pool: ReplPool; key: string } | null = null;
+
+/** The quick check for a run: a REPL pool kept alive between runs (Mathlib stays loaded), or none. */
+function quickCheck(s: Settings, size: number) {
+  if (!s.useRepl || !hasRepl(s.leanWorkspace)) {
+    repl?.pool.stop();
+    repl = null;
+    return undefined;
+  }
+  const key = `${s.leanWorkspace}|${size}|${s.timeoutMs}`;
+  if (repl?.key !== key) {
+    repl?.pool.stop();
+    repl = { pool: replPool({ workspace: s.leanWorkspace, size, timeoutMs: s.timeoutMs }), key };
+  }
+  return repl.pool.check;
+}
 let settingUp: AbortController | null = null;
 
 function createWindow(): void {
@@ -155,6 +195,7 @@ ipcMain.handle("health:get", async (): Promise<Health> => {
     workspace: s.leanWorkspace,
     hasProject: hasProject(s.leanWorkspace),
     hasMathlib: hasMathlib(s.leanWorkspace),
+    hasRepl: hasRepl(s.leanWorkspace),
     keySource: keySource(),
     model: s.model,
   };
@@ -213,27 +254,36 @@ ipcMain.handle("prove:start", async (e, problem: string) => {
     startedAt: Date.now(),
     finishedAt: 0,
     model: s.model,
+    mode: s.mode,
     problem,
     outcome: "failed",
     message: "",
     events: [],
   };
-  const send = (ev: ProveEvent) => {
+  const send = (ev: RunEvent) => {
     if (ev.type !== "status") record.events.push(ev);
     if (ev.type === "solved") record.outcome = "solved";
     if (ev.type === "failed") record.message = ev.message;
     if (!e.sender.isDestroyed()) e.sender.send("prove:event", ev);
   };
   try {
-    await prove({
-      frozen: problem,
-      provider,
-      model: s.model,
-      run: leanRunner({ workspace: s.leanWorkspace, timeoutMs: s.timeoutMs }),
-      maxAttempts: s.maxAttempts,
-      signal: proving.signal,
-      onEvent: send,
-    });
+    const run = leanRunner({ workspace: s.leanWorkspace, timeoutMs: s.timeoutMs });
+    if (s.mode === "search") {
+      // Up to two REPLs for parallel workers: each holds Mathlib in memory.
+      const check = quickCheck(s, Math.min(2, s.search.w)) ?? (async (src: string) => checkFromRun(await run(src)));
+      await search({ frozen: problem, provider, model: s.model, run, check, limits: s.search, signal: proving.signal, onEvent: send });
+    } else {
+      await prove({
+        frozen: problem,
+        provider,
+        model: s.model,
+        run,
+        check: quickCheck(s, 1),
+        maxAttempts: s.maxAttempts,
+        signal: proving.signal,
+        onEvent: send,
+      });
+    }
   } finally {
     proving = null;
     record.finishedAt = Date.now();
@@ -251,7 +301,8 @@ ipcMain.handle("runs:list", (): RunSummary[] =>
       try {
         const r = JSON.parse(readFileSync(join(runsDir(), f), "utf8")) as RunRecord;
         const { events, problem, ...rest } = r;
-        return [{ ...rest, theorem: theoremOf(problem), attempts: events.filter((x) => x.type === "attempt").length }];
+        const attempts = events.filter((x) => x.type === "attempt" || x.type === "node").length;
+        return [{ ...rest, theorem: theoremOf(problem), attempts }];
       } catch {
         return [];
       }
@@ -286,3 +337,4 @@ ipcMain.handle("file:openLean", async (e) => {
 loadDotEnv();
 void app.whenReady().then(createWindow);
 app.on("window-all-closed", () => app.quit());
+app.on("will-quit", () => repl?.pool.stop());

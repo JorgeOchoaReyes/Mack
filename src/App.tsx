@@ -154,7 +154,8 @@ export function App() {
               problem={problem}
               setProblem={setProblem}
               health={health}
-              maxAttempts={settings.maxAttempts}
+              settings={settings}
+              saveSettings={saveSettings}
               onGoSetup={() => setPage("setup")}
               onRunFinished={() => setRunsVersion((v) => v + 1)}
             />

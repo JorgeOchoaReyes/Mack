@@ -2,7 +2,7 @@
 // adds it to PATH only for shells started afterwards, so Mack looks there
 // first and passes that directory on to every Lean process it starts.
 
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
@@ -24,6 +24,16 @@ export function leanEnv(): NodeJS.ProcessEnv {
   delete env.Path;
   env.PATH = `${ELAN_BIN}${delimiter}${path}`;
   return env;
+}
+
+/**
+ * End a process and everything it started. `lake env` runs Lean as its
+ * child, and on Windows killing a parent leaves its children running.
+ */
+export function killTree(child: ChildProcess): void {
+  if (child.exitCode !== null || child.pid === undefined) return;
+  if (process.platform === "win32") spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" });
+  else child.kill();
 }
 
 export type ProcessResult = { code: number | null; output: string };

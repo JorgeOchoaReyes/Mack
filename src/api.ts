@@ -3,7 +3,7 @@
 import type { SetupEvent } from "../core/lean/setup-steps";
 import type { ProveEvent } from "../core/prove";
 import type { UpstreamReport } from "../core/upstream";
-import type { Health, KeySource, RunRecord, RunSummary, Settings } from "../electron/main";
+import type { Health, KeySource, RunEvent, RunMode, RunRecord, RunSummary, Settings } from "../electron/main";
 import type { MackApi } from "../electron/preload";
 
 declare global {
@@ -13,7 +13,7 @@ declare global {
 }
 
 export type Upstream = (UpstreamReport & { dismissed?: boolean }) | { kind: "off" };
-export type { Health, KeySource, ProveEvent, RunRecord, RunSummary, SetupEvent, Settings };
+export type { Health, KeySource, ProveEvent, RunEvent, RunMode, RunRecord, RunSummary, SetupEvent, Settings };
 
 const m = () => window.mack;
 
@@ -33,7 +33,7 @@ export const api = {
   listModels: () => m().listModels(),
   startProve: (problem: string) => m().startProve(problem),
   stopProve: () => m().stopProve(),
-  onProveEvent: (cb: (e: ProveEvent) => void) => m().onProveEvent((e) => cb(e as ProveEvent)),
+  onProveEvent: (cb: (e: RunEvent) => void) => m().onProveEvent((e) => cb(e as RunEvent)),
   listRuns: () => m().listRuns() as Promise<RunSummary[]>,
   getRun: (id: string) => m().getRun(id) as Promise<RunRecord | null>,
   deleteRun: (id: string) => m().deleteRun(id) as Promise<void>,

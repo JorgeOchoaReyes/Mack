@@ -3,7 +3,7 @@
 // candidate counts as solved only when `verifyText` accepts it. What the
 // model says about its own proof decides nothing.
 
-import { classifyCheck } from "./lean/runner";
+import { checkFromRun, describeCheck, type LeanCheckRun } from "./lean/check";
 import { extractStatement, frozenObjection, protocolObjection } from "./lean/rules";
 import { describeRejection, excerpt, pristineType, verifyText, type LeanRun } from "./lean/verify";
 import type { ChatMessage, ModelProvider } from "./model/provider";
@@ -21,6 +21,8 @@ export type ProveOptions = {
   provider: ModelProvider;
   model: string;
   run: LeanRun;
+  /** The quick check (the resident REPL); a fresh `run` when absent. */
+  check?: LeanCheckRun;
   maxAttempts: number;
   signal?: AbortSignal;
   onEvent: (e: ProveEvent) => void;
@@ -81,14 +83,14 @@ export async function prove(o: ProveOptions): Promise<void> {
         return `The checker refused the file before running Lean: ${textual}`;
       }
       o.onEvent({ type: "status", message: `Attempt ${n} of ${o.maxAttempts}: Lean is checking the proof…` });
-      const check = classifyCheck(await o.run(candidate));
+      const check = o.check ? await o.check(candidate) : checkFromRun(await o.run(candidate));
       if (check.status === "noVerdict") {
-        attempt("no verdict", check.detail);
-        return `Lean gave no verdict (${excerpt(check.detail)}). Try a simpler or faster proof.`;
+        attempt("no verdict", check.output);
+        return `Lean gave no verdict (${excerpt(check.output)}). Try a simpler or faster proof.`;
       }
       if (check.status === "errors" || check.status === "sorries") {
-        attempt(check.status, check.detail);
-        return `Lean output:\n${excerpt(check.detail)}`;
+        attempt(check.status, check.output);
+        return `The checker's verdict:\n${describeCheck(check)}`;
       }
       o.onEvent({ type: "status", message: `Attempt ${n} of ${o.maxAttempts}: Lean accepts it; running the strict verifier…` });
       const verdict = await verifyText(o.frozen, pristine.type, candidate, o.run);

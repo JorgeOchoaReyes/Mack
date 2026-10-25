@@ -16,6 +16,13 @@ and how Mack keeps up with upstream.
 - **Prove.** Write or open a Lean statement, press Prove, and watch each
   attempt: the model writes a proof, Lean's errors go back to it, and it
   revises until the strict verifier accepts or attempts run out.
+- **Proof search tree.** Switch Prove to *Search tree* and several workers
+  branch out from the statement in parallel. Each hands back one file, which
+  may keep `sorry` gaps; Lean scores it, and later rounds continue the most
+  promising nodes instead of starting over, until the verifier accepts one.
+- **Fast checks.** A resident Lean REPL keeps Mathlib loaded, so checking a
+  partial proof takes seconds and shows the goal left at each `sorry`. The
+  final verification still runs in a fresh Lean process.
 - **Strict verification**, ported from upstream. A proof counts only if:
   - the frozen theorem statement appears word for word and the preamble is
     unchanged;
@@ -38,7 +45,7 @@ upstream module each comes from.
 
 - [x] **1. Verified proving.** Strict Lean verifier, single-agent prove loop,
   one-click Lean setup, run history, upstream tracking, Windows installer.
-- [ ] **2. Proof search tree.** Keep partial proofs (with `sorry`) as a tree,
+- [x] **2. Proof search tree.** Keep partial proofs (with `sorry`) as a tree,
   let parallel workers extend the most promising branches, and let later
   rounds build on earlier ones instead of starting over. From upstream
   `program-files/prover`, `program-files/discovery`, `interfaces/explore`.
