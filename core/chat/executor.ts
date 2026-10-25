@@ -10,7 +10,9 @@ import { loadSkill } from "./skills";
 import { checkFromRun, describeCheck, type LeanCheckRun } from "../lean/check";
 import { describeRejection, pristineType, verifyText, type LeanRun } from "../lean/verify";
 import type { ToolOutcome } from "./agent";
-import { confine, imageDataUrl, listFiles, readProjectFile, searchFiles, toolSpecs, truncate, writeProjectFile, type ToolCall } from "./tools";
+import type { McpTarget } from "../mcp/client";
+import { PLUGIN_GUIDE } from "../mcp/plugins";
+import { confine, imageDataUrl, listFiles, readProjectFile, searchFiles, toolSpecs, truncate, writeProjectFile, type ToolCall, type ToolSpec } from "./tools";
 import { fetchUrl, webSearch } from "./web";
 
 export type ApprovalPolicy = "ask" | "allow";
@@ -26,9 +28,20 @@ export type ExecutorContext = {
   startProof?: (problem: string, mode: "single" | "search") => Promise<string>;
   /** What only a chat session has: its reminders, background jobs, sub-agents, and whether its model reads images. */
   session?: SessionHooks;
-  /** Runs a registered extra tool (`registerTools`); undefined when the name is not one. */
+  /** Runs a registered extra tool (`registerTools`) or one of the session's own; undefined when the name is not one. */
   extra?: (call: ToolCall) => Promise<string> | undefined;
+  /** The session's own tool specs (its plugins'), for the guard. */
+  ownTools?: () => ToolSpec[];
+  /** The session's plugins and MCP servers. */
+  plugins?: PluginHooks;
   signal?: AbortSignal;
+};
+
+export type PluginHooks = {
+  start: (kind: "mcp" | "plugin", name: string, target: McpTarget, map: string[]) => Promise<string>;
+  replace: (name: string, target: McpTarget, map: string[]) => Promise<string>;
+  stop: (name: string) => string;
+  list: () => string;
 };
 
 export type SessionHooks = {
@@ -150,6 +163,25 @@ async function run(call: ToolCall, c: ExecutorContext): Promise<string> {
       return needSession(c).subAgent(str(a.task, "task"));
     case "skills_load":
       return loadSkill(c.root, str(a.url, "url"), c.signal);
+    case "mcp_connect":
+    case "plugin_start":
+    case "plugin_replace": {
+      if (!c.plugins) throw new Error("plugins are only available in a chat");
+      const name = str(a.name, "name");
+      const list = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
+      const target: McpTarget =
+        call.name === "mcp_connect" && typeof a.url === "string" && a.url ? { url: a.url } : { command: str(a.command, "command or url"), args: list(a.args), cwd: c.root };
+      if (call.name === "plugin_replace") return c.plugins.replace(name, target, list(a.tools));
+      return c.plugins.start(call.name === "mcp_connect" ? "mcp" : "plugin", name, target, list(a.tools));
+    }
+    case "plugin_stop":
+      if (!c.plugins) throw new Error("plugins are only available in a chat");
+      return c.plugins.stop(str(a.name, "name"));
+    case "plugin_list":
+      if (!c.plugins) throw new Error("plugins are only available in a chat");
+      return c.plugins.list();
+    case "plugin-development_guide":
+      return PLUGIN_GUIDE;
     default: {
       const r = c.extra?.(call);
       if (r) return r;
@@ -163,7 +195,7 @@ const viewImages = new WeakMap<ToolCall, string[]>();
 
 /** Run one call, through the guard when it is protected. Never throws: a failure is an outcome. */
 export async function execute(call: ToolCall, c: ExecutorContext): Promise<ToolOutcome> {
-  const spec = toolSpecs().find((t) => t.name === call.name);
+  const spec = toolSpecs(undefined, c.ownTools?.()).find((t) => t.name === call.name);
   const prot = !!spec?.protected;
   // The guard records the call: what runs is this copy, whatever happens to the original.
   const recorded: ToolCall = { name: call.name, args: JSON.parse(JSON.stringify(call.args)) as Record<string, unknown> };

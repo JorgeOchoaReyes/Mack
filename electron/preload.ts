@@ -50,6 +50,8 @@ const api = {
   reviewChanges: (projectId: string) => ipcRenderer.invoke("review:changes", projectId),
   reviewFile: (projectId: string, path: string) => ipcRenderer.invoke("review:file", projectId, path) as Promise<string>,
   reviewInit: (projectId: string) => ipcRenderer.invoke("review:init", projectId) as Promise<boolean>,
+  listPlugins: (sessionId: string) => ipcRenderer.invoke("plugins:list", sessionId) as Promise<{ name: string; kind: string; tools: string[] }[]>,
+  stopPlugin: (sessionId: string, name: string) => ipcRenderer.invoke("plugins:stop", sessionId, name),
   stopChat: (sessionId: string) => ipcRenderer.invoke("chat:stop", sessionId),
   onChatEvent: (cb: (e: unknown) => void) => subscribe("chat:event", cb),
   listApprovals: () => ipcRenderer.invoke("approvals:list"),

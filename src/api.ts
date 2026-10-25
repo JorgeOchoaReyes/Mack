@@ -67,6 +67,8 @@ export const api = {
   reviewChanges: (projectId: string) => m().reviewChanges(projectId) as Promise<{ repo: boolean; files: ChangedFile[] }>,
   reviewFile: (projectId: string, path: string) => m().reviewFile(projectId, path),
   reviewInit: (projectId: string) => m().reviewInit(projectId),
+  listPlugins: (sessionId: string) => m().listPlugins(sessionId),
+  stopPlugin: (sessionId: string, name: string) => m().stopPlugin(sessionId, name) as Promise<string>,
   stopChat: (sessionId: string) => m().stopChat(sessionId) as Promise<void>,
   onChatEvent: (cb: (e: ChatWire) => void) => m().onChatEvent((e) => cb(e as ChatWire)),
   listApprovals: () => m().listApprovals() as Promise<PendingApproval[]>,

@@ -17,6 +17,7 @@ import { confine, imageDataUrl, imageType, MAX_IMAGE_BYTES, pdfText, SUB_AGENT_T
 import { changes, fileDiff, initRepo, isRepo } from "../core/git";
 import type { LeanCheckRun } from "../core/lean/check";
 import { findings, maskSecrets, type Finding } from "../core/secrets";
+import { PluginRegistry } from "../core/mcp/plugins";
 import type { LeanRun } from "../core/lean/verify";
 import type { ModelProvider, ReasoningEffort } from "../core/model/provider";
 import type { RunEvent, RunMode, RunRecord, Settings } from "./main";
@@ -129,6 +130,8 @@ export function registerChat(d: Deps): ChatControl {
     );
   };
 
+  const plugins = new PluginRegistry();
+
   const jobs = new JobManager((job: Job) => {
     const owner = sessionProject.get(job.sessionId);
     if (!owner) return;
@@ -210,10 +213,20 @@ export function registerChat(d: Deps): ChatControl {
 
     const extra = d.extraTools?.({ projectId: p.id, root: p.folder, sessionId: session.id, signal: ctl.signal });
 
+    const ownTools = () => plugins.specs(session.id);
     const exec = async (call: ToolCall, sub = false): Promise<ToolOutcome> =>
       execute(call, {
         root: p.folder,
-        extra: sub ? undefined : extra,
+        extra: sub ? undefined : (c) => plugins.call(session.id, c.name, c.args, ctl.signal) ?? extra?.(c),
+        ownTools: sub ? undefined : ownTools,
+        plugins: sub
+          ? undefined
+          : {
+              start: (kind, name, target, map) => plugins.start(session.id, kind, name, target, map, ctl.signal),
+              replace: (name, target, map) => plugins.replace(session.id, "plugin", name, target, map, ctl.signal),
+              stop: (name) => plugins.stop(session.id, name),
+              list: () => plugins.list(session.id),
+            },
         lean,
         policy: sub ? {} : s.approvals,
         signal: ctl.signal,
@@ -252,6 +265,7 @@ export function registerChat(d: Deps): ChatControl {
           memory: (await readMemory(memory)).index,
           skills: await listSkills(p.folder),
           tools: toolSpecs().map((t) => t.name),
+          ownTools,
           vision,
           effort: session.effort ?? s.chatEffort,
           signal: ctl.signal,
@@ -376,6 +390,7 @@ export function registerChat(d: Deps): ChatControl {
 
   ipcMain.handle("sessions:delete", (_e, projectId: string, id: string) => {
     live.get(id)?.ctl.abort();
+    plugins.stopSession(id);
     rmSync(join(sessionsDir(safeId(projectId)), `${safeId(id)}.json`), { force: true });
   });
 
@@ -505,6 +520,8 @@ export function registerChat(d: Deps): ChatControl {
   ipcMain.handle("memory:forget", async (_e, projectId: string) => forgetMemory(memoryStore(safeId(projectId))));
 
   ipcMain.handle("chat:tools", () => toolSpecs());
+  ipcMain.handle("plugins:list", (_e, sessionId: string) => plugins.instances(safeId(sessionId)));
+  ipcMain.handle("plugins:stop", (_e, sessionId: string, name: string) => plugins.stop(safeId(sessionId), String(name)));
 
   /** The secret scan of a chat's records: by message index, what looks like a secret, masked. */
   ipcMain.handle("sessions:findings", (_e, projectId: string, id: string): Record<number, Finding[]> => {
@@ -549,6 +566,7 @@ export function registerChat(d: Deps): ChatControl {
     wake,
     project,
     stopAll: () => {
+      plugins.stopAll();
       jobs.stopAll();
       for (const l of live.values()) l.ctl.abort();
     },

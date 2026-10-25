@@ -45,6 +45,8 @@ upstream module.
 | `interfaces/suggestions` + `prompts/templates/suggest/*` | `core/chat/suggestions.ts` | Ported |
 | `prompts/templates/compact/*` (context checkpoint) | `core/chat/suggestions.ts`, `core/chat/agent.ts` | Ported |
 | `interfaces/memory` `used` (citations) | `core/chat/memory.ts` `recordCitations` | Adapted: counts feed consolidation |
+| `program-files/mcp` (stdio + Streamable HTTP adapter) | `core/mcp/client.ts` | Ported: mapped tools only, 1 MiB bounds, no OAuth |
+| `program-files/chat-agent/src/plugins.rs` + `program-files/plugin-development` | `core/mcp/plugins.ts`, `plugin_*` and `mcp_connect` tools | Adapted: plugins are stdio MCP servers; instances belong to one chat and end with it |
 | `interfaces/diffs` (Review of uncommitted changes) | `core/git.ts`, Review panel in `src/pages/ChatPage.tsx` | Ported: read-only |
 | `interfaces/publish` + `program-files/publish` rules v1 (secret scan) | `core/secrets.ts` | Adapted: no platform; marks messages, masks memory input and exports |
 | `interfaces/approvals` + `program-files/approvals` (guard runs the recorded call) | `core/chat/executor.ts` | Adapted: per-tool ask/allow policy; approvals are single-use and bound to the recorded call |

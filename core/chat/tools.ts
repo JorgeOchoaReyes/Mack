@@ -84,6 +84,22 @@ export const TOOL_SPECS: ToolSpec[] = [
     protected: false,
   },
   { name: "skills_load", description: "Load a published skill into the project's .skill folder from a URL of its SKILL.md.", args: { url: "https URL of a SKILL.md" }, protected: false },
+  {
+    name: "mcp_connect",
+    description: "Connect an MCP server to this chat: a remote one by https url, or a local one by command. Its tools become yours as plugin-<name>_<tool>. Needs the person's approval.",
+    args: { name: "a short lowercase name", "url?": "https URL of a Streamable HTTP server", "command?": "executable of a stdio server", "args?": "array of its arguments", "tools?": "array of tool names to publish; all when empty" },
+    protected: true,
+  },
+  {
+    name: "plugin_start",
+    description: "Start a plugin you wrote in the project: a stdio MCP server, run in the project folder. Read plugin-development_guide first. Needs the person's approval.",
+    args: { name: "a short lowercase name", command: "the executable, e.g. python", "args?": "array of arguments, e.g. [\"server.py\"]", "tools?": "array of tool names to publish; all when empty" },
+    protected: true,
+  },
+  { name: "plugin_replace", description: "Stop a running plugin and start it again from the same or a new command (after editing its files). Needs the person's approval.", args: { name: "the plugin", command: "the executable", "args?": "array of arguments", "tools?": "array of tool names" }, protected: true },
+  { name: "plugin_stop", description: "Stop a plugin or MCP server of this chat.", args: { name: "its name" }, protected: false },
+  { name: "plugin_list", description: "List this chat's plugins and MCP servers and their tools.", args: {}, protected: false },
+  { name: "plugin-development_guide", description: "How to write a plugin (an MCP server) for this chat.", args: {}, protected: false },
 ];
 
 /** Tools a sub-agent is offered: reading and checking, nothing that changes anything or spends budget. */
@@ -107,10 +123,10 @@ export function unregisterTools(names: string[]): void {
   }
 }
 
-/** The specs of `allowed` (all when absent), in registry order. */
-export function toolSpecs(allowed?: string[]): ToolSpec[] {
+/** The specs of `allowed` (all when absent), in registry order, then a session's own (its plugins' tools). */
+export function toolSpecs(allowed?: string[], own: ToolSpec[] = []): ToolSpec[] {
   const all = [...TOOL_SPECS, ...EXTRA];
-  return allowed ? all.filter((t) => allowed.includes(t.name)) : all;
+  return [...(allowed ? all.filter((t) => allowed.includes(t.name)) : all), ...own];
 }
 
 export type ToolCall = { name: string; args: Record<string, unknown> };
@@ -222,7 +238,7 @@ export async function writeProjectFile(root: string, p: string, content: string)
 }
 
 /** Parse the ```tool blocks of a reply: each holds one JSON object {"name", "args"}. */
-export function parseToolCalls(reply: string, allowed?: string[]): { calls: ToolCall[]; errors: string[] } {
+export function parseToolCalls(reply: string, allowed?: string[], own: ToolSpec[] = []): { calls: ToolCall[]; errors: string[] } {
   const text = reply.replace(/<think>[\s\S]*?<\/think>/g, "");
   const calls: ToolCall[] = [];
   const errors: string[] = [];
@@ -230,7 +246,7 @@ export function parseToolCalls(reply: string, allowed?: string[]): { calls: Tool
     try {
       const v = JSON.parse(m[1]) as { name?: unknown; args?: unknown };
       if (typeof v.name !== "string") throw new Error("missing \"name\"");
-      if (!toolSpecs(allowed).some((t) => t.name === v.name)) throw new Error(`\`${v.name}\` is not one of your tools`);
+      if (!toolSpecs(allowed, own).some((t) => t.name === v.name)) throw new Error(`\`${v.name}\` is not one of your tools`);
       const args = v.args && typeof v.args === "object" && !Array.isArray(v.args) ? (v.args as Record<string, unknown>) : {};
       calls.push({ name: v.name, args });
     } catch (e) {
@@ -249,8 +265,8 @@ export function visibleText(reply: string): string {
     .trim();
 }
 
-export function toolsPrompt(allowed?: string[]): string {
-  const lines = toolSpecs(allowed).map((t) => {
+export function toolsPrompt(allowed?: string[], own: ToolSpec[] = []): string {
+  const lines = toolSpecs(allowed, own).map((t) => {
     const args = Object.entries(t.args)
       .map(([k, v]) => `${k}: ${v}`)
       .join("; ");

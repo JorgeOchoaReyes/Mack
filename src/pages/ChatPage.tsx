@@ -272,7 +272,7 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
       <section className="chat-main">
         {panel === "memory" && projectId && <MemoryPanel projectId={projectId} onClose={() => setPanel("none")} />}
         {panel === "review" && projectId && <ReviewPanel projectId={projectId} onClose={() => setPanel("none")} />}
-        {panel === "tools" && <ToolsPanel health={health} settings={settings} saveSettings={saveSettings} onClose={() => setPanel("none")} />}
+        {panel === "tools" && <ToolsPanel health={health} settings={settings} saveSettings={saveSettings} sessionId={session?.id} onClose={() => setPanel("none")} />}
 
         <div className="chat-scroll" ref={scroller}>
           {!ready && (
@@ -662,9 +662,11 @@ function MemoryPanel({ projectId, onClose }: { projectId: string; onClose: () =>
   );
 }
 
-function ToolsPanel({ health, settings, saveSettings, onClose }: { health: Health | null; settings: Settings; saveSettings: (s: Partial<Settings>) => Promise<void>; onClose: () => void }) {
+function ToolsPanel({ health, settings, saveSettings, sessionId, onClose }: { health: Health | null; settings: Settings; saveSettings: (s: Partial<Settings>) => Promise<void>; sessionId?: string; onClose: () => void }) {
   const [tools, setTools] = useState<ToolSpec[]>([]);
+  const [plugins, setPlugins] = useState<{ name: string; kind: string; tools: string[] }[]>([]);
   useEffect(() => void api.chatTools().then(setTools), []);
+  useEffect(() => void (sessionId ? api.listPlugins(sessionId).then(setPlugins) : setPlugins([])), [sessionId]);
   const model = health?.model ?? "";
   const vision = settings.visionModels.includes(model);
   return (
@@ -688,6 +690,21 @@ function ToolsPanel({ health, settings, saveSettings, onClose }: { health: Healt
         />
       )}
       <Toggle checked={settings.suggestions} onChange={(v) => void saveSettings({ suggestions: v })} label="Suggest a next message and title new chats (one short model call each)" />
+      {plugins.length > 0 && (
+        <div className="small">
+          <b>This chat's plugins and MCP servers</b>
+          <ul className="tool-list">
+            {plugins.map((p) => (
+              <li key={p.name}>
+                <code>{p.name}</code> ({p.kind}): {p.tools.join(", ") || "no tools"}{" "}
+                <button className="link small" onClick={async () => (await api.stopPlugin(sessionId!, p.name), setPlugins(await api.listPlugins(sessionId!)))}>
+                  Stop
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <ul className="tool-list">
         {tools.map((t) => (
           <li key={t.name}>
