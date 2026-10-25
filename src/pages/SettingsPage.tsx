@@ -3,7 +3,8 @@ import { UPSTREAM } from "../../core/upstream";
 import { api, type Settings } from "../api";
 import { Button, Field, Toggle } from "../components/ui";
 import { useEffect, useState } from "react";
-import type { UpdateState } from "../api";
+import type { LedgerState, UpdateState } from "../api";
+import { formatUsd } from "../../core/model/metered";
 import type { Limits } from "../../core/search/tree";
 import type { UltramathLimits } from "../../core/ultramath/swarm";
 
@@ -65,6 +66,7 @@ export function SettingsPage({ settings, saveSettings, onGo }: Props) {
           Each session — a chat, a proof run, a search run, an Ultramath swarm — stops when its model calls have cost this much. Cost is the tokens your
           provider reports times the model's price in Setup. A call already running when the cap is reached still finishes.
         </p>
+        <GlobalSpend settings={settings} saveSettings={saveSettings} />
         <div className="grid-2">
           <Field label="Max cost per session (USD)" hint="0 turns the cap off.">
             <input
@@ -235,5 +237,42 @@ function UpdatesSection({ settings, saveSettings }: { settings: Settings; saveSe
         {line && <span className="muted small">{line}</span>}
       </div>
     </section>
+  );
+}
+
+function GlobalSpend({ settings, saveSettings }: { settings: Settings; saveSettings: (s: Partial<Settings>) => Promise<void> }) {
+  const [state, setState] = useState<LedgerState | null>(null);
+  useEffect(() => {
+    void api.globalSpend().then(setState);
+    return api.onGlobalSpend(setState);
+  }, []);
+  const period = settings.globalPeriod === "total" ? "since the last reset" : settings.globalPeriod === "day" ? "today" : "this month";
+  return (
+    <div className="global-spend">
+      <div className="grid-2">
+        <Field label="Global limit (USD)" hint="Everything Mack does together: every chat, run, swarm, memory update and suggestion. 0 turns it off.">
+          <input className="input" type="number" min={0} step={1} value={settings.globalLimit} onChange={(e) => void saveSettings({ globalLimit: Math.max(0, Number(e.target.value) || 0) })} />
+        </Field>
+        <Field label="Per" hint="When the global total starts again from zero.">
+          <select className="input" value={settings.globalPeriod} onChange={(e) => void saveSettings({ globalPeriod: e.target.value as Settings["globalPeriod"] })}>
+            <option value="month">month</option>
+            <option value="day">day</option>
+            <option value="total">all time (until I reset it)</option>
+          </select>
+        </Field>
+      </div>
+      {state && (
+        <div className="row gap-sm">
+          <span className={`spend-chip ${state.limit > 0 && state.spent >= state.limit * 0.8 ? "warn" : ""}`}>
+            {state.estimated ? "≈" : ""}
+            {formatUsd(state.spent)} spent {period}
+            {state.limit > 0 ? ` of ${formatUsd(state.limit)}` : ""}
+          </span>
+          <button className="link small" onClick={() => void api.resetGlobalSpend().then(setState)}>
+            Reset to $0
+          </button>
+        </div>
+      )}
+    </div>
   );
 }

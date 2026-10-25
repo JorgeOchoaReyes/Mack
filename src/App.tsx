@@ -1,6 +1,7 @@
-import { BookOpen, Download, FlaskConical, Rows3, GitCompare, History, MessagesSquare, Settings as SettingsIcon, Wrench, X } from "lucide-react";
+import { BookOpen, CircleDollarSign, Download, FlaskConical, Rows3, GitCompare, History, MessagesSquare, Settings as SettingsIcon, Wrench, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { api, type Health, type Settings, type UpdateState, type Upstream } from "./api";
+import { api, type Health, type LedgerState, type Settings, type UpdateState, type Upstream } from "./api";
+import { formatUsd } from "../core/model/metered";
 import { Logo } from "./components/Logo";
 import { Button, Dot } from "./components/ui";
 import { EXAMPLES } from "./examples";
@@ -46,6 +47,12 @@ export function App() {
   const [problem, setProblemState] = useState(loadDraft);
   const [runsVersion, setRunsVersion] = useState(0);
   const [update, setUpdate] = useState<UpdateState | null>(null);
+  const [spend, setSpend] = useState<LedgerState | null>(null);
+
+  useEffect(() => {
+    void api.globalSpend().then(setSpend);
+    return api.onGlobalSpend(setSpend);
+  }, []);
 
   useEffect(() => {
     void api.subscribeUpdates().then(setUpdate);
@@ -129,10 +136,28 @@ export function App() {
           <div className="health-row">
             <Dot tone={health === null ? "neutral" : modelOk ? "ok" : "bad"} /> Model
           </div>
+          {spend && (
+            <div className="health-row" title="Everything Mack has spent in this period, against the global limit (Settings → Spending)">
+              <Dot tone={spend.limit > 0 && spend.spent >= spend.limit ? "bad" : spend.limit > 0 && spend.spent >= spend.limit * 0.8 ? "warn" : "ok"} /> {formatUsd(spend.spent)}
+              {spend.limit > 0 ? ` / ${formatUsd(spend.limit)}` : ""}
+            </div>
+          )}
         </button>
       </aside>
 
       <main className="content">
+        {spend && spend.limit > 0 && spend.spent >= spend.limit && (
+          <div className="banner">
+            <CircleDollarSign size={16} />
+            <div className="banner-text">
+              <strong>The global spending limit is reached</strong> ({formatUsd(spend.spent)} of {formatUsd(spend.limit)}
+              {spend.period === "total" ? "" : ` this ${spend.period}`}). No model calls run until you raise or reset it.
+            </div>
+            <Button size="sm" onClick={() => setPage("settings")}>
+              Spending settings
+            </Button>
+          </div>
+        )}
         {update?.state === "ready" && (
           <div className="banner">
             <Download size={16} />

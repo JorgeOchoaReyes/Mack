@@ -461,15 +461,15 @@ export class SwarmService {
     if (!s.ended && s.members.every((m) => m.state === "ended" || m.state === "stopped" || m.state === "accepted")) this.end(s, "members");
   }
 
-  /** The swarm's spending cap is reached: it ends, as if stopped. */
-  capReached(id: string, limit: number): void {
+  /** A spending limit (the swarm's or the global one) is reached: the swarm ends, as if stopped, and says why. */
+  capReached(id: string, why: string): void {
     const s = this.swarms.get(id);
     if (!s || s.ended) return;
-    this.capped.set(id, limit);
+    this.capped.set(id, why);
     this.end(s, "stop");
   }
 
-  private capped = new Map<string, number>();
+  private capped = new Map<string, string>();
 
   private end(s: Swarm, why: "deadline" | "finish" | "members" | "stop"): void {
     if (s.ended) return;
@@ -481,7 +481,7 @@ export class SwarmService {
     this.record(s, { event: "ended", outcome });
     if (why !== "finish") {
       const cap = this.capped.get(s.id);
-      this.deps.wake(s.projectId, s.sessionId, `Ultramath swarm ${s.id} ended ${outcome} (${why === "deadline" ? "its deadline passed" : cap !== undefined ? `its spending cap of $${cap.toFixed(2)} was reached` : why === "stop" ? "it was stopped" : "every member finished"}). ${s.directions.length} direction(s), ${s.findings.length} finding(s). Read ultramath_status or ultramath_records and report what it found.`);
+      this.deps.wake(s.projectId, s.sessionId, `Ultramath swarm ${s.id} ended ${outcome} (${why === "deadline" ? "its deadline passed" : cap !== undefined ? cap : why === "stop" ? "it was stopped" : "every member finished"}). ${s.directions.length} direction(s), ${s.findings.length} finding(s). Read ultramath_status or ultramath_records and report what it found.`);
     }
   }
 
