@@ -3,8 +3,8 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { execute } from "../core/chat/executor";
-import { McpClient } from "../core/mcp/client";
+import { execute, type ExecutorContext } from "../core/chat/executor";
+import { McpClient, type McpTarget } from "../core/mcp/client";
 import { PluginRegistry, toolName } from "../core/mcp/plugins";
 
 /** A minimal MCP server over newline-delimited JSON-RPC: one tool, `add`. */
@@ -95,16 +95,16 @@ describe("plugins in a chat", () => {
   it("starts a plugin through the guard, offers its tools to that chat only, and stops it", async () => {
     const reg = new PluginRegistry();
     const asked: string[] = [];
-    const ctx = (sessionId: string) => ({
+    const ctx = (sessionId: string): ExecutorContext => ({
       root: dir,
       policy: {},
-      ask: async (call: { name: string }) => (asked.push(call.name), true),
+      ask: async (call) => (asked.push(call.name), true),
       ownTools: () => reg.specs(sessionId),
-      extra: (c: { name: string; args: Record<string, unknown> }) => reg.call(sessionId, c.name, c.args),
+      extra: (c) => reg.call(sessionId, c.name, c.args),
       plugins: {
-        start: (kind: "mcp" | "plugin", name: string, target: never, map: string[]) => reg.start(sessionId, kind, name, target, map),
-        replace: (name: string, target: never, map: string[]) => reg.replace(sessionId, "plugin", name, target, map),
-        stop: (name: string) => reg.stop(sessionId, name),
+        start: (kind, name, target: McpTarget, map) => reg.start(sessionId, kind, name, target, map),
+        replace: (name, target, map) => reg.replace(sessionId, "plugin", name, target, map),
+        stop: (name) => reg.stop(sessionId, name),
         list: () => reg.list(sessionId),
       },
     });
