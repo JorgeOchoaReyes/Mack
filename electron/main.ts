@@ -21,6 +21,7 @@ import { registerChat } from "./chat";
 import { registerUpdates } from "./updates";
 import { newerMackRelease } from "../core/upstream";
 import type { ApprovalPolicy } from "../core/chat/executor";
+import type { ReasoningEffort } from "../core/model/provider";
 
 export type Settings = {
   /** The provider runs use; each provider remembers its own model. */
@@ -38,7 +39,13 @@ export type Settings = {
   /** Use the resident Lean REPL for quick checks when it is built. */
   useRepl: boolean;
   /** What the chat may do without asking, per protected tool; absent means ask. */
-  approvals: Partial<Record<"write_file" | "start_proof", ApprovalPolicy>>;
+  approvals: Partial<Record<string, ApprovalPolicy>>;
+  /** Models that read images: attachments and `view_image` reach only these. */
+  visionModels: string[];
+  /** The reasoning effort a new chat starts with. */
+  chatEffort: ReasoningEffort;
+  /** Offer a likely next message in an empty composer, and title new chats. */
+  suggestions: boolean;
   /** Download and install new Mack releases from GitHub. */
   autoUpdate: boolean;
   /** Check Open Math Harness for methodology changes on every launch. */
@@ -98,6 +105,9 @@ const DEFAULTS: Settings = {
   search: DEFAULT_LIMITS,
   ultramath: DEFAULT_ULTRAMATH,
   approvals: {},
+  visionModels: [],
+  chatEffort: "medium",
+  suggestions: true,
   autoUpdate: true,
   useRepl: true,
   upstreamCheck: true,
@@ -168,7 +178,10 @@ function makeProvider(s: Settings, id: ProviderId): OpenAICompatibleProvider {
   const key = readKey(id);
   if (info.keyRequired && !key) throw new Error(`Add your ${info.label} API key in Setup first.`);
   const headers: Record<string, string> = id === "openrouter" ? { "HTTP-Referer": "https://github.com/JorgeOchoaReyes/Mack", "X-Title": "Mack" } : {};
-  return new OpenAICompatibleProvider(info.label, info.baseUrl ?? s.customBaseUrl, key, headers);
+  return new OpenAICompatibleProvider(info.label, info.baseUrl ?? s.customBaseUrl, key, {
+    extraHeaders: headers,
+    reasoning: id === "openrouter" ? "openrouter" : "openai",
+  });
 }
 
 const isProvider = (id: unknown): id is ProviderId => PROVIDERS.some((p) => p.id === id);
@@ -407,7 +420,7 @@ ipcMain.handle("file:openLean", async (e) => {
 
 registerUpdates(() => readSettings().autoUpdate);
 
-registerChat({
+const chat = registerChat({
   userData,
   readSettings,
   makeProvider: (s) => makeProvider(s, s.provider),
@@ -422,4 +435,7 @@ registerChat({
 loadDotEnv();
 void app.whenReady().then(createWindow);
 app.on("window-all-closed", () => app.quit());
-app.on("will-quit", () => repl?.pool.stop());
+app.on("will-quit", () => {
+  repl?.pool.stop();
+  chat.stopAll();
+});

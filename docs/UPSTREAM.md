@@ -38,7 +38,14 @@ upstream module.
 | `program-files/prover/prompts/putnam.j2` (fixed-loop worker prompt) | `core/search/search.ts` (`workerSystem`) | Ported, competition framing made general |
 | `interfaces/swarm` (Ultramath) + `prompts/templates/agents/swarm/*`, `roles/swarm-member.toml` | `core/ultramath/swarm.ts` | Adapted: a tagged text protocol instead of tools; the Lean verifier judges Lean problems, the coordinating agent judges informal ones; no resume |
 | `program-files/chat-agent` (agent loop and tools: fs, lean, web, pdf) | `core/chat/agent.ts`, `core/chat/tools.ts`, `core/chat/web.ts`, `electron/chat.ts` | Adapted: a text tool protocol so any model works; tools confined to the project folder in-process |
+| `program-files/chat-agent` `stream.rs`, `retry.rs`, nudge, "Between steps", `reminders.rs`, `attachments.rs`, `images.rs`, `reply_images.rs`, `jobs.rs` | `core/chat/agent.ts`, `core/model/openai-compatible.ts`, `core/chat/shell.ts`, `electron/chat.ts`, `src/pages/ChatPage.tsx` | Adapted |
+| `interfaces/shell` (`exec`, background jobs) | `core/chat/shell.ts` (PowerShell in the project folder; every command approved) | Adapted |
+| `interfaces/web` `request` | `core/chat/executor.ts` `http_request` (protected) | Ported |
+| `interfaces/skills` + `program-files/skills` | `core/chat/skills.ts`; `/skill` in `electron/chat.ts` | Adapted: load from a SKILL.md URL; no catalogs yet |
+| `interfaces/suggestions` + `prompts/templates/suggest/*` | `core/chat/suggestions.ts` | Ported |
+| `prompts/templates/compact/*` (context checkpoint) | `core/chat/suggestions.ts`, `core/chat/agent.ts` | Ported |
+| `interfaces/memory` `used` (citations) | `core/chat/memory.ts` `recordCitations` | Adapted: counts feed consolidation |
 | `interfaces/approvals` + `program-files/approvals` (guard runs the recorded call) | `core/chat/executor.ts` | Adapted: per-tool ask/allow policy; approvals are single-use and bound to the recorded call |
-| `program-files/memory` + `memories/write` and `memories/read` templates (extract, consolidate, read path) | `core/chat/memory.ts` | Adapted: extraction and consolidation are model calls returning files; citation counting (`used`) not yet |
+| `program-files/memory` + `memories/write` and `memories/read` templates (extract, consolidate, read path) | `core/chat/memory.ts` | Adapted: extraction and consolidation are model calls returning files |
 | `kernel/` + `platform/` (capability microkernel, bubblewrap confinement) | — | Not ported: Linux-only. Mack restricts each agent's tools in-process instead, which is weaker. |
 | `program-files/openrouter` | `core/model/openai-compatible.ts` behind `core/model/provider.ts`; `core/model/providers.ts` lists Fireworks, OpenRouter and a custom endpoint | Adapted: any OpenAI-compatible provider, OpenRouter among them |

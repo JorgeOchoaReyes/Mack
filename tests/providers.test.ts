@@ -23,7 +23,7 @@ describe("model providers", () => {
 
   it("calls the chat endpoint with the key and extra headers, and reads usage", async () => {
     const calls = stubFetch({ choices: [{ message: { content: "hi" } }], usage: { prompt_tokens: 3, completion_tokens: 5 } });
-    const p = new OpenAICompatibleProvider("OpenRouter", "https://openrouter.ai/api/v1/", "sk-test", { "X-Title": "Mack" });
+    const p = new OpenAICompatibleProvider("OpenRouter", "https://openrouter.ai/api/v1/", "sk-test", { extraHeaders: { "X-Title": "Mack" } });
     const r = await p.chat({ model: "m", messages: [{ role: "user", content: "x" }], maxTokens: 10 });
     expect(r).toEqual({ content: "hi", usage: { promptTokens: 3, completionTokens: 5 } });
     expect(calls[0].url).toBe("https://openrouter.ai/api/v1/chat/completions");

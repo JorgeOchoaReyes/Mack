@@ -1,24 +1,35 @@
 // The research chat's main-process side (build step 4): projects, sessions,
-// the agent's turns, the approvals the person decides, and project memory.
+// the agent's turns, the approvals the person decides, project memory,
+// reminders, background jobs, attachments, suggestions and skills.
 // The renderer sees sessions and decides approvals; it never runs a tool.
 
-import { BrowserWindow, dialog, ipcMain, type WebContents } from "electron";
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { BrowserWindow, dialog, ipcMain } from "electron";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, join } from "node:path";
-import { runTurn, type ChatEvent, type ChatSession } from "../core/chat/agent";
-import { execute } from "../core/chat/executor";
-import { consolidate, extractSession, forgetMemory, readMemory } from "../core/chat/memory";
-import { TOOL_SPECS, type ToolCall } from "../core/chat/tools";
+import { basename, extname, join } from "node:path";
+import { runSubAgent, runTurn, type Attachment, type ChatEvent, type ChatSession, type StoredMessage, type ToolOutcome } from "../core/chat/agent";
+import { execute, type SessionHooks } from "../core/chat/executor";
+import { consolidate, extractSession, forgetMemory, readMemory, recordCitations } from "../core/chat/memory";
+import { JobManager, type Job } from "../core/chat/shell";
+import { listSkills, loadSkill, SKILL_DIR } from "../core/chat/skills";
+import { suggestNext, suggestTitle, type Transcript } from "../core/chat/suggestions";
+import { confine, imageDataUrl, imageType, MAX_IMAGE_BYTES, pdfText, SUB_AGENT_TOOLS, toolSpecs, truncate, type ToolCall } from "../core/chat/tools";
 import type { LeanCheckRun } from "../core/lean/check";
 import type { LeanRun } from "../core/lean/verify";
-import type { ModelProvider } from "../core/model/provider";
+import type { ModelProvider, ReasoningEffort } from "../core/model/provider";
 import type { RunEvent, RunMode, RunRecord, Settings } from "./main";
 
 export type Project = { id: string; name: string; folder: string; createdAt: number };
-export type SessionSummary = Pick<ChatSession, "id" | "projectId" | "title" | "startedAt" | "updatedAt"> & { messages: number };
+export type SessionSummary = Pick<ChatSession, "id" | "projectId" | "title" | "startedAt" | "updatedAt"> & { messages: number; busy: boolean };
 export type PendingApproval = { id: string; sessionId: string; call: ToolCall };
-export type ChatWire = { sessionId: string; event: ChatEvent } | { sessionId: string; approval: PendingApproval } | { sessionId: string; approvalDone: string };
+export type Reminder = { id: string; sessionId: string; text: string; dueAt: number };
+export type ChatWire =
+  | { sessionId: string; event: ChatEvent }
+  | { sessionId: string; approval: PendingApproval }
+  | { sessionId: string; approvalDone: string }
+  | { sessionId: string; suggestion: string | null }
+  | { sessionId: string; changed: true };
+export type SendOptions = { sendNow?: boolean; attachments?: string[] };
 
 type Deps = {
   userData: (...p: string[]) => string;
@@ -26,11 +37,21 @@ type Deps = {
   makeProvider: (s: Settings) => ModelProvider;
   lean: (s: Settings) => { run: LeanRun; check?: LeanCheckRun } | undefined;
   runProof: (problem: string, mode: RunMode, forward: (ev: RunEvent) => void) => Promise<RunRecord>;
+  /** Runs the tools other features register (Ultramath, proof search, MCP) for one session. */
+  extraTools?: (ctx: { projectId: string; root: string; sessionId: string; signal: AbortSignal }) => (call: ToolCall) => Promise<string> | undefined;
 };
 
 export const PROJECTS_ROOT = join(homedir(), "MackProjects");
+export const UPLOADS = "uploads";
 
-export function registerChat(d: Deps): void {
+/** The chat's live state and operations, for other features that wake a session (Ultramath reports, finished runs). */
+export type ChatControl = {
+  wake: (projectId: string, sessionId: string, source: "reminder" | "job", text: string) => void;
+  project: (id: string) => Project;
+  stopAll: () => void;
+};
+
+export function registerChat(d: Deps): ChatControl {
   const registryPath = () => d.userData("projects.json");
   const projectData = (id: string, ...p: string[]) => d.userData("projects", id, ...p);
   const sessionsDir = (id: string) => {
@@ -70,35 +91,243 @@ export function registerChat(d: Deps): void {
   };
   const saveSession = (s: ChatSession) => writeFileSync(join(sessionsDir(s.projectId), `${s.id}.json`), JSON.stringify(s));
 
-  const running = new Map<string, AbortController>();
+  /** Every window hears every chat: a reminder or a finished job can start a turn when no window asked. */
+  const send = (w: ChatWire) => {
+    for (const win of BrowserWindow.getAllWindows()) if (!win.webContents.isDestroyed()) win.webContents.send("chat:event", w);
+  };
+
+  // --- Turns ------------------------------------------------------------------
+
+  /** Live turns: the session object being written, its stop, and what the person sent meanwhile. */
+  const live = new Map<string, { session: ChatSession; ctl: AbortController; sendNow: StoredMessage[]; queued: StoredMessage[] }>();
   const pending = new Map<string, { approval: PendingApproval; resolve: (ok: boolean) => void }>();
 
-  const send = (wc: WebContents, w: ChatWire) => {
-    if (!wc.isDestroyed()) wc.send("chat:event", w);
+  const remindersPath = (projectId: string) => projectData(projectId, "reminders.json");
+  const readReminders = (projectId: string): Reminder[] => {
+    try {
+      return JSON.parse(readFileSync(remindersPath(projectId), "utf8")) as Reminder[];
+    } catch {
+      return [];
+    }
+  };
+  const writeReminders = (projectId: string, rs: Reminder[]) => {
+    mkdirSync(projectData(projectId), { recursive: true });
+    writeFileSync(remindersPath(projectId), JSON.stringify(rs));
+  };
+  const timers = new Map<string, NodeJS.Timeout>();
+  const schedule = (projectId: string, r: Reminder) => {
+    // setTimeout holds at most about 24.8 days; reminders are capped at a week.
+    timers.set(
+      r.id,
+      setTimeout(() => {
+        timers.delete(r.id);
+        writeReminders(projectId, readReminders(projectId).filter((x) => x.id !== r.id));
+        wake(projectId, r.sessionId, "reminder", r.text);
+      }, Math.max(0, r.dueAt - Date.now())),
+    );
   };
 
-  /** Read every session that changed since memory last read it, then consolidate. */
-  const remember = async (projectId: string): Promise<{ extracted: number; consolidated: boolean }> => {
+  const jobs = new JobManager((job: Job) => {
+    const owner = sessionProject.get(job.sessionId);
+    if (!owner) return;
+    const r = job.result!;
+    const head = r.timedOut ? "stopped at its deadline" : `ended with exit code ${r.code}`;
+    wake(owner, job.sessionId, "job", `Background command ${job.id} ${head}: ${job.command.slice(0, 200)}\n${truncate(r.output, 6000)}`);
+  });
+  /** Which project a session that ran a turn belongs to, for waking it when its background command ends. */
+  const sessionProject = new Map<string, string>();
+
+  /** A message that is not the person's starts a turn now, or waits for the running one to end. */
+  function wake(projectId: string, sessionId: string, source: "reminder" | "job", text: string): void {
+    const m: StoredMessage = { role: "user", content: text, at: Date.now(), source };
+    const l = live.get(sessionId);
+    if (l) {
+      l.queued.push(m);
+      return;
+    }
+    const session = loadSession(projectId, sessionId);
+    if (!session) return;
+    session.messages.push(m);
+    saveSession(session);
+    startTurn(projectId, session);
+  }
+
+  const settingsFor = () => {
     const s = d.readSettings();
-    const provider = d.makeProvider(s);
     const model = s.models[s.provider];
     if (!model) throw new Error("Choose a model in Setup first.");
-    let extracted = 0;
-    for (const f of readdirSync(sessionsDir(projectId)).filter((x) => x.endsWith(".json"))) {
-      const session = loadSession(projectId, f.slice(0, -5));
-      if (!session || running.has(session.id) || (session.rememberedAt ?? 0) >= session.updatedAt || session.messages.length < 2) continue;
-      const messages = session.messages.flatMap((m) =>
-        m.role === "tool"
-          ? [{ role: "user" as const, content: `Tool results: ${m.results.map((r) => `[${r.name}] ${r.ok ? "ok" : "failed"}: ${r.output.slice(0, 1500)}`).join("\n")}` }]
-          : [{ role: m.role, content: m.content }],
-      );
-      if (await extractSession(memoryStore(projectId), { id: session.id, startedAt: session.startedAt, messages }, provider, model)) extracted++;
-      session.rememberedAt = Date.now();
-      saveSession(session);
-    }
-    const consolidated = await consolidate(memoryStore(projectId), provider, model);
-    return { extracted, consolidated };
+    return { s, model, provider: d.makeProvider(s), vision: s.visionModels.includes(model) };
   };
+
+  function startTurn(projectId: string, session: ChatSession): void {
+    const p = project(projectId);
+    const { s, model, provider, vision } = settingsFor();
+    sessionProject.set(session.id, p.id);
+    const ctl = new AbortController();
+    const state = { session, ctl, sendNow: [] as StoredMessage[], queued: [] as StoredMessage[] };
+    live.set(session.id, state);
+    const lean = d.lean(s);
+    const memory = memoryStore(p.id);
+
+    const hooks: SessionHooks = {
+      id: session.id,
+      vision,
+      jobs,
+      remind: (text, minutes) => {
+        const r: Reminder = { id: `r${Date.now().toString(36)}`, sessionId: session.id, text, dueAt: Date.now() + minutes * 60_000 };
+        writeReminders(p.id, [...readReminders(p.id), r]);
+        schedule(p.id, r);
+        return `reminder ${r.id} set for ${new Date(r.dueAt).toLocaleString()}`;
+      },
+      reminders: () => {
+        const mine = readReminders(p.id).filter((r) => r.sessionId === session.id);
+        return mine.length ? mine.map((r) => `${r.id}: due ${new Date(r.dueAt).toLocaleString()} — ${r.text.slice(0, 200)}`).join("\n") : "no reminders";
+      },
+      cancelReminder: (id) => {
+        const all = readReminders(p.id);
+        if (!all.some((r) => r.id === id && r.sessionId === session.id)) throw new Error(`no reminder ${id} in this chat`);
+        writeReminders(p.id, all.filter((r) => r.id !== id));
+        clearTimeout(timers.get(id));
+        timers.delete(id);
+        return `cancelled ${id}`;
+      },
+      subAgent: (task) =>
+        runSubAgent(task, {
+          provider,
+          model,
+          projectName: p.name,
+          memory: "",
+          tools: SUB_AGENT_TOOLS,
+          vision,
+          effort: session.effort,
+          signal: ctl.signal,
+          execute: (call) => exec(call, true),
+          onEvent: (e) => e.type === "tool" && send({ sessionId: session.id, event: { type: "status", message: `Sub-agent used ${e.outcome.name}` } }),
+        }),
+    };
+
+    const extra = d.extraTools?.({ projectId: p.id, root: p.folder, sessionId: session.id, signal: ctl.signal });
+
+    const exec = async (call: ToolCall, sub = false): Promise<ToolOutcome> =>
+      execute(call, {
+        root: p.folder,
+        extra: sub ? undefined : extra,
+        lean,
+        policy: sub ? {} : s.approvals,
+        signal: ctl.signal,
+        session: hooks,
+        ask: (recorded) =>
+          new Promise<boolean>((resolve) => {
+            const approval: PendingApproval = { id: `a${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, sessionId: session.id, call: recorded };
+            const finish = (ok: boolean) => {
+              pending.delete(approval.id);
+              send({ sessionId: session.id, approvalDone: approval.id });
+              resolve(ok);
+            };
+            pending.set(approval.id, { approval, resolve: finish });
+            // A stopped turn denies what it was waiting for.
+            ctl.signal.addEventListener("abort", () => pending.has(approval.id) && finish(false), { once: true });
+            send({ sessionId: session.id, approval });
+          }),
+        startProof: async (problem, mode) => {
+          send({ sessionId: session.id, event: { type: "status", message: `A ${mode === "search" ? "search-tree" : "single-agent"} proof run is going…` } });
+          const record = await d.runProof(problem, mode, (ev) => {
+            if (ev.type === "status") send({ sessionId: session.id, event: { type: "status", message: ev.message } });
+          });
+          const solved = record.events.find((x): x is Extract<RunEvent, { type: "solved" }> => x.type === "solved");
+          return solved
+            ? `verified: the strict verifier accepted a proof (run ${record.id} in History; axioms: ${solved.axioms.join(", ") || "none"}):\n\`\`\`lean\n${solved.proof}\`\`\``
+            : `no verified proof (run ${record.id} in History): ${record.message}`;
+        },
+      });
+
+    void (async () => {
+      try {
+        await runTurn(session, {
+          provider,
+          model,
+          projectName: p.name,
+          memory: (await readMemory(memory)).index,
+          skills: await listSkills(p.folder),
+          tools: toolSpecs().map((t) => t.name),
+          vision,
+          effort: session.effort ?? s.chatEffort,
+          signal: ctl.signal,
+          takeSendNow: () => state.sendNow.splice(0),
+          onEvent: (event) => {
+            if (event.type !== "delta") {
+              session.updatedAt = Date.now();
+              saveSession(session);
+            }
+            send({ sessionId: session.id, event });
+          },
+          execute: (call) => exec(call),
+        });
+      } catch (err) {
+        send({ sessionId: session.id, event: { type: "error", message: (err as Error).message } });
+      } finally {
+        live.delete(session.id);
+        session.updatedAt = Date.now();
+        // What arrived during the turn and was not sent now starts the next turn.
+        const next = [...state.sendNow, ...state.queued];
+        session.messages.push(...next);
+        saveSession(session);
+        send({ sessionId: session.id, event: { type: "done" } });
+        if (next.length && !ctl.signal.aborted) startTurn(projectId, session);
+        else void afterTurn(p.id, session);
+      }
+    })();
+  }
+
+  /** A title for an untitled chat and the person's likely next message: both untrusted suggestions. */
+  async function afterTurn(projectId: string, session: ChatSession): Promise<void> {
+    const s = d.readSettings();
+    if (!s.suggestions) return;
+    try {
+      const { model, provider } = settingsFor();
+      if (!session.titled) {
+        const first = session.messages.find((m) => m.role === "user" && (m.source ?? "person") === "person");
+        const title = first && first.role === "user" ? await suggestTitle(provider, model, first.content) : null;
+        const fresh = loadSession(projectId, session.id);
+        if (fresh && title && !live.has(session.id)) {
+          fresh.title = title;
+          fresh.titled = true;
+          saveSession(fresh);
+          send({ sessionId: session.id, changed: true });
+        }
+      }
+      const transcript: Transcript = session.messages.flatMap((m): Transcript =>
+        m.role === "user" && (m.source ?? "person") === "person" ? [{ role: "person" as const, text: m.content }] : m.role === "assistant" ? [{ role: "assistant" as const, text: m.content }] : [],
+      );
+      const suggestion = await suggestNext(provider, model, transcript);
+      if (!live.has(session.id)) send({ sessionId: session.id, suggestion });
+    } catch {
+      // A missing suggestion changes nothing else.
+    }
+  }
+
+  /** What the model is shown of an attached file. */
+  async function attachment(root: string, path: string): Promise<Attachment> {
+    const file = await confine(root, path);
+    const bytes = new Uint8Array(readFileSync(file));
+    const type = imageType(bytes);
+    if (type) {
+      if (bytes.byteLength > MAX_IMAGE_BYTES) return { path, kind: "image", note: "an image larger than 4 MiB; not shown" };
+      return { path, kind: "image", image: await imageDataUrl(root, path), note: "an image" };
+    }
+    if (Buffer.from(bytes.slice(0, 5)).toString() === "%PDF-") {
+      try {
+        return { path, kind: "pdf", text: truncate(await pdfText(bytes)), note: "a PDF, as text" };
+      } catch (e) {
+        return { path, kind: "pdf", note: `a PDF that could not be read: ${(e as Error).message}` };
+      }
+    }
+    const text = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+    if (!text.includes("�")) return { path, kind: "text", text: truncate(text), note: "text" };
+    return { path, kind: "other", note: "not text, an image or a PDF; only named" };
+  }
+
+  // --- IPC --------------------------------------------------------------------
 
   ipcMain.handle("projects:list", () => projects());
 
@@ -130,7 +359,7 @@ export function registerChat(d: Deps): void {
       .flatMap((f) => {
         try {
           const s = JSON.parse(readFileSync(join(sessionsDir(projectId), f), "utf8")) as ChatSession;
-          return [{ id: s.id, projectId: s.projectId, title: s.title, startedAt: s.startedAt, updatedAt: s.updatedAt, messages: s.messages.length }];
+          return [{ id: s.id, projectId: s.projectId, title: s.title, startedAt: s.startedAt, updatedAt: s.updatedAt, messages: s.messages.length, busy: live.has(s.id) }];
         } catch {
           return [];
         }
@@ -138,91 +367,102 @@ export function registerChat(d: Deps): void {
       .sort((a, b) => b.updatedAt - a.updatedAt),
   );
 
-  ipcMain.handle("sessions:get", (_e, projectId: string, id: string) => loadSession(safeId(projectId), id));
+  /** A live session is read from memory, so a window sees what the running turn has written. */
+  ipcMain.handle("sessions:get", (_e, projectId: string, id: string) => live.get(safeId(id))?.session ?? loadSession(safeId(projectId), id));
 
   ipcMain.handle("sessions:delete", (_e, projectId: string, id: string) => {
+    live.get(id)?.ctl.abort();
     rmSync(join(sessionsDir(safeId(projectId)), `${safeId(id)}.json`), { force: true });
   });
 
-  ipcMain.handle("chat:send", async (e, projectId: string, sessionId: string | null, text: string) => {
+  ipcMain.handle("sessions:effort", (_e, projectId: string, id: string, effort: ReasoningEffort) => {
+    const sess = live.get(safeId(id))?.session ?? loadSession(safeId(projectId), id);
+    if (!sess) throw new Error("no such chat");
+    sess.effort = effort;
+    saveSession(sess);
+  });
+
+  /** Copy files the person picked into the project's uploads folder; returns their project paths. */
+  ipcMain.handle("chat:attach", async (e, projectId: string) => {
     const p = project(projectId);
-    const s = d.readSettings();
-    const model = s.models[s.provider];
-    if (!model) throw new Error("Choose a model in Setup first.");
-    const provider = d.makeProvider(s);
+    const win = BrowserWindow.fromWebContents(e.sender);
+    const r = await dialog.showOpenDialog(win!, { properties: ["openFile", "multiSelections"], title: "Attach files" });
+    if (r.canceled) return [];
+    mkdirSync(join(p.folder, UPLOADS), { recursive: true });
+    return r.filePaths.map((src) => {
+      if (statSync(src).size > 50_000_000) throw new Error(`${basename(src)} is larger than 50 MB`);
+      let name = basename(src);
+      for (let i = 2; existsSync(join(p.folder, UPLOADS, name)); i++) name = `${basename(src, extname(src))}-${i}${extname(src)}`;
+      copyFileSync(src, join(p.folder, UPLOADS, name));
+      return `${UPLOADS}/${name}`;
+    });
+  });
+
+  ipcMain.handle("chat:send", async (_e, projectId: string, sessionId: string | null, text: string, opts: SendOptions = {}) => {
+    const p = project(projectId);
+    settingsFor();
+    const attachments = await Promise.all((opts.attachments ?? []).map((a) => attachment(p.folder, a)));
+    const message: StoredMessage = { role: "user", content: text, at: Date.now(), source: "person", ...(attachments.length ? { attachments } : {}) };
+    const l = sessionId ? live.get(sessionId) : undefined;
+    if (l) {
+      // While the agent works: "send now" reaches it between steps; otherwise it waits for the turn's end.
+      (opts.sendNow ? l.sendNow : l.queued).push(message);
+      send({ sessionId: l.session.id, changed: true });
+      return l.session.id;
+    }
     const session: ChatSession = (sessionId && loadSession(p.id, sessionId)) || {
       id: `s${Date.now().toString(36)}`,
       projectId: p.id,
       title: text.trim().split("\n")[0].slice(0, 60) || "New chat",
       startedAt: Date.now(),
       updatedAt: Date.now(),
+      effort: d.readSettings().chatEffort,
       messages: [],
     };
-    if (running.has(session.id)) throw new Error("this chat is still answering");
-    session.messages.push({ role: "user", content: text, at: Date.now() });
+    session.messages.push(message);
+    // `/skill` commands: the harness makes the call itself, before the model's first step, recorded like any tool call.
+    const skill = /^\/skill(?:\s+(\S+))?\s*$/m.exec(text.trim().split("\n")[0]);
+    if (skill) {
+      let outcome: ToolOutcome;
+      try {
+        const arg = skill[1];
+        const output = !arg
+          ? (await listSkills(p.folder)).map((k) => `- ${k.name}: ${k.description}`).join("\n") || "the project has no skills"
+          : /^https:\/\//.test(arg)
+            ? await loadSkill(p.folder, arg)
+            : readFileSync(await confine(p.folder, `${SKILL_DIR}/${arg}/SKILL.md`), "utf8");
+        outcome = { name: arg && /^https:/.test(arg) ? "skills_load" : "skills_list", args: arg ? { skill: arg } : {}, ok: true, output: truncate(output), protected: false };
+      } catch (err) {
+        outcome = { name: "skills_load", args: { skill: skill[1] }, ok: false, output: (err as Error).message, protected: false };
+      }
+      session.messages.push({ role: "tool", results: [outcome], at: Date.now() });
+    }
     session.updatedAt = Date.now();
     saveSession(session);
-    const ctl = new AbortController();
-    running.set(session.id, ctl);
-    const wc = e.sender;
-    const lean = d.lean(s);
-    void (async () => {
-      try {
-        await runTurn(session, {
-          provider,
-          model,
-          projectName: p.name,
-          memory: (await readMemory(memoryStore(p.id))).index,
-          signal: ctl.signal,
-          onEvent: (event) => {
-            session.updatedAt = Date.now();
-            saveSession(session);
-            send(wc, { sessionId: session.id, event });
-          },
-          execute: (call) =>
-            execute(call, {
-              root: p.folder,
-              lean,
-              policy: s.approvals,
-              signal: ctl.signal,
-              ask: (recorded) =>
-                new Promise<boolean>((resolve) => {
-                  const approval: PendingApproval = { id: `a${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, sessionId: session.id, call: recorded };
-                  const finish = (ok: boolean) => {
-                    pending.delete(approval.id);
-                    send(wc, { sessionId: session.id, approvalDone: approval.id });
-                    resolve(ok);
-                  };
-                  pending.set(approval.id, { approval, resolve: finish });
-                  // A stopped turn denies what it was waiting for.
-                  ctl.signal.addEventListener("abort", () => pending.has(approval.id) && finish(false), { once: true });
-                  send(wc, { sessionId: session.id, approval });
-                }),
-              startProof: async (problem, mode) => {
-                send(wc, { sessionId: session.id, event: { type: "status", message: `A ${mode === "search" ? "search-tree" : "single-agent"} proof run is going…` } });
-                const record = await d.runProof(problem, mode, (ev) => {
-                  if (ev.type === "status") send(wc, { sessionId: session.id, event: { type: "status", message: ev.message } });
-                });
-                const solved = record.events.find((x): x is Extract<RunEvent, { type: "solved" }> => x.type === "solved");
-                return solved
-                  ? `verified: the strict verifier accepted a proof (run ${record.id} in History; axioms: ${solved.axioms.join(", ") || "none"}):\n\`\`\`lean\n${solved.proof}\`\`\``
-                  : `no verified proof (run ${record.id} in History): ${record.message}`;
-              },
-            }),
-        });
-      } catch (err) {
-        send(wc, { sessionId: session.id, event: { type: "error", message: (err as Error).message } });
-      } finally {
-        running.delete(session.id);
-        session.updatedAt = Date.now();
-        saveSession(session);
-        send(wc, { sessionId: session.id, event: { type: "done" } });
-      }
-    })();
+    startTurn(p.id, session);
     return session.id;
   });
 
-  ipcMain.handle("chat:stop", (_e, sessionId: string) => running.get(sessionId)?.abort());
+  ipcMain.handle("chat:stop", (_e, sessionId: string) => live.get(sessionId)?.ctl.abort());
+
+  ipcMain.handle("chat:suggestStart", async () => {
+    if (!d.readSettings().suggestions) return null;
+    try {
+      const { model, provider } = settingsFor();
+      return await suggestNext(provider, model, []);
+    } catch {
+      return null;
+    }
+  });
+
+  /** A project image as a data URL, for an image the assistant shows in a reply. */
+  ipcMain.handle("project:image", async (_e, projectId: string, path: string) => {
+    try {
+      return await imageDataUrl(project(projectId).folder, path);
+    } catch {
+      return null;
+    }
+  });
 
   ipcMain.handle("approvals:list", () => [...pending.values()].map((p) => p.approval));
 
@@ -233,9 +473,44 @@ export function registerChat(d: Deps): void {
     p.resolve(approve === true);
   });
 
+  /** Read every session that changed since memory last read it, then consolidate. */
+  const remember = async (projectId: string): Promise<{ extracted: number; consolidated: boolean }> => {
+    const { model, provider } = settingsFor();
+    let extracted = 0;
+    for (const f of readdirSync(sessionsDir(projectId)).filter((x) => x.endsWith(".json"))) {
+      const session = loadSession(projectId, f.slice(0, -5));
+      if (!session || live.has(session.id) || (session.rememberedAt ?? 0) >= session.updatedAt || session.messages.length < 2) continue;
+      const messages = session.messages.flatMap((m) =>
+        m.role === "tool"
+          ? [{ role: "user" as const, content: `Tool results: ${m.results.map((r) => `[${r.name}] ${r.ok ? "ok" : "failed"}: ${r.output.slice(0, 1500)}`).join("\n")}` }]
+          : [{ role: m.role, content: m.content }],
+      );
+      if (await extractSession(memoryStore(projectId), { id: session.id, startedAt: session.startedAt, messages }, provider, model)) extracted++;
+      await recordCitations(memoryStore(projectId), session.citations ?? []);
+      session.citations = [];
+      session.rememberedAt = Date.now();
+      saveSession(session);
+    }
+    const consolidated = await consolidate(memoryStore(projectId), provider, model);
+    return { extracted, consolidated };
+  };
+
   ipcMain.handle("memory:get", async (_e, projectId: string) => readMemory(memoryStore(safeId(projectId))));
   ipcMain.handle("memory:update", async (_e, projectId: string) => remember(safeId(projectId)));
   ipcMain.handle("memory:forget", async (_e, projectId: string) => forgetMemory(memoryStore(safeId(projectId))));
 
-  ipcMain.handle("chat:tools", () => TOOL_SPECS);
+  ipcMain.handle("chat:tools", () => toolSpecs());
+  ipcMain.handle("skills:list", async (_e, projectId: string) => listSkills(project(projectId).folder));
+
+  // Reminders survive a restart: schedule what is still pending.
+  for (const p of projects()) for (const r of readReminders(p.id)) schedule(p.id, r);
+
+  return {
+    wake,
+    project,
+    stopAll: () => {
+      jobs.stopAll();
+      for (const l of live.values()) l.ctl.abort();
+    },
+  };
 }

@@ -77,7 +77,32 @@ What follows was written down by earlier sessions of this project and consolidat
 
 Treat it the way you would treat notes from a colleague who is not in the room: useful, probably right, occasionally stale. When it names a file or a Lean name, check that the thing still exists before you act on it. When it conflicts with what you can see, what you can see wins. When it conflicts with what the person just said, the person wins.
 
-${memory.trim()}`;
+${memory.trim()}
+
+## Citing what you used
+
+When something here actually changed what you did, cite it, so that what gets used survives the next consolidation and what does not gets dropped. Put the citations at the end of your reply, in this form:
+
+\`\`\`
+<citation_entries>
+the memory line you used|note=[why it mattered]
+</citation_entries>
+\`\`\`
+
+Cite what you read and used. Do not cite something you merely scrolled past — an inflated count keeps stale memories alive at the expense of useful ones.`;
+}
+
+/** Count what a session cited (upstream `used`): the harness's bookkeeping about the model, never a model's tool. */
+export async function recordCitations(s: MemoryStore, cited: string[]): Promise<void> {
+  if (!cited.length) return;
+  const file = join(s.dir, "used.json");
+  const used = JSON.parse(await readOr(file, "{}")) as Record<string, number>;
+  for (const c of cited) {
+    const line = c.split("|")[0].trim().slice(0, 300);
+    if (line) used[line] = (used[line] ?? 0) + 1;
+  }
+  await mkdir(s.dir, { recursive: true });
+  await writeFile(file, JSON.stringify(used), "utf8");
 }
 
 export type MemoryStore = { dir: string };
@@ -169,13 +194,18 @@ export async function consolidate(s: MemoryStore, provider: ModelProvider, model
   const pending = JSON.parse(await readOr(p.pending, "[]")) as string[];
   if (!pending.length) return false;
   const records = await Promise.all(pending.map(async (n) => `## ${n}\n${await readOr(join(p.records, n))}`));
+  const used = Object.entries(JSON.parse(await readOr(join(s.dir, "used.json"), "{}")) as Record<string, number>)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 60)
+    .map(([line, n]) => `- cited ${n}×: ${line}`)
+    .join("\n");
   const r = await provider.chat({
     model,
     messages: [
       { role: "system", content: CONSOLIDATION_SYSTEM },
       {
         role: "user",
-        content: `Current MEMORY.md:\n\`\`\`\n${await readOr(p.index, "(empty)")}\n\`\`\`\n\nCurrent memory_summary.md:\n\`\`\`\n${await readOr(p.summary, "(empty)")}\n\`\`\`\n\nRecords added since the last consolidation:\n\n${records.join("\n\n")}`,
+        content: `Current MEMORY.md:\n\`\`\`\n${await readOr(p.index, "(empty)")}\n\`\`\`\n\nCurrent memory_summary.md:\n\`\`\`\n${await readOr(p.summary, "(empty)")}\n\`\`\`\n\nRecords added since the last consolidation:\n\n${records.join("\n\n")}${used ? `\n\nHow often sessions cited memory lines as having changed what they did (lines never cited are the first to drop when the index is long):\n${used}` : ""}`,
       },
     ],
     maxTokens: 4096,

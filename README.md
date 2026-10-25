@@ -29,6 +29,12 @@ and how Mack keeps up with upstream.
   project files and PDFs, checks and verifies Lean, searches and reads the
   web, and, once you approve each exact call, writes files or starts proof
   runs. What it can do is listed in the app and is nothing more.
+- **A full agent.** Streaming replies, a reasoning depth per chat, sub-agents,
+  a shell and background commands (each command approved), reminders the
+  agent sets to come back to long work, attached files and images,
+  messages you send while it works ("send now" or queued), checkpoints that
+  keep long chats going, suggested next messages and chat titles, and the
+  project's skills (`.skill/<name>/SKILL.md`, `/skill` to list or load).
 - **Project memory.** When you leave a chat, Mack (not the assistant) writes a
   record of it and folds the records into a short index that later chats
   are given as notes about the past. No chat can write memory by asking.

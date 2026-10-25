@@ -4,11 +4,13 @@
 // on approval the guard itself runs the call it recorded, so nothing can
 // change between what was approved and what runs. Approvals are single-use.
 
-import { readFile } from "node:fs/promises";
+import { readFile, rm, rmdir, stat } from "node:fs/promises";
+import { describeResult, runCommand, type JobManager } from "./shell";
+import { loadSkill } from "./skills";
 import { checkFromRun, describeCheck, type LeanCheckRun } from "../lean/check";
 import { describeRejection, pristineType, verifyText, type LeanRun } from "../lean/verify";
 import type { ToolOutcome } from "./agent";
-import { confine, listFiles, readProjectFile, searchFiles, TOOL_SPECS, truncate, writeProjectFile, type ToolCall } from "./tools";
+import { confine, imageDataUrl, listFiles, readProjectFile, searchFiles, toolSpecs, truncate, writeProjectFile, type ToolCall } from "./tools";
 import { fetchUrl, webSearch } from "./web";
 
 export type ApprovalPolicy = "ask" | "allow";
@@ -22,7 +24,41 @@ export type ExecutorContext = {
   ask: (call: ToolCall) => Promise<boolean>;
   /** Start a proof run on a frozen file; resolves with a description of its outcome. */
   startProof?: (problem: string, mode: "single" | "search") => Promise<string>;
+  /** What only a chat session has: its reminders, background jobs, sub-agents, and whether its model reads images. */
+  session?: SessionHooks;
+  /** Runs a registered extra tool (`registerTools`); undefined when the name is not one. */
+  extra?: (call: ToolCall) => Promise<string> | undefined;
   signal?: AbortSignal;
+};
+
+export type SessionHooks = {
+  id: string;
+  vision: boolean;
+  remind: (text: string, minutes: number) => string;
+  reminders: () => string;
+  cancelReminder: (id: string) => string;
+  jobs: JobManager;
+  subAgent: (task: string) => Promise<string>;
+};
+
+const LOCAL = /^(localhost|127\.|10\.|192\.168\.|169\.254\.|0\.|\[?::1)/;
+
+async function httpRequest(a: Record<string, unknown>, signal?: AbortSignal): Promise<string> {
+  const u = new URL(str(a.url, "url"));
+  if (u.protocol !== "https:") throw new Error("only https URLs");
+  if (LOCAL.test(u.hostname)) throw new Error("local addresses are not reached");
+  const method = typeof a.method === "string" ? a.method.toUpperCase() : "GET";
+  if (!["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"].includes(method)) throw new Error(`method ${method} is not allowed`);
+  const headers: Record<string, string> = {};
+  if (a.headers && typeof a.headers === "object") for (const [k, v] of Object.entries(a.headers)) if (typeof v === "string") headers[k] = v;
+  const res = await fetch(u, { method, headers, body: typeof a.body === "string" && method !== "GET" && method !== "HEAD" ? a.body : undefined, signal });
+  const text = await res.text();
+  return `HTTP ${res.status} ${res.statusText}\ncontent-type: ${res.headers.get("content-type") ?? ""}\n\n${truncate(text)}`;
+}
+
+const needSession = (c: ExecutorContext): SessionHooks => {
+  if (!c.session) throw new Error("this tool is only available in a chat");
+  return c.session;
 };
 
 const str = (v: unknown, name: string): string => {
@@ -67,14 +103,67 @@ async function run(call: ToolCall, c: ExecutorContext): Promise<string> {
       const problem = await readFile(await confine(c.root, str(a.path, "path")), "utf8");
       return c.startProof(problem, a.mode === "single" ? "single" : "search");
     }
-    default:
+    case "remove_file": {
+      const file = await confine(c.root, str(a.path, "path"));
+      if (file === (await confine(c.root, "."))) throw new Error("the project folder itself is not removed");
+      if ((await stat(file)).isDirectory()) await rmdir(file);
+      else await rm(file);
+      return `removed ${String(a.path)}`;
+    }
+    case "shell_exec": {
+      const command = str(a.command, "command");
+      const background = a.background === true || a.background === "true";
+      const limit = background ? 3600 : 600;
+      const seconds = Math.min(limit, Math.max(1, num(a.timeout_s) ?? (background ? limit : 120)));
+      if (background) {
+        const job = needSession(c).jobs.start(needSession(c).id, c.root, command, seconds * 1000);
+        return `started background command ${job.id}; this chat is told when it ends (shell_jobs reads its output)`;
+      }
+      return describeResult(await runCommand(c.root, command, seconds * 1000, c.signal), seconds * 1000);
+    }
+    case "shell_jobs": {
+      const s = needSession(c);
+      const action = str(a.action, "action");
+      if (action === "list") return s.jobs.list(s.id);
+      if (action === "output") return truncate(s.jobs.output(s.id, str(a.id, "id")));
+      if (action === "stop") return s.jobs.stop(s.id, str(a.id, "id"));
+      throw new Error("action is list, output or stop");
+    }
+    case "http_request":
+      return httpRequest(a, c.signal);
+    case "view_image": {
+      const s = needSession(c);
+      const url = await imageDataUrl(c.root, str(a.path, "path"));
+      if (!s.vision) return "Your model does not read images here; the person can turn image reading on in the chat's tools panel.";
+      viewImages.set(call, [url]);
+      return `the image ${String(a.path)} follows`;
+    }
+    case "conversation_remind": {
+      const minutes = Math.min(10080, Math.max(1, num(a.in_minutes) ?? 10));
+      return needSession(c).remind(str(a.text, "text").slice(0, 2000), minutes);
+    }
+    case "conversation_reminders":
+      return needSession(c).reminders();
+    case "conversation_cancel_reminder":
+      return needSession(c).cancelReminder(str(a.id, "id"));
+    case "run_agent":
+      return needSession(c).subAgent(str(a.task, "task"));
+    case "skills_load":
+      return loadSkill(c.root, str(a.url, "url"), c.signal);
+    default: {
+      const r = c.extra?.(call);
+      if (r) return r;
       throw new Error(`unknown tool \`${call.name}\``);
+    }
   }
 }
 
+/** Images `view_image` read for a call, handed to its outcome. */
+const viewImages = new WeakMap<ToolCall, string[]>();
+
 /** Run one call, through the guard when it is protected. Never throws: a failure is an outcome. */
 export async function execute(call: ToolCall, c: ExecutorContext): Promise<ToolOutcome> {
-  const spec = TOOL_SPECS.find((t) => t.name === call.name);
+  const spec = toolSpecs().find((t) => t.name === call.name);
   const prot = !!spec?.protected;
   // The guard records the call: what runs is this copy, whatever happens to the original.
   const recorded: ToolCall = { name: call.name, args: JSON.parse(JSON.stringify(call.args)) as Record<string, unknown> };
@@ -87,7 +176,9 @@ export async function execute(call: ToolCall, c: ExecutorContext): Promise<ToolO
     }
   }
   try {
-    return { ...recorded, ok: true, output: await run(recorded, c), protected: prot, decision };
+    const output = await run(recorded, c);
+    const images = viewImages.get(recorded);
+    return { ...recorded, ok: true, output, protected: prot, decision, ...(images ? { images } : {}) };
   } catch (e) {
     return { ...recorded, ok: false, output: (e as Error).message, protected: prot, decision };
   }

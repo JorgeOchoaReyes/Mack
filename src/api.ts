@@ -5,7 +5,8 @@ import type { ProveEvent } from "../core/prove";
 import type { ProviderId } from "../core/model/providers";
 import type { ChatEvent, ChatSession, StoredMessage, ToolOutcome } from "../core/chat/agent";
 import type { ToolSpec } from "../core/chat/tools";
-import type { ChatWire, PendingApproval, Project, SessionSummary } from "../electron/chat";
+import type { ChatWire, PendingApproval, Project, SendOptions, SessionSummary } from "../electron/chat";
+import type { ReasoningEffort } from "../core/model/provider";
 import type { UpdateState } from "../electron/updates";
 import type { UpstreamReport } from "../core/upstream";
 import type { Health, KeySource, RunEvent, RunMode, RunRecord, RunSummary, Settings } from "../electron/main";
@@ -18,7 +19,7 @@ declare global {
 }
 
 export type Upstream = (UpstreamReport & { dismissed?: boolean }) | { kind: "off" };
-export type { ProviderId, UpdateState };
+export type { ProviderId, ReasoningEffort, UpdateState };
 export type { ChatEvent, ChatSession, ChatWire, PendingApproval, Project, SessionSummary, StoredMessage, ToolOutcome, ToolSpec };
 export type { Health, KeySource, ProveEvent, RunEvent, RunMode, RunRecord, RunSummary, SetupEvent, Settings };
 
@@ -53,7 +54,12 @@ export const api = {
   listSessions: (projectId: string) => m().listSessions(projectId) as Promise<SessionSummary[]>,
   getSession: (projectId: string, id: string) => m().getSession(projectId, id) as Promise<ChatSession | null>,
   deleteSession: (projectId: string, id: string) => m().deleteSession(projectId, id) as Promise<void>,
-  sendChat: (projectId: string, sessionId: string | null, text: string) => m().sendChat(projectId, sessionId, text),
+  sendChat: (projectId: string, sessionId: string | null, text: string, opts?: SendOptions) => m().sendChat(projectId, sessionId, text, opts),
+  attachFiles: (projectId: string) => m().attachFiles(projectId),
+  setEffort: (projectId: string, sessionId: string, effort: ReasoningEffort) => m().setEffort(projectId, sessionId, effort) as Promise<void>,
+  suggestStart: () => m().suggestStart(),
+  projectImage: (projectId: string, path: string) => m().projectImage(projectId, path),
+  listSkills: (projectId: string) => m().listSkills(projectId) as Promise<{ name: string; description: string }[]>,
   stopChat: (sessionId: string) => m().stopChat(sessionId) as Promise<void>,
   onChatEvent: (cb: (e: ChatWire) => void) => m().onChatEvent((e) => cb(e as ChatWire)),
   listApprovals: () => m().listApprovals() as Promise<PendingApproval[]>,

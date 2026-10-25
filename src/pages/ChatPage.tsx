@@ -1,4 +1,4 @@
-import { Brain, ChevronRight, FolderOpen, FolderPlus, MessageSquarePlus, Send, ShieldAlert, Square, Trash2, Wrench, X } from "lucide-react";
+import { AlarmClock, Brain, ChevronRight, FolderOpen, FolderPlus, Lightbulb, MessageSquarePlus, Paperclip, Send, ShieldAlert, Square, Terminal, Trash2, Wrench, X, Zap } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   api,
@@ -8,6 +8,7 @@ import {
   type Health,
   type PendingApproval,
   type Project,
+  type ReasoningEffort,
   type SessionSummary,
   type Settings,
   type StoredMessage,
@@ -15,11 +16,12 @@ import {
   type ToolSpec,
 } from "../api";
 import { CodeEditor } from "../components/CodeEditor";
-import { Badge, Button, Spinner, timeAgo } from "../components/ui";
+import { Badge, Button, Spinner, timeAgo, Toggle } from "../components/ui";
 
 type Props = { health: Health | null; settings: Settings; saveSettings: (s: Partial<Settings>) => Promise<void>; onGoSetup: () => void };
 
 const LAST_PROJECT = "mack.chatProject";
+const EFFORTS: ReasoningEffort[] = ["off", "on", "low", "medium", "high", "xhigh"];
 
 export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -33,9 +35,12 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [session, setSession] = useState<ChatSession | null>(null);
   const [draft, setDraft] = useState("");
+  const [files, setFiles] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  const [streaming, setStreaming] = useState("");
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
+  const [suggestion, setSuggestion] = useState<string | null>(null);
   const [approvals, setApprovals] = useState<PendingApproval[]>([]);
   const [panel, setPanel] = useState<"none" | "memory" | "tools">("none");
   const [newName, setNewName] = useState("");
@@ -52,6 +57,14 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
     if (!ps.some((p) => p.id === projectId)) setProjectId(ps[0]?.id ?? "");
   }, [projectId]);
 
+  const reloadSession = useCallback(async () => {
+    const cur = sessionRef.current;
+    if (cur) {
+      const s = await api.getSession(cur.projectId, cur.id);
+      if (s) setSession({ ...s, messages: [...s.messages] });
+    }
+  }, []);
+
   useEffect(() => {
     void reloadProjects();
     void api.listApprovals().then(setApprovals);
@@ -65,33 +78,56 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
       // Remembering the last project is only a convenience.
     }
     setSession(null);
-    if (projectId) void api.listSessions(projectId).then(setSessions);
-    else setSessions([]);
+    setSuggestion(null);
+    if (projectId) {
+      void api.listSessions(projectId).then(setSessions);
+      if (settings.suggestions) void api.suggestStart().then((s) => !sessionRef.current && setSuggestion(s));
+    } else setSessions([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
   useEffect(
     () =>
       api.onChatEvent((w: ChatWire) => {
-        if ("approval" in w) setApprovals((a) => [...a, w.approval]);
-        else if ("approvalDone" in w) setApprovals((a) => a.filter((x) => x.id !== w.approvalDone));
-        else {
-          const cur = sessionRef.current;
-          if (w.event.type === "status") setStatus(w.event.message);
-          if (w.event.type === "error") setError(w.event.message);
-          if (w.event.type === "done") {
-            setBusy(false);
-            setStatus("");
-          }
-          // The stored session is the truth: reload it rather than mirroring every event.
-          if (cur && cur.id === w.sessionId && w.event.type !== "status") void api.getSession(cur.projectId, cur.id).then((s) => s && setSession(s));
+        if ("approval" in w) return setApprovals((a) => [...a, w.approval]);
+        if ("approvalDone" in w) return setApprovals((a) => a.filter((x) => x.id !== w.approvalDone));
+        const cur = sessionRef.current;
+        const mine = cur?.id === w.sessionId;
+        if ("suggestion" in w) {
+          if (mine) setSuggestion(w.suggestion);
+          return;
         }
+        if ("changed" in w) {
+          if (mine) void reloadSession();
+          if (cur) void api.listSessions(cur.projectId).then(setSessions);
+          return;
+        }
+        const e = w.event;
+        if (!mine) {
+          if (e.type === "done" && cur) void api.listSessions(cur.projectId).then(setSessions);
+          return;
+        }
+        if (e.type === "delta") return setStreaming((t) => t + e.text);
+        if (e.type === "status") return setStatus(e.message);
+        if (e.type === "error") setError(e.message);
+        if (e.type === "assistant" || e.type === "tool") {
+          setStreaming("");
+          setBusy(true);
+        }
+        if (e.type === "done") {
+          setBusy(false);
+          setStreaming("");
+          setStatus("");
+          if (cur) void api.listSessions(cur.projectId).then(setSessions);
+        }
+        void reloadSession();
       }),
-    [],
+    [reloadSession],
   );
 
   useEffect(() => {
-    scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
-  }, [session?.messages.length, approvals.length]);
+    scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
+  }, [session?.messages.length, approvals.length, streaming]);
 
   /** Leaving a session lets memory read it; failures only cost a memory, never the chat. */
   const rememberInBackground = () => {
@@ -101,18 +137,26 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
   const openSession = async (id: string | null) => {
     rememberInBackground();
     setError("");
-    setSession(id ? await api.getSession(projectId, id) : null);
+    setSuggestion(null);
+    setStreaming("");
+    const s = id ? await api.getSession(projectId, id) : null;
+    setSession(s);
+    setBusy(!!id && !!sessions.find((x) => x.id === id)?.busy);
   };
 
-  const sendMessage = async () => {
+  const sendMessage = async (sendNow = false) => {
     const text = draft.trim();
-    if (!text || !projectId || busy) return;
+    if ((!text && !files.length) || !projectId) return;
     setDraft("");
+    setFiles([]);
     setError("");
-    setBusy(true);
-    setStatus("Thinking…");
+    setSuggestion(null);
+    if (!busy) {
+      setBusy(true);
+      setStatus("Thinking…");
+    }
     try {
-      const id = await api.sendChat(projectId, session?.id ?? null, text);
+      const id = await api.sendChat(projectId, session?.id ?? null, text, { sendNow, attachments: files });
       const s = await api.getSession(projectId, id);
       setSession(s);
       setSessions(await api.listSessions(projectId));
@@ -124,6 +168,7 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
 
   const sessionApprovals = approvals.filter((a) => a.sessionId === session?.id);
   const otherApprovals = approvals.filter((a) => a.sessionId !== session?.id);
+  const effort = session?.effort ?? settings.chatEffort;
 
   return (
     <div className="chat">
@@ -179,7 +224,9 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
           {sessions.map((s) => (
             <div key={s.id} className={`chat-session ${session?.id === s.id ? "active" : ""}`}>
               <button onClick={() => void openSession(s.id)}>
-                <span className="chat-session-title">{s.title}</span>
+                <span className="chat-session-title">
+                  {s.busy && <Spinner size={11} />} {s.title}
+                </span>
                 <span className="muted small">{timeAgo(s.updatedAt)}</span>
               </button>
               <button
@@ -208,30 +255,42 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
 
       <section className="chat-main">
         {panel === "memory" && projectId && <MemoryPanel projectId={projectId} onClose={() => setPanel("none")} />}
-        {panel === "tools" && <ToolsPanel settings={settings} saveSettings={saveSettings} onClose={() => setPanel("none")} />}
+        {panel === "tools" && <ToolsPanel health={health} settings={settings} saveSettings={saveSettings} onClose={() => setPanel("none")} />}
 
         <div className="chat-scroll" ref={scroller}>
           {!ready && (
             <div className="notice">
-              Choose a model provider, key and model in <button className="link" onClick={onGoSetup}>Setup</button> to chat.
+              Choose a model provider, key and model in{" "}
+              <button className="link" onClick={onGoSetup}>
+                Setup
+              </button>{" "}
+              to chat.
             </div>
           )}
           {projects.length === 0 && (
             <div className="how">
               <h3>Research chat</h3>
               <p className="muted">
-                Create a project to start. A project is a folder: the assistant reads and (with your approval) writes files there, checks Lean, searches the web
-                and reads PDFs, and can start proof runs once you approve. What it learns is kept as project memory for later chats.
+                Create a project to start. A project is a folder: the assistant reads and (with your approval) writes files there, runs commands, checks Lean,
+                searches the web and reads PDFs, starts proof runs and Ultramath once you approve, and keeps project memory for later chats.
               </p>
             </div>
           )}
           {project && !session && (
             <div className="how">
               <h3>{project.name}</h3>
-              <p className="muted">Ask about a problem, a paper or a proof. Put PDFs and .lean files in the project folder for the assistant to read.</p>
+              <p className="muted">
+                Ask about a problem, a paper or a proof. Attach PDFs, images and .lean files with the clip, or put them in the project folder. Type{" "}
+                <code>/skill</code> to list the project's skills.
+              </p>
             </div>
           )}
-          {session?.messages.map((m, i) => <Message key={i} m={m} />)}
+          {session?.messages.map((m, i) => <Message key={i} m={m} projectId={projectId} />)}
+          {streaming && (
+            <div className="chat-msg chat-assistant">
+              <RichText text={streaming} projectId={projectId} />
+            </div>
+          )}
           {sessionApprovals.map((a) => (
             <ApprovalCard key={a.id} approval={a} />
           ))}
@@ -248,29 +307,81 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
           className="chat-compose"
           onSubmit={(e) => {
             e.preventDefault();
-            void sendMessage();
+            void sendMessage(false);
           }}
         >
-          <textarea
-            className="input grow"
-            rows={3}
-            placeholder={project ? `Message the assistant about ${project.name}…` : "Create a project first"}
-            value={draft}
-            disabled={!project || !ready}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                void sendMessage();
-              }
-            }}
-          />
+          <div className="chat-compose-main">
+            {!draft && suggestion && !busy && (
+              <button type="button" className="suggestion" onClick={() => setDraft(suggestion)} title="A suggestion: click to put it in the box">
+                <Lightbulb size={13} /> {suggestion}
+              </button>
+            )}
+            {files.length > 0 && (
+              <div className="row gap-sm">
+                {files.map((f) => (
+                  <span key={f} className="file-chip">
+                    {f}
+                    <button type="button" className="icon-btn" onClick={() => setFiles(files.filter((x) => x !== f))}>
+                      <X size={11} />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <textarea
+              className="input grow"
+              rows={3}
+              placeholder={project ? (busy ? "The assistant is working. Send now reaches it between steps; Queue waits for its answer." : `Message the assistant about ${project.name}…`) : "Create a project first"}
+              value={draft}
+              disabled={!project || !ready}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  void sendMessage(busy);
+                }
+              }}
+            />
+            <div className="row gap-sm chat-compose-bar">
+              <button type="button" className="icon-btn" title="Attach files" disabled={!project} onClick={async () => setFiles([...files, ...(await api.attachFiles(projectId))])}>
+                <Paperclip size={15} />
+              </button>
+              <label className="muted small row gap-sm" title="How deeply the model thinks in this chat">
+                Reasoning
+                <select
+                  className="model-select"
+                  value={effort}
+                  onChange={async (e) => {
+                    const v = e.target.value as ReasoningEffort;
+                    if (session) {
+                      await api.setEffort(projectId, session.id, v);
+                      setSession({ ...session, effort: v });
+                    } else await saveSettings({ chatEffort: v });
+                  }}
+                >
+                  {EFFORTS.map((x) => (
+                    <option key={x} value={x}>
+                      {x}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          </div>
           {busy && session ? (
-            <Button variant="danger" icon={Square} type="button" onClick={() => void api.stopChat(session.id)}>
-              Stop
-            </Button>
+            <div className="chat-compose-actions">
+              <Button variant="primary" icon={Zap} type="button" disabled={!draft.trim() && !files.length} onClick={() => void sendMessage(true)} title="Reaches the assistant between its steps">
+                Send now
+              </Button>
+              <Button type="button" disabled={!draft.trim() && !files.length} onClick={() => void sendMessage(false)} title="Waits until the assistant answers">
+                Queue
+              </Button>
+              <Button variant="danger" icon={Square} type="button" onClick={() => void api.stopChat(session.id)}>
+                Stop
+              </Button>
+            </div>
           ) : (
-            <Button variant="primary" icon={Send} type="submit" disabled={!draft.trim() || !project || !ready}>
+            <Button variant="primary" icon={Send} type="submit" disabled={(!draft.trim() && !files.length) || !project || !ready}>
               Send
             </Button>
           )}
@@ -280,15 +391,40 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
   );
 }
 
-/** Prose with fenced code: Lean blocks in the editor, tool blocks folded away, the rest as text. */
-function RichText({ text }: { text: string }) {
-  const clean = text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
-  const parts = clean.split(/(```[a-zA-Z0-9]*\s*\n[\s\S]*?```)/g);
+/** Text with Markdown images of project files: the image is read through the main process, confined to the project. */
+function TextWithImages({ text, projectId }: { text: string; projectId: string }) {
+  const parts = text.split(/(!\[[^\]]*\]\([^)\s]+(?:\s+"[^"]*")?\))/g);
+  return (
+    <div className="chat-text">
+      {parts.map((p, i) => {
+        const m = /^!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)$/.exec(p);
+        return m && !/^[a-z]+:/i.test(m[2]) ? <ProjectImage key={i} alt={m[1]} path={m[2]} projectId={projectId} /> : <span key={i}>{p}</span>;
+      })}
+    </div>
+  );
+}
+
+function ProjectImage({ alt, path, projectId }: { alt: string; path: string; projectId: string }) {
+  const [src, setSrc] = useState<string | null | undefined>(undefined);
+  useEffect(() => void api.projectImage(projectId, path).then(setSrc), [projectId, path]);
+  if (src === undefined) return <span className="muted small">[loading {path}]</span>;
+  if (src === null) return <span className="muted small">[image {path} could not be shown]</span>;
+  return <img className="chat-image" src={src} alt={alt} title={path} />;
+}
+
+/** Prose with fenced code: Lean blocks in the editor, tool blocks and citations folded away, the rest as text. */
+function RichText({ text, projectId }: { text: string; projectId: string }) {
+  const clean = text
+    .replace(/<think>[\s\S]*?<\/think>/g, "")
+    .replace(/<think>[\s\S]*$/, "")
+    .replace(/<citation_entries>[\s\S]*?(<\/citation_entries>|$)/g, "")
+    .trim();
+  const parts = clean.split(/(```[a-zA-Z0-9]*\s*\n[\s\S]*?(?:```|$))/g);
   return (
     <>
       {parts.map((p, i) => {
-        const m = /^```([a-zA-Z0-9]*)\s*\n([\s\S]*?)```$/.exec(p);
-        if (!m) return p.trim() ? <div key={i} className="chat-text">{p.trim()}</div> : null;
+        const m = /^```([a-zA-Z0-9]*)\s*\n([\s\S]*?)(?:```)?$/.exec(p);
+        if (!m) return p.trim() ? <TextWithImages key={i} text={p.trim()} projectId={projectId} /> : null;
         if (m[1] === "tool") return null;
         if (m[1].startsWith("lean"))
           return (
@@ -306,14 +442,32 @@ function RichText({ text }: { text: string }) {
   );
 }
 
-function Message({ m }: { m: StoredMessage }) {
-  if (m.role === "user") return <div className="chat-msg chat-user">{m.content}</div>;
+function Message({ m, projectId }: { m: StoredMessage; projectId: string }) {
+  if (m.role === "user") {
+    if (m.source === "reminder" || m.source === "job")
+      return (
+        <div className="chat-note">
+          {m.source === "reminder" ? <AlarmClock size={13} /> : <Terminal size={13} />} {m.source === "reminder" ? "Reminder" : "Background command"}: {m.content.slice(0, 400)}
+        </div>
+      );
+    return (
+      <div className="chat-msg chat-user">
+        {m.content}
+        {m.attachments?.map((a) => (
+          <span key={a.path} className="file-chip">
+            {a.path}
+          </span>
+        ))}
+      </div>
+    );
+  }
   if (m.role === "assistant") {
     const calls = (m.content.match(/```tool/g) ?? []).length;
+    const visible = m.content.replace(/```tool[\s\S]*?```/g, "").replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+    if (!visible && calls) return <div className="muted small">Using {calls} tool{calls === 1 ? "" : "s"}…</div>;
     return (
       <div className="chat-msg chat-assistant">
-        <RichText text={m.content} />
-        {calls > 0 && !m.content.replace(/```tool[\s\S]*?```/g, "").trim() && <div className="muted small">Using {calls} tool{calls === 1 ? "" : "s"}…</div>}
+        <RichText text={m.content} projectId={projectId} />
       </div>
     );
   }
@@ -328,8 +482,8 @@ function Message({ m }: { m: StoredMessage }) {
 
 function argSummary(args: Record<string, unknown>): string {
   return Object.entries(args)
-    .filter(([k]) => k !== "content" && k !== "source")
-    .map(([k, v]) => `${k}: ${String(v).slice(0, 80)}`)
+    .filter(([k]) => k !== "content" && k !== "source" && k !== "body")
+    .map(([k, v]) => `${k}: ${typeof v === "string" ? v.slice(0, 80) : JSON.stringify(v).slice(0, 80)}`)
     .join(", ");
 }
 
@@ -351,8 +505,17 @@ function ToolCard({ r }: { r: ToolOutcome }) {
   );
 }
 
+const ASKS: Record<string, string> = {
+  write_file: "write a file",
+  remove_file: "delete a file",
+  start_proof: "start a proof run",
+  shell_exec: "run a command",
+  http_request: "make a web request",
+};
+
 function ApprovalCard({ approval }: { approval: PendingApproval }) {
   const { call } = approval;
+  const a = call.args;
   const [error, setError] = useState("");
   const decide = async (ok: boolean) => {
     try {
@@ -365,25 +528,41 @@ function ApprovalCard({ approval }: { approval: PendingApproval }) {
     <div className="approval-card">
       <div className="row gap-sm">
         <ShieldAlert size={17} className="accent" />
-        <b>The assistant asks to {call.name === "write_file" ? "write a file" : call.name === "start_proof" ? "start a proof run" : `run ${call.name}`}</b>
+        <b>The assistant asks to {ASKS[call.name] ?? `use ${call.name}`}</b>
       </div>
       <div className="small">
         {call.name === "write_file" && (
           <>
-            <code>{String(call.args.path)}</code> will be created or replaced with:
+            <code>{String(a.path)}</code> will be created or replaced with:
+          </>
+        )}
+        {call.name === "remove_file" && (
+          <>
+            <code>{String(a.path)}</code> will be deleted.
           </>
         )}
         {call.name === "start_proof" && (
           <>
-            A {call.args.mode === "single" ? "single-agent" : "search-tree"} run on <code>{String(call.args.path)}</code>. It spends model calls from your account.
+            A {a.mode === "single" ? "single-agent" : "search-tree"} run on <code>{String(a.path)}</code>. It spends model calls from your account.
+          </>
+        )}
+        {call.name === "shell_exec" && <>{a.background === true || a.background === "true" ? "In the background, in the project folder:" : "In the project folder, as you:"}</>}
+        {call.name === "http_request" && (
+          <>
+            <code>{String(a.method ?? "GET")}</code> <code>{String(a.url)}</code>
           </>
         )}
       </div>
-      {call.name === "write_file" && typeof call.args.content === "string" && (
+      {call.name === "write_file" && typeof a.content === "string" && (
         <div className="code-frame">
-          <CodeEditor value={call.args.content} readOnly />
+          <CodeEditor value={a.content} readOnly />
         </div>
       )}
+      {call.name === "shell_exec" && <pre className="lean-output">{String(a.command)}</pre>}
+      {call.name === "http_request" && (a.headers !== undefined || a.body !== undefined) && (
+        <pre className="lean-output">{`${a.headers ? JSON.stringify(a.headers, null, 2) : ""}\n${typeof a.body === "string" ? a.body : ""}`.trim()}</pre>
+      )}
+      {!ASKS[call.name] && <pre className="lean-output">{JSON.stringify(a, null, 2)}</pre>}
       <div className="muted small">Exactly this call runs if you approve; nothing can change it in between.</div>
       <div className="row gap-sm">
         <Button variant="primary" onClick={() => void decide(true)}>
@@ -415,7 +594,7 @@ function MemoryPanel({ projectId, onClose }: { projectId: string; onClose: () =>
       </div>
       <p className="muted small">
         Written by Mack, not by the assistant: when you leave a chat, one model call writes a record of it, and another folds the records into the index below,
-        which new chats are given as notes about the past. No chat can add to memory by asking.
+        which new chats are given as notes about the past. Lines chats cite as useful are kept first. No chat can add to memory by asking.
       </p>
       {mem && !mem.index.trim() ? <div className="muted small">Nothing remembered yet ({mem.records.length} record{mem.records.length === 1 ? "" : "s"}).</div> : <pre className="lean-output">{mem?.index}</pre>}
       {mem?.summary.trim() && (
@@ -461,9 +640,11 @@ function MemoryPanel({ projectId, onClose }: { projectId: string; onClose: () =>
   );
 }
 
-function ToolsPanel({ settings, saveSettings, onClose }: { settings: Settings; saveSettings: (s: Partial<Settings>) => Promise<void>; onClose: () => void }) {
+function ToolsPanel({ health, settings, saveSettings, onClose }: { health: Health | null; settings: Settings; saveSettings: (s: Partial<Settings>) => Promise<void>; onClose: () => void }) {
   const [tools, setTools] = useState<ToolSpec[]>([]);
   useEffect(() => void api.chatTools().then(setTools), []);
+  const model = health?.model ?? "";
+  const vision = settings.visionModels.includes(model);
   return (
     <div className="chat-panel">
       <div className="row gap-sm">
@@ -475,18 +656,22 @@ function ToolsPanel({ settings, saveSettings, onClose }: { settings: Settings; s
       </div>
       <p className="muted small">
         Exactly these tools and nothing else. File paths must stay inside the project folder, links included. Mack runs the assistant inside the app, not in an
-        operating-system sandbox as Open Math Harness does on Linux, so these checks are the whole boundary.
+        operating-system sandbox as Open Math Harness does on Linux: a command you approve runs as you, with your access.
       </p>
+      {model && (
+        <Toggle
+          checked={vision}
+          onChange={(v) => void saveSettings({ visionModels: v ? [...settings.visionModels, model] : settings.visionModels.filter((m) => m !== model) })}
+          label={`${model.split("/").pop()} reads images (attachments and view_image are sent to it)`}
+        />
+      )}
+      <Toggle checked={settings.suggestions} onChange={(v) => void saveSettings({ suggestions: v })} label="Suggest a next message and title new chats (one short model call each)" />
       <ul className="tool-list">
         {tools.map((t) => (
           <li key={t.name}>
             <code>{t.name}</code> {t.description}
             {t.protected && (
-              <select
-                className="model-select"
-                value={settings.approvals[t.name as "write_file" | "start_proof"] ?? "ask"}
-                onChange={(e) => void saveSettings({ approvals: { ...settings.approvals, [t.name]: e.target.value } })}
-              >
+              <select className="model-select" value={settings.approvals[t.name] ?? "ask"} onChange={(e) => void saveSettings({ approvals: { ...settings.approvals, [t.name]: e.target.value as "ask" | "allow" } })}>
                 <option value="ask">Ask me every time</option>
                 <option value="allow">Allow without asking</option>
               </select>
