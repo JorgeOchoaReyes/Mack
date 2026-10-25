@@ -14,7 +14,9 @@ import { JobManager, type Job } from "../core/chat/shell";
 import { listSkills, loadSkill, SKILL_DIR } from "../core/chat/skills";
 import { suggestNext, suggestTitle, type Transcript } from "../core/chat/suggestions";
 import { confine, imageDataUrl, imageType, MAX_IMAGE_BYTES, pdfText, SUB_AGENT_TOOLS, toolSpecs, truncate, type ToolCall } from "../core/chat/tools";
+import { changes, fileDiff, initRepo, isRepo } from "../core/git";
 import type { LeanCheckRun } from "../core/lean/check";
+import { findings, maskSecrets, type Finding } from "../core/secrets";
 import type { LeanRun } from "../core/lean/verify";
 import type { ModelProvider, ReasoningEffort } from "../core/model/provider";
 import type { RunEvent, RunMode, RunRecord, Settings } from "./main";
@@ -331,11 +333,13 @@ export function registerChat(d: Deps): ChatControl {
 
   ipcMain.handle("projects:list", () => projects());
 
-  ipcMain.handle("projects:create", (_e, name: string) => {
+  ipcMain.handle("projects:create", async (_e, name: string) => {
     const clean = String(name).trim().replace(/[<>:"/\\|?*\u0000-\u001f]/g, "").slice(0, 60);
     if (!clean) throw new Error("give the project a name");
     const folder = join(PROJECTS_ROOT, clean);
     mkdirSync(folder, { recursive: true });
+    // Upstream projects are git repositories; without git a project simply has no Review.
+    await initRepo(folder);
     return addProject(clean, folder);
   });
 
@@ -480,10 +484,11 @@ export function registerChat(d: Deps): ChatControl {
     for (const f of readdirSync(sessionsDir(projectId)).filter((x) => x.endsWith(".json"))) {
       const session = loadSession(projectId, f.slice(0, -5));
       if (!session || live.has(session.id) || (session.rememberedAt ?? 0) >= session.updatedAt || session.messages.length < 2) continue;
+      // Secrets are masked before a session reaches extraction: memory goes into every later prompt.
       const messages = session.messages.flatMap((m) =>
         m.role === "tool"
-          ? [{ role: "user" as const, content: `Tool results: ${m.results.map((r) => `[${r.name}] ${r.ok ? "ok" : "failed"}: ${r.output.slice(0, 1500)}`).join("\n")}` }]
-          : [{ role: m.role, content: m.content }],
+          ? [{ role: "user" as const, content: maskSecrets(`Tool results: ${m.results.map((r) => `[${r.name}] ${r.ok ? "ok" : "failed"}: ${r.output.slice(0, 1500)}`).join("\n")}`) }]
+          : [{ role: m.role, content: maskSecrets(m.content) }],
       );
       if (await extractSession(memoryStore(projectId), { id: session.id, startedAt: session.startedAt, messages }, provider, model)) extracted++;
       await recordCitations(memoryStore(projectId), session.citations ?? []);
@@ -500,6 +505,41 @@ export function registerChat(d: Deps): ChatControl {
   ipcMain.handle("memory:forget", async (_e, projectId: string) => forgetMemory(memoryStore(safeId(projectId))));
 
   ipcMain.handle("chat:tools", () => toolSpecs());
+
+  /** The secret scan of a chat's records: by message index, what looks like a secret, masked. */
+  ipcMain.handle("sessions:findings", (_e, projectId: string, id: string): Record<number, Finding[]> => {
+    const sess = live.get(safeId(id))?.session ?? loadSession(safeId(projectId), id);
+    const out: Record<number, Finding[]> = {};
+    sess?.messages.forEach((m, i) => {
+      const text = m.role === "tool" ? m.results.map((r) => `${JSON.stringify(r.args)}\n${r.output}`).join("\n") : m.content;
+      const f = findings(text);
+      if (f.length) out[i] = f.slice(0, 20);
+    });
+    return out;
+  });
+
+  /** A chat as Markdown, with every finding of the secret scan masked. */
+  ipcMain.handle("sessions:export", async (e, projectId: string, id: string) => {
+    const sess = loadSession(safeId(projectId), id);
+    if (!sess) throw new Error("no such chat");
+    const md = [`# ${sess.title}`, "", `${new Date(sess.startedAt).toLocaleString()}`, ""];
+    for (const m of sess.messages) {
+      if (m.role === "tool") md.push(...m.results.map((r) => `> **${r.name}** ${r.ok ? "ok" : "failed"}\n>\n> \`\`\`\n${r.output.slice(0, 3000).replace(/^/gm, "> ")}\n> \`\`\``), "");
+      else md.push(`## ${m.role === "user" ? (m.source === "reminder" ? "Reminder" : m.source === "job" ? "Background command" : "Person") : "Assistant"}`, "", m.content, "");
+    }
+    const win = BrowserWindow.fromWebContents(e.sender);
+    const r = await dialog.showSaveDialog(win!, { defaultPath: `${sess.title.replace(/[<>:"/\\|?*]/g, "").slice(0, 60) || "chat"}.md`, filters: [{ name: "Markdown", extensions: ["md"] }] });
+    if (r.canceled || !r.filePath) return false;
+    writeFileSync(r.filePath, maskSecrets(md.join("\n")), "utf8");
+    return true;
+  });
+
+  ipcMain.handle("review:changes", async (_e, projectId: string) => {
+    const p = project(projectId);
+    return isRepo(p.folder) ? { repo: true, files: await changes(p.folder) } : { repo: false, files: [] };
+  });
+  ipcMain.handle("review:file", async (_e, projectId: string, path: string) => fileDiff(project(projectId).folder, String(path)));
+  ipcMain.handle("review:init", async (_e, projectId: string) => initRepo(project(projectId).folder));
   ipcMain.handle("skills:list", async (_e, projectId: string) => listSkills(project(projectId).folder));
 
   // Reminders survive a restart: schedule what is still pending.

@@ -45,6 +45,8 @@ upstream module.
 | `interfaces/suggestions` + `prompts/templates/suggest/*` | `core/chat/suggestions.ts` | Ported |
 | `prompts/templates/compact/*` (context checkpoint) | `core/chat/suggestions.ts`, `core/chat/agent.ts` | Ported |
 | `interfaces/memory` `used` (citations) | `core/chat/memory.ts` `recordCitations` | Adapted: counts feed consolidation |
+| `interfaces/diffs` (Review of uncommitted changes) | `core/git.ts`, Review panel in `src/pages/ChatPage.tsx` | Ported: read-only |
+| `interfaces/publish` + `program-files/publish` rules v1 (secret scan) | `core/secrets.ts` | Adapted: no platform; marks messages, masks memory input and exports |
 | `interfaces/approvals` + `program-files/approvals` (guard runs the recorded call) | `core/chat/executor.ts` | Adapted: per-tool ask/allow policy; approvals are single-use and bound to the recorded call |
 | `program-files/memory` + `memories/write` and `memories/read` templates (extract, consolidate, read path) | `core/chat/memory.ts` | Adapted: extraction and consolidation are model calls returning files |
 | `kernel/` + `platform/` (capability microkernel, bubblewrap confinement) | — | Not ported: Linux-only. Mack restricts each agent's tools in-process instead, which is weaker. |

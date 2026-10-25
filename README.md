@@ -35,6 +35,10 @@ and how Mack keeps up with upstream.
   messages you send while it works ("send now" or queued), checkpoints that
   keep long chats going, suggested next messages and chat titles, and the
   project's skills (`.skill/<name>/SKILL.md`, `/skill` to list or load).
+- **Review and secret scan.** New projects are git repositories; Review shows
+  their uncommitted changes, whoever made them. Upstream's secret-scan rules
+  mark chat messages that may hold a credential, and mask secrets before a
+  chat reaches memory and in exported chats.
 - **Project memory.** When you leave a chat, Mack (not the assistant) writes a
   record of it and folds the records into a short index that later chats
   are given as notes about the past. No chat can write memory by asking.

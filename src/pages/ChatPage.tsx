@@ -1,9 +1,11 @@
-import { AlarmClock, Brain, ChevronRight, FolderOpen, FolderPlus, Lightbulb, MessageSquarePlus, Paperclip, Send, ShieldAlert, Square, Terminal, Trash2, Wrench, X, Zap } from "lucide-react";
+import { AlarmClock, Brain, ChevronRight, Download, GitCompare, KeyRound, FolderOpen, FolderPlus, Lightbulb, MessageSquarePlus, Paperclip, Send, ShieldAlert, Square, Terminal, Trash2, Wrench, X, Zap } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   api,
   errorText,
+  type ChangedFile,
   type ChatSession,
+  type Finding,
   type ChatWire,
   type Health,
   type PendingApproval,
@@ -42,7 +44,8 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
   const [error, setError] = useState("");
   const [suggestion, setSuggestion] = useState<string | null>(null);
   const [approvals, setApprovals] = useState<PendingApproval[]>([]);
-  const [panel, setPanel] = useState<"none" | "memory" | "tools">("none");
+  const [panel, setPanel] = useState<"none" | "memory" | "tools" | "review">("none");
+  const [secretMarks, setSecretMarks] = useState<Record<number, Finding[]>>({});
   const [newName, setNewName] = useState("");
   const scroller = useRef<HTMLDivElement>(null);
   const sessionRef = useRef<ChatSession | null>(null);
@@ -128,6 +131,11 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
   useEffect(() => {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
   }, [session?.messages.length, approvals.length, streaming]);
+
+  useEffect(() => {
+    if (session && !busy) void api.sessionFindings(session.projectId, session.id).then(setSecretMarks);
+    else if (!session) setSecretMarks({});
+  }, [session?.id, session?.messages.length, busy]);
 
   /** Leaving a session lets memory read it; failures only cost a memory, never the chat. */
   const rememberInBackground = () => {
@@ -250,11 +258,20 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
           <Button size="sm" variant="ghost" icon={Wrench} onClick={() => setPanel(panel === "tools" ? "none" : "tools")}>
             What it can do
           </Button>
+          <Button size="sm" variant="ghost" icon={GitCompare} disabled={!projectId} onClick={() => setPanel(panel === "review" ? "none" : "review")}>
+            Review
+          </Button>
+          {session && (
+            <Button size="sm" variant="ghost" icon={Download} onClick={() => void api.exportSession(projectId, session.id)} title="Save this chat as Markdown, secrets masked">
+              Export
+            </Button>
+          )}
         </div>
       </aside>
 
       <section className="chat-main">
         {panel === "memory" && projectId && <MemoryPanel projectId={projectId} onClose={() => setPanel("none")} />}
+        {panel === "review" && projectId && <ReviewPanel projectId={projectId} onClose={() => setPanel("none")} />}
         {panel === "tools" && <ToolsPanel health={health} settings={settings} saveSettings={saveSettings} onClose={() => setPanel("none")} />}
 
         <div className="chat-scroll" ref={scroller}>
@@ -285,7 +302,12 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
               </p>
             </div>
           )}
-          {session?.messages.map((m, i) => <Message key={i} m={m} projectId={projectId} />)}
+          {session?.messages.map((m, i) => (
+            <div key={i} className="chat-row">
+              <Message m={m} projectId={projectId} />
+              {secretMarks[i] && <SecretMark findings={secretMarks[i]} />}
+            </div>
+          ))}
           {streaming && (
             <div className="chat-msg chat-assistant">
               <RichText text={streaming} projectId={projectId} />
@@ -679,6 +701,90 @@ function ToolsPanel({ health, settings, saveSettings, onClose }: { health: Healt
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+function SecretMark({ findings }: { findings: Finding[] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="secret-mark">
+      <button className="link small" onClick={() => setOpen(!open)}>
+        <KeyRound size={12} /> This message may hold {findings.length === 1 ? "a secret" : `${findings.length} secrets`}
+      </button>
+      {open && (
+        <ul className="small">
+          {findings.map((f, i) => (
+            <li key={i}>
+              <code>{f.rule}</code> {f.preview}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function ReviewPanel({ projectId, onClose }: { projectId: string; onClose: () => void }) {
+  const [state, setState] = useState<{ repo: boolean; files: ChangedFile[] } | null>(null);
+  const [error, setError] = useState("");
+  const [open, setOpen] = useState<string | null>(null);
+  const [diff, setDiff] = useState("");
+  const load = useCallback(() => {
+    setError("");
+    api.reviewChanges(projectId).then(setState, (e) => setError(errorText(e)));
+  }, [projectId]);
+  useEffect(load, [load]);
+  return (
+    <div className="chat-panel">
+      <div className="row gap-sm">
+        <GitCompare size={16} />
+        <b>Review: uncommitted changes</b>
+        <button className="link small" onClick={load}>
+          Refresh
+        </button>
+        <button className="icon-btn" style={{ marginLeft: "auto" }} onClick={onClose}>
+          <X size={15} />
+        </button>
+      </div>
+      <p className="muted small">What changed in the project's repository since its last commit, whoever made it. Mack only reads the repository here.</p>
+      {error && <div className="notice notice-bad">{error}</div>}
+      {state && !state.repo && (
+        <div className="row gap-sm">
+          <span className="muted small">This project folder is not a git repository.</span>
+          <Button size="sm" onClick={async () => ((await api.reviewInit(projectId)) ? load() : setError("Could not run git init: is Git installed?"))}>
+            Make it one
+          </Button>
+        </div>
+      )}
+      {state?.repo && state.files.length === 0 && <div className="muted small">No uncommitted changes.</div>}
+      {state?.files.map((f) => (
+        <div key={f.path}>
+          <button
+            className="tree-row"
+            onClick={async () => {
+              if (open === f.path) return setOpen(null);
+              setOpen(f.path);
+              setDiff(await api.reviewFile(projectId, f.path).catch((e) => errorText(e)));
+            }}
+          >
+            <ChevronRight size={13} className="chev" style={{ transform: open === f.path ? "rotate(90deg)" : undefined }} />
+            <Badge tone={f.status === "deleted" ? "bad" : f.status === "untracked" || f.status === "added" ? "ok" : "warn"}>{f.status}</Badge>
+            <code className="small">{f.path}</code>
+            <span className="muted small">{f.binary ? "binary" : f.status === "untracked" ? "" : `+${f.added} −${f.removed}`}</span>
+          </button>
+          {open === f.path && (
+            <pre className="diff">
+              {diff.split("\n").map((l, i) => (
+                <span key={i} className={l.startsWith("+") && !l.startsWith("+++") ? "diff-add" : l.startsWith("-") && !l.startsWith("---") ? "diff-del" : l.startsWith("@@") ? "diff-hunk" : ""}>
+                  {l}
+                  {"\n"}
+                </span>
+              ))}
+            </pre>
+          )}
+        </div>
+      ))}
     </div>
   );
 }

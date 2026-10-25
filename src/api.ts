@@ -7,6 +7,8 @@ import type { ChatEvent, ChatSession, StoredMessage, ToolOutcome } from "../core
 import type { ToolSpec } from "../core/chat/tools";
 import type { ChatWire, PendingApproval, Project, SendOptions, SessionSummary } from "../electron/chat";
 import type { ReasoningEffort } from "../core/model/provider";
+import type { Finding } from "../core/secrets";
+import type { ChangedFile } from "../core/git";
 import type { UpdateState } from "../electron/updates";
 import type { UpstreamReport } from "../core/upstream";
 import type { Health, KeySource, RunEvent, RunMode, RunRecord, RunSummary, Settings } from "../electron/main";
@@ -19,7 +21,7 @@ declare global {
 }
 
 export type Upstream = (UpstreamReport & { dismissed?: boolean }) | { kind: "off" };
-export type { ProviderId, ReasoningEffort, UpdateState };
+export type { ChangedFile, Finding, ProviderId, ReasoningEffort, UpdateState };
 export type { ChatEvent, ChatSession, ChatWire, PendingApproval, Project, SessionSummary, StoredMessage, ToolOutcome, ToolSpec };
 export type { Health, KeySource, ProveEvent, RunEvent, RunMode, RunRecord, RunSummary, SetupEvent, Settings };
 
@@ -60,6 +62,11 @@ export const api = {
   suggestStart: () => m().suggestStart(),
   projectImage: (projectId: string, path: string) => m().projectImage(projectId, path),
   listSkills: (projectId: string) => m().listSkills(projectId) as Promise<{ name: string; description: string }[]>,
+  sessionFindings: (projectId: string, id: string) => m().sessionFindings(projectId, id) as Promise<Record<number, Finding[]>>,
+  exportSession: (projectId: string, id: string) => m().exportSession(projectId, id),
+  reviewChanges: (projectId: string) => m().reviewChanges(projectId) as Promise<{ repo: boolean; files: ChangedFile[] }>,
+  reviewFile: (projectId: string, path: string) => m().reviewFile(projectId, path),
+  reviewInit: (projectId: string) => m().reviewInit(projectId),
   stopChat: (sessionId: string) => m().stopChat(sessionId) as Promise<void>,
   onChatEvent: (cb: (e: ChatWire) => void) => m().onChatEvent((e) => cb(e as ChatWire)),
   listApprovals: () => m().listApprovals() as Promise<PendingApproval[]>,
