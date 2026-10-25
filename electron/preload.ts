@@ -32,6 +32,22 @@ const api = {
   deleteRun: (id: string) => ipcRenderer.invoke("runs:delete", id),
   saveLean: (name: string, text: string) => ipcRenderer.invoke("file:saveLean", name, text) as Promise<boolean>,
   openLean: () => ipcRenderer.invoke("file:openLean") as Promise<string | null>,
+  listProjects: () => ipcRenderer.invoke("projects:list"),
+  createProject: (name: string) => ipcRenderer.invoke("projects:create", name),
+  openProject: () => ipcRenderer.invoke("projects:open"),
+  removeProject: (id: string) => ipcRenderer.invoke("projects:remove", id),
+  listSessions: (projectId: string) => ipcRenderer.invoke("sessions:list", projectId),
+  getSession: (projectId: string, id: string) => ipcRenderer.invoke("sessions:get", projectId, id),
+  deleteSession: (projectId: string, id: string) => ipcRenderer.invoke("sessions:delete", projectId, id),
+  sendChat: (projectId: string, sessionId: string | null, text: string) => ipcRenderer.invoke("chat:send", projectId, sessionId, text) as Promise<string>,
+  stopChat: (sessionId: string) => ipcRenderer.invoke("chat:stop", sessionId),
+  onChatEvent: (cb: (e: unknown) => void) => subscribe("chat:event", cb),
+  listApprovals: () => ipcRenderer.invoke("approvals:list"),
+  decideApproval: (id: string, approve: boolean) => ipcRenderer.invoke("approvals:decide", id, approve),
+  getMemory: (projectId: string) => ipcRenderer.invoke("memory:get", projectId),
+  updateMemory: (projectId: string) => ipcRenderer.invoke("memory:update", projectId),
+  forgetMemory: (projectId: string) => ipcRenderer.invoke("memory:forget", projectId),
+  chatTools: () => ipcRenderer.invoke("chat:tools"),
 };
 
 contextBridge.exposeInMainWorld("mack", api);

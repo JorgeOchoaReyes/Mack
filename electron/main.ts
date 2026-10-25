@@ -17,6 +17,8 @@ import { search, type SearchEvent } from "../core/search/search";
 import { DEFAULT_LIMITS, type Limits } from "../core/search/tree";
 import { DEFAULT_ULTRAMATH, problemKind, ultramath, type UltramathEvent, type UltramathLimits } from "../core/ultramath/swarm";
 import { checkUpstream } from "../core/upstream";
+import { registerChat } from "./chat";
+import type { ApprovalPolicy } from "../core/chat/executor";
 
 export type Settings = {
   /** The provider runs use; each provider remembers its own model. */
@@ -33,6 +35,8 @@ export type Settings = {
   ultramath: UltramathLimits;
   /** Use the resident Lean REPL for quick checks when it is built. */
   useRepl: boolean;
+  /** What the chat may do without asking, per protected tool; absent means ask. */
+  approvals: Partial<Record<"write_file" | "start_proof", ApprovalPolicy>>;
   /** Check Open Math Harness for methodology changes on every launch. */
   upstreamCheck: boolean;
   /** An upstream head the user chose to stay behind; no banner until upstream moves past it. */
@@ -88,6 +92,7 @@ const DEFAULTS: Settings = {
   mode: "single",
   search: DEFAULT_LIMITS,
   ultramath: DEFAULT_ULTRAMATH,
+  approvals: {},
   useRepl: true,
   upstreamCheck: true,
   upstreamDismissed: "",
@@ -284,9 +289,10 @@ ipcMain.handle("models:list", async (_e, id?: ProviderId) => {
   return makeProvider(s, isProvider(id) ? id : s.provider).listModels();
 });
 
-ipcMain.handle("prove:start", async (e, problem: string) => {
+/** One proof run in the given mode, recorded in the run history. Shared by the Prove screen and the chat's `start_proof`. */
+async function runProof(problem: string, mode: RunMode, forward: (ev: RunEvent) => void): Promise<RunRecord> {
   if (proving) throw new Error("a proof run is already in progress");
-  const s = readSettings();
+  const s = { ...readSettings(), mode };
   const model = s.models[s.provider];
   if (!model) throw new Error(`Choose a ${providerInfo(s.provider).label} model in Setup first.`);
   const needsLean = s.mode !== "ultramath" || problemKind(problem) === "lean";
@@ -309,7 +315,7 @@ ipcMain.handle("prove:start", async (e, problem: string) => {
     if (ev.type !== "status") record.events.push(ev);
     if (ev.type === "solved" || ev.type === "accepted") record.outcome = "solved";
     if (ev.type === "failed") record.message = ev.message;
-    if (!e.sender.isDestroyed()) e.sender.send("prove:event", ev);
+    forward(ev);
   };
   try {
     const run = leanRunner({ workspace: s.leanWorkspace, timeoutMs: s.timeoutMs });
@@ -337,6 +343,13 @@ ipcMain.handle("prove:start", async (e, problem: string) => {
     record.finishedAt = Date.now();
     writeFileSync(join(runsDir(), `${record.id}.json`), JSON.stringify(record));
   }
+  return record;
+}
+
+ipcMain.handle("prove:start", async (e, problem: string) => {
+  const record = await runProof(problem, readSettings().mode, (ev) => {
+    if (!e.sender.isDestroyed()) e.sender.send("prove:event", ev);
+  });
   return record.id;
 });
 
@@ -380,6 +393,18 @@ ipcMain.handle("file:openLean", async (e) => {
   const win = BrowserWindow.fromWebContents(e.sender);
   const r = await dialog.showOpenDialog(win!, { properties: ["openFile"], filters: [{ name: "Lean", extensions: ["lean"] }] });
   return r.canceled ? null : readFileSync(r.filePaths[0], "utf8");
+});
+
+registerChat({
+  userData,
+  readSettings,
+  makeProvider: (s) => makeProvider(s, s.provider),
+  lean: (s) => {
+    if (!hasProject(s.leanWorkspace)) return undefined;
+    const run = leanRunner({ workspace: s.leanWorkspace, timeoutMs: s.timeoutMs });
+    return { run, check: quickCheck(s, 1) };
+  },
+  runProof,
 });
 
 loadDotEnv();

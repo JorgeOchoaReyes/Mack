@@ -12,8 +12,11 @@
     { "path": "interfaces/explore/", "area": "Proof search", "mack": "core/search/tree.ts, core/search/search.ts" },
     { "path": "interfaces/swarm/", "area": "Ultramath", "mack": "core/ultramath/swarm.ts" },
     { "path": "prompts/", "area": "Prompts", "mack": "core/prove.ts (SYSTEM prompt), core/ultramath/swarm.ts (swarm prompts)" },
-    { "path": "memories/", "area": "Memory", "mack": "planned: project memory" },
-    { "path": "program-files/memory/", "area": "Memory", "mack": "planned: project memory" },
-    { "path": "interfaces/memory/", "area": "Memory", "mack": "planned: project memory" }
+    { "path": "program-files/chat-agent/", "area": "Research chat", "mack": "core/chat/agent.ts, core/chat/tools.ts, electron/chat.ts" },
+    { "path": "program-files/approvals/", "area": "Approvals", "mack": "core/chat/executor.ts" },
+    { "path": "interfaces/approvals/", "area": "Approvals", "mack": "core/chat/executor.ts" },
+    { "path": "memories/", "area": "Memory", "mack": "core/chat/memory.ts" },
+    { "path": "program-files/memory/", "area": "Memory", "mack": "core/chat/memory.ts" },
+    { "path": "interfaces/memory/", "area": "Memory", "mack": "core/chat/memory.ts" }
   ]
 }

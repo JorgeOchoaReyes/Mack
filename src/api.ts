@@ -3,6 +3,9 @@
 import type { SetupEvent } from "../core/lean/setup-steps";
 import type { ProveEvent } from "../core/prove";
 import type { ProviderId } from "../core/model/providers";
+import type { ChatEvent, ChatSession, StoredMessage, ToolOutcome } from "../core/chat/agent";
+import type { ToolSpec } from "../core/chat/tools";
+import type { ChatWire, PendingApproval, Project, SessionSummary } from "../electron/chat";
 import type { UpstreamReport } from "../core/upstream";
 import type { Health, KeySource, RunEvent, RunMode, RunRecord, RunSummary, Settings } from "../electron/main";
 import type { MackApi } from "../electron/preload";
@@ -15,6 +18,7 @@ declare global {
 
 export type Upstream = (UpstreamReport & { dismissed?: boolean }) | { kind: "off" };
 export type { ProviderId };
+export type { ChatEvent, ChatSession, ChatWire, PendingApproval, Project, SessionSummary, StoredMessage, ToolOutcome, ToolSpec };
 export type { Health, KeySource, ProveEvent, RunEvent, RunMode, RunRecord, RunSummary, SetupEvent, Settings };
 
 const m = () => window.mack;
@@ -41,6 +45,22 @@ export const api = {
   deleteRun: (id: string) => m().deleteRun(id) as Promise<void>,
   saveLean: (name: string, text: string) => m().saveLean(name, text),
   openLean: () => m().openLean(),
+  listProjects: () => m().listProjects() as Promise<Project[]>,
+  createProject: (name: string) => m().createProject(name) as Promise<Project>,
+  openProject: () => m().openProject() as Promise<Project | null>,
+  removeProject: (id: string) => m().removeProject(id) as Promise<void>,
+  listSessions: (projectId: string) => m().listSessions(projectId) as Promise<SessionSummary[]>,
+  getSession: (projectId: string, id: string) => m().getSession(projectId, id) as Promise<ChatSession | null>,
+  deleteSession: (projectId: string, id: string) => m().deleteSession(projectId, id) as Promise<void>,
+  sendChat: (projectId: string, sessionId: string | null, text: string) => m().sendChat(projectId, sessionId, text),
+  stopChat: (sessionId: string) => m().stopChat(sessionId) as Promise<void>,
+  onChatEvent: (cb: (e: ChatWire) => void) => m().onChatEvent((e) => cb(e as ChatWire)),
+  listApprovals: () => m().listApprovals() as Promise<PendingApproval[]>,
+  decideApproval: (id: string, approve: boolean) => m().decideApproval(id, approve) as Promise<void>,
+  getMemory: (projectId: string) => m().getMemory(projectId) as Promise<{ index: string; summary: string; records: string[] }>,
+  updateMemory: (projectId: string) => m().updateMemory(projectId) as Promise<{ extracted: number; consolidated: boolean }>,
+  forgetMemory: (projectId: string) => m().forgetMemory(projectId) as Promise<void>,
+  chatTools: () => m().chatTools() as Promise<ToolSpec[]>,
 };
 
 /** The error message of a failed IPC call, without Electron's wrapper text. */

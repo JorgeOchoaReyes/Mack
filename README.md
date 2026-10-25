@@ -25,6 +25,13 @@ and how Mack keeps up with upstream.
   lemmas, counterexamples and dead ends. With a Lean statement the strict
   verifier judges submissions; for a problem written in plain words, a
   coordinating agent referees them, as upstream's does.
+- **Research chat.** Projects are folders. The assistant reads and searches
+  project files and PDFs, checks and verifies Lean, searches and reads the
+  web, and, once you approve each exact call, writes files or starts proof
+  runs. What it can do is listed in the app and is nothing more.
+- **Project memory.** When you leave a chat, Mack (not the assistant) writes a
+  record of it and folds the records into a short index that later chats
+  are given as notes about the past. No chat can write memory by asking.
 - **Fast checks.** A resident Lean REPL keeps Mathlib loaded, so checking a
   partial proof takes seconds and shows the goal left at each `sorry`. The
   final verification still runs in a fresh Lean process.
@@ -63,7 +70,7 @@ upstream module each comes from.
   directions: a duplicate check on proposed directions, a shared board of
   lemmas, counterexamples and dead ends, and a coordinating agent that
   reviews reports and accepts a solution. From upstream `interfaces/swarm`.
-- [ ] **4. Chat with tools and memory.** A research chat whose agent can read
+- [x] **4. Chat with tools and memory.** A research chat whose agent can read
   and write project files, run Lean, search the web and PDFs, and keep a
   per-project memory across sessions, with protected actions waiting for
   your approval. From upstream `program-files/chat-agent`,
@@ -76,7 +83,10 @@ upstream module each comes from.
 
 Not planned: upstream's capability microkernel and bubblewrap sandboxing are
 Linux-only. Mack limits each agent's tools inside the app instead, which is
-weaker, and step 4 will state exactly what each agent can do.
+weaker. The chat's *What it can do* panel states exactly what its agent can
+do: its file tools resolve every path inside the project folder (links
+included), writes and proof runs wait for your approval, and memory is kept
+outside the project folder where no tool reaches.
 
 ## Install
 
