@@ -11,12 +11,13 @@ describe("secret scan rules v1", () => {
     const jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk";
     const github = `ghp_${"a1B2".repeat(9)}`;
     const fineGrained = "github_pat_11ABCDEFG0_abcdefghijk";
-    const google = "AIzaSy0123456789abcdefghijklmnopqrstuvw";
+    const google = ["AI", "zaSy0123456789abcdefghijklmnopqrstuvw"].join("");
     const npm = "npm_abcdefghijklmnopqrstuvwxyz0123456789";
     const pypi = `pypi-AgEIcHlwaS5vcmc${"A1b2".repeat(13)}`;
     // Assembled at run time, so the repository holds nothing a secret scanner takes for a live key.
     const stripe = ["sk", "live", "4eC39HqLyjWDarjtT1zdp7dc"].join("_");
     const hf = ["hf", "AbCdEfGhIjKlMnOpQrStUvWxYzAbCdEfGh"].join("_");
+    const fw = ["fw", "3x4mpl3K3yAbCdEfGh12345"].join("_");
     const table: [string, string, string][] = [
       [pem, "private-key", body],
       ["aws_id AKIAIOSFODNN7ABCDEFG here", "aws-access-key", "AKIAIOSFODNN7ABCDEFG"],
@@ -43,7 +44,7 @@ describe("secret scan rules v1", () => {
       ['{\\"api_key\\":\\"Zx81kq0PmmT4\\"}', "secret-assignment", "Zx81kq0PmmT4"],
       ["auth_token: 3f2a9c1b7d4e5f60718293a4", "secret-assignment", "3f2a9c1b7d4e5f60718293a4"],
       ["export API-KEY := 'q7w8e9r0t1y2'", "secret-assignment", "q7w8e9r0t1y2"],
-      ["FIREWORKS_API_KEY=fw_3x4mpl3K3yAbCdEfGh12345", "fireworks-key", "fw_3x4mpl3K3yAbCdEfGh12345"],
+      [`FIREWORKS_API_KEY=${fw}`, "fireworks-key", fw],
     ];
     for (const [text, rule, secret] of table) expect(found(text), `${rule} in ${text}`).toContainEqual([rule, secret]);
   });
