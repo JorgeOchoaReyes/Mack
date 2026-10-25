@@ -1,6 +1,7 @@
 import { CircleCheck, Download, ExternalLink, FolderOpen, KeyRound, RefreshCw, Search, Sigma, Square, Trash2, Cpu } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { SETUP_STEPS, type SetupStep } from "../../core/lean/setup-steps";
+import { isCheap, type Price } from "../../core/model/metered";
 import { PROVIDERS, providerInfo } from "../../core/model/providers";
 import { api, errorText, type Health, type ProviderId, type SetupEvent, type Settings } from "../api";
 import { Button, Spinner } from "../components/ui";
@@ -293,6 +294,8 @@ function ModelStep({ settings, ready, keyReady, saveSettings, onChanged }: { set
   const info = providerInfo(provider);
   const current = settings.models[provider];
   const [models, setModels] = useState<string[]>([]);
+  // Listing fills in published prices, so read them back after each load.
+  const [prices, setPrices] = useState<Record<string, Price>>(settings.prices);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
@@ -303,6 +306,7 @@ function ModelStep({ settings, ready, keyReady, saveSettings, onChanged }: { set
     setError("");
     try {
       setModels(await api.listModels(provider));
+      setPrices((await api.getSettings()).prices);
     } catch (e) {
       setModels([]);
       setError(errorText(e));
@@ -329,7 +333,7 @@ function ModelStep({ settings, ready, keyReady, saveSettings, onChanged }: { set
 
   return (
     <StepCard n={3} icon={Cpu} title={`Model on ${info.label}`} ready={ready}>
-      <p className="muted">Pick a strong reasoning or coding model. Stronger models solve more problems in fewer attempts, at a higher price per attempt.</p>
+      <p className="muted">Pick a strong reasoning or coding model. Stronger models solve more problems in fewer attempts, at a higher price per attempt. Models marked cheap cost $2 or less per million output tokens.</p>
       {!keyReady ? (
         <p className="muted small">Add your key first to list the models your account can use.</p>
       ) : (
@@ -345,8 +349,14 @@ function ModelStep({ settings, ready, keyReady, saveSettings, onChanged }: { set
             <div className="model-list">
               {shown.slice(0, 300).map((m) => (
                 <button key={m} className={`model-item ${current === m ? "selected" : ""}`} onClick={() => void choose(m)}>
-                  <span className="model-name">{m.split("/").pop()}</span>
-                  <span className="muted small">{m}</span>
+                  <span className="model-name">
+                    {m.split("/").pop()}
+                    {isCheap(prices[m]) && <span className="badge badge-ok model-cheap">cheap</span>}
+                  </span>
+                  <span className="muted small">
+                    {m}
+                    {prices[m] && ` · $${prices[m].input} in / $${prices[m].output} out per M`}
+                  </span>
                 </button>
               ))}
               {shown.length === 0 && <div className="muted small pad">No model matches “{query}”.</div>}

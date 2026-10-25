@@ -22,6 +22,9 @@ export type Price = { input: number; output: number };
  */
 export const ASSUMED_PRICE: Price = { input: 10, output: 30 };
 
+/** Output at or under $2 per million tokens: cheap enough that a long chat costs cents, not dollars. */
+export const isCheap = (price: Price | undefined): boolean => !!price && price.output <= 2;
+
 /** The price the meters count with: the model's own, or the assumed one. */
 export function priceFor(prices: Record<string, Price>, model: string, assumed: Price = ASSUMED_PRICE): { price: Price; assumed: boolean } {
   const own = prices[model];
