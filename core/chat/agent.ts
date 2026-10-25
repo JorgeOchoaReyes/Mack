@@ -44,6 +44,8 @@ export type ChatSession = {
   titled?: boolean;
   /** When memory last read this session; it is read again only after it changed. */
   rememberedAt?: number;
+  /** USD this chat has spent, its sub-agents and suggestions included. */
+  costUsd?: number;
   /** Memory lines the agent cited as having changed what it did. */
   citations?: string[];
   /** The older part of a long conversation, replaced by a summary for the model: messages before `upto`. */
@@ -56,6 +58,7 @@ export type ChatEvent =
   | { type: "assistant"; content: string; tokens: number }
   | { type: "tool"; outcome: ToolOutcome }
   | { type: "status"; message: string }
+  | { type: "spend"; usd: number; limit: number; estimated: boolean }
   | { type: "done" }
   | { type: "error"; message: string };
 

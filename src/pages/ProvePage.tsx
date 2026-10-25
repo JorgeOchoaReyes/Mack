@@ -2,6 +2,7 @@ import { BookOpen, ChevronDown, FolderOpen, GitBranch, Play, Square, Sparkles, C
 import { useEffect, useRef, useState } from "react";
 import { api, errorText, theoremName, type Health, type RunEvent, type Settings } from "../api";
 import { providerInfo } from "../../core/model/providers";
+import { formatUsd } from "../../core/model/metered";
 import { CodeEditor } from "../components/CodeEditor";
 import { SolvedCard, Timeline } from "../components/RunView";
 import { TreeSummary, TreeView, type NodeEvent } from "../components/TreeView";
@@ -31,6 +32,7 @@ export function ProvePage({ problem, setProblem, health, settings, saveSettings,
   const [attempts, setAttempts] = useState<Attempt[]>([]);
   const [nodes, setNodes] = useState<NodeEvent[]>([]);
   const [swarm, setSwarm] = useState<RunEvent[]>([]);
+  const [spend, setSpend] = useState<{ usd: number; limit: number; estimated: boolean } | null>(null);
   const [round, setRound] = useState(0);
   const [runMode, setRunMode] = useState(settings.mode);
   const [solved, setSolved] = useState<Solved | null>(null);
@@ -44,6 +46,7 @@ export function ProvePage({ problem, setProblem, health, settings, saveSettings,
     () =>
       api.onProveEvent((e) => {
         if (e.type === "status") setStatus(e.message);
+        if (e.type === "spend") setSpend(e);
         if (["start", "direction", "refused", "post", "turn", "report", "accepted"].includes(e.type)) setSwarm((s) => [...s, e]);
         if (e.type === "attempt") setAttempts((a) => [...a, e]);
         if (e.type === "node") setNodes((n) => [...n, e]);
@@ -77,6 +80,7 @@ export function ProvePage({ problem, setProblem, health, settings, saveSettings,
     setAttempts([]);
     setNodes([]);
     setSwarm([]);
+    setSpend(null);
     setRound(0);
     setRunMode(settings.mode);
     setSolved(null);
@@ -208,6 +212,7 @@ export function ProvePage({ problem, setProblem, health, settings, saveSettings,
                   {running ? <Spinner /> : solved || accepted ? <CircleCheck size={16} className="ok" /> : <CircleAlert size={16} className="bad" />}
                   <span className="progress-status">{running ? status : solved || accepted ? "Solved" : "Finished without an accepted solution"}</span>
                   {running && <span className="muted small">{elapsed}s</span>}
+                  {spend && <SpendChip spend={spend} />}
                 </div>
               </div>
             )}
@@ -218,6 +223,7 @@ export function ProvePage({ problem, setProblem, health, settings, saveSettings,
                   {running ? <Spinner /> : solved ? <CircleCheck size={16} className="ok" /> : <CircleAlert size={16} className="bad" />}
                   <span className="progress-status">{running ? status : solved ? "Solved" : "Finished without a proof"}</span>
                   {running && <span className="muted small">{elapsed}s</span>}
+                  {spend && <SpendChip spend={spend} />}
                 </div>
                 <TreeSummary nodes={nodes} rounds={round} k1={settings.search.k1} />
               </div>
@@ -229,6 +235,7 @@ export function ProvePage({ problem, setProblem, health, settings, saveSettings,
                   {running ? <Spinner /> : solved ? <CircleCheck size={16} className="ok" /> : <CircleAlert size={16} className="bad" />}
                   <span className="progress-status">{running ? status : solved ? "Solved" : "Finished without a proof"}</span>
                   {running && <span className="muted small">{elapsed}s</span>}
+                  {spend && <SpendChip spend={spend} />}
                 </div>
                 <div className="pips">
                   {Array.from({ length: maxAttempts }, (_, i) => {
@@ -313,5 +320,15 @@ function HowItWorks({ mode }: { mode: Settings["mode"] }) {
       </ol>
       <p className="muted small">Pick a problem from Examples or write your own, then press Prove.</p>
     </div>
+  );
+}
+
+function SpendChip({ spend }: { spend: { usd: number; limit: number; estimated: boolean } }) {
+  return (
+    <span className={`spend-chip ${spend.limit > 0 && spend.usd >= spend.limit * 0.8 ? "warn" : ""}`} title={spend.estimated ? "Some calls reported no usage; their tokens were estimated." : "From the token counts your provider reported."}>
+      {spend.estimated ? "≈" : ""}
+      {formatUsd(spend.usd)}
+      {spend.limit > 0 ? ` of ${formatUsd(spend.limit)}` : ""}
+    </span>
   );
 }

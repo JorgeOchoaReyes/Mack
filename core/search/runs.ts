@@ -31,6 +31,8 @@ export type RunStatus = {
   endedAt?: number;
   problems: ProblemStatus[];
   failureReasons: { reason: string; count: number }[];
+  /** USD the run has spent, across resumes. */
+  spentUsd?: number;
 };
 
 /** Runs one problem's rollout: the search, given its journal and what to resume from. */
@@ -146,7 +148,8 @@ export class RunManager {
 
   private execute(task: RunTask): RunStatus {
     const ctl = new AbortController();
-    const status: RunStatus = { name: task.name, project: task.project, state: "running", startedAt: Date.now(), problems: [], failureReasons: [] };
+    const before = existsSync(join(this.dir(task.name), "status.json")) ? (JSON.parse(readFileSync(join(this.dir(task.name), "status.json"), "utf8")) as RunStatus).spentUsd : undefined;
+    const status: RunStatus = { name: task.name, project: task.project, state: "running", startedAt: Date.now(), problems: [], failureReasons: [], spentUsd: before };
     const recorded = task.problems.map((p) => ({ p, r: replay(readJournal(join(this.dir(task.name), p.id, "journal.jsonl")), p.frozen) }));
     status.problems = recorded.map(({ p, r }) => ({
       id: p.id,
@@ -214,6 +217,14 @@ export class RunManager {
     })();
     this.save(status);
     return status;
+  }
+
+  /** What a running run has spent so far. */
+  recordSpend(run: string, usd: number): void {
+    const l = this.live.get(run);
+    if (!l) return;
+    l.status.spentUsd = usd;
+    this.save(l.status);
   }
 
   private allNodes(task: RunTask): SearchNode[] {

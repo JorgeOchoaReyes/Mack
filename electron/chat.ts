@@ -20,6 +20,7 @@ import { findings, maskSecrets, type Finding } from "../core/secrets";
 import { PluginRegistry } from "../core/mcp/plugins";
 import type { LeanRun } from "../core/lean/verify";
 import type { ModelProvider, ReasoningEffort } from "../core/model/provider";
+import { metered, type Meter, type Price } from "../core/model/metered";
 import type { RunEvent, RunMode, RunRecord, Settings } from "./main";
 
 export type Project = { id: string; name: string; folder: string; createdAt: number };
@@ -38,6 +39,8 @@ type Deps = {
   userData: (...p: string[]) => string;
   readSettings: () => Settings;
   makeProvider: (s: Settings) => ModelProvider;
+  /** A meter for one session, and the model's price; throws when a cap is set and the model has no price. */
+  newMeter: (s: Settings, model: string, spent?: number) => { meter: Meter; price: Price | undefined };
   lean: (s: Settings) => { run: LeanRun; check?: LeanCheckRun } | undefined;
   runProof: (problem: string, mode: RunMode, forward: (ev: RunEvent) => void) => Promise<RunRecord>;
   /** Runs the tools other features register (Ultramath, proof search, MCP) for one session. */
@@ -158,18 +161,30 @@ export function registerChat(d: Deps): ChatControl {
     startTurn(projectId, session);
   }
 
-  const settingsFor = () => {
+  /** The settings, model and provider for a chat; with a session, the provider is metered against that chat's cap. */
+  const settingsFor = (session?: ChatSession, ctl?: AbortController) => {
     const s = d.readSettings();
     const model = s.models[s.provider];
     if (!model) throw new Error("Choose a model in Setup first.");
-    return { s, model, provider: d.makeProvider(s), vision: s.visionModels.includes(model) };
+    let provider = d.makeProvider(s);
+    if (session) {
+      const { meter, price } = d.newMeter(s, model, session.costUsd ?? 0);
+      provider = metered(provider, price, meter, {
+        onCharge: (m) => {
+          session.costUsd = m.spent;
+          send({ sessionId: session.id, event: { type: "spend", usd: m.spent, limit: m.limit, estimated: m.estimated } });
+        },
+        onCap: () => ctl?.abort(),
+      });
+    }
+    return { s, model, provider, vision: s.visionModels.includes(model) };
   };
 
   function startTurn(projectId: string, session: ChatSession): void {
     const p = project(projectId);
-    const { s, model, provider, vision } = settingsFor();
-    sessionProject.set(session.id, p.id);
     const ctl = new AbortController();
+    const { s, model, provider, vision } = settingsFor(session, ctl);
+    sessionProject.set(session.id, p.id);
     const state = { session, ctl, sendNow: [] as StoredMessage[], queued: [] as StoredMessage[] };
     live.set(session.id, state);
     const lean = d.lean(s);
@@ -301,7 +316,7 @@ export function registerChat(d: Deps): ChatControl {
     const s = d.readSettings();
     if (!s.suggestions) return;
     try {
-      const { model, provider } = settingsFor();
+      const { model, provider } = settingsFor(session);
       if (!session.titled) {
         const first = session.messages.find((m) => m.role === "user" && (m.source ?? "person") === "person");
         const title = first && first.role === "user" ? await suggestTitle(provider, model, first.content) : null;
@@ -420,7 +435,11 @@ export function registerChat(d: Deps): ChatControl {
 
   ipcMain.handle("chat:send", async (_e, projectId: string, sessionId: string | null, text: string, opts: SendOptions = {}) => {
     const p = project(projectId);
-    settingsFor();
+    const pre = sessionId ? live.get(sessionId)?.session ?? loadSession(p.id, sessionId) : null;
+    // Refuse before anything is stored: a cap with no price, or a chat that has spent its cap.
+    const { s: st, model: md } = settingsFor();
+    const { meter } = d.newMeter(st, md, pre?.costUsd ?? 0);
+    if (meter.limit > 0 && meter.spent >= meter.limit) throw new Error(`This chat has spent its cap of $${meter.limit.toFixed(2)}. Start a new chat, or raise the cap in Settings.`);
     const attachments = await Promise.all((opts.attachments ?? []).map((a) => attachment(p.folder, a)));
     const message: StoredMessage = { role: "user", content: text, at: Date.now(), source: "person", ...(attachments.length ? { attachments } : {}) };
     const l = sessionId ? live.get(sessionId) : undefined;
