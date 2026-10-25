@@ -91,7 +91,8 @@ const DEFAULTS: Settings = {
   models: { fireworks: "", openrouter: "", custom: "" },
   customBaseUrl: "http://localhost:11434/v1",
   leanWorkspace: DEFAULT_WORKSPACE,
-  timeoutMs: 300_000,
+  // A cold first load of Mathlib on Windows can take minutes (antivirus scans every .olean).
+  timeoutMs: 600_000,
   maxAttempts: 8,
   mode: "single",
   search: DEFAULT_LIMITS,
