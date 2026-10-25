@@ -68,6 +68,28 @@ export function SettingsPage({ settings, saveSettings, onGo }: Props) {
         </p>
         <GlobalSpend settings={settings} saveSettings={saveSettings} />
         <div className="grid-2">
+          <Field label="Assumed price, input ($ per million tokens)" hint="Counted for a model whose price you have not entered. Keep it high: limits then stop early, never late.">
+            <input
+              className="input"
+              type="number"
+              min={0}
+              step={0.5}
+              value={settings.assumedPrice.input}
+              onChange={(e) => void saveSettings({ assumedPrice: { ...settings.assumedPrice, input: Math.max(0, Number(e.target.value) || 0) } })}
+            />
+          </Field>
+          <Field label="Assumed price, output ($ per million tokens)">
+            <input
+              className="input"
+              type="number"
+              min={0}
+              step={0.5}
+              value={settings.assumedPrice.output}
+              onChange={(e) => void saveSettings({ assumedPrice: { ...settings.assumedPrice, output: Math.max(0, Number(e.target.value) || 0) } })}
+            />
+          </Field>
+        </div>
+        <div className="grid-2">
           <Field label="Max cost per session (USD)" hint="0 turns the cap off.">
             <input
               className="input"

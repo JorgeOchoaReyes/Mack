@@ -12,7 +12,7 @@ type Props = { health: Health | null; settings: Settings; onChanged: () => void;
 export function SetupPage({ health, settings, onChanged, saveSettings }: Props) {
   const leanReady = !!health?.lake && !!health?.hasProject && !!health?.hasMathlib;
   const keyReady = health?.keySource !== "none";
-  const modelReady = !!health?.model && !((settings.maxCostPerSession > 0 || settings.globalLimit > 0) && !settings.prices[health.model]);
+  const modelReady = !!health?.model;
   const done = [leanReady, keyReady, modelReady].filter(Boolean).length;
 
   return (
@@ -410,14 +410,15 @@ function PriceFields({ settings, model, saveSettings }: { settings: Settings; mo
       }}
     >
       <div className="small">
-        Price of <code>{model.split("/").pop()}</code> in US dollars per million tokens{price ? "" : " — needed for the spending limits"}:
+        Price of <code>{model.split("/").pop()}</code> in US dollars per million tokens.{" "}
+        {price ? "" : `Until you enter it, spend is counted at an assumed $${settings.assumedPrice.input} / $${settings.assumedPrice.output}: high on purpose, so the limits stop early.`}
       </div>
       <div className="price-row">
         <label className="small">
-          input $ <input className="input price" inputMode="decimal" value={input} onChange={(e) => setInput(e.target.value)} placeholder="0.14" />
+          input $ <input className="input price" inputMode="decimal" value={input} onChange={(e) => setInput(e.target.value)} placeholder={String(settings.assumedPrice.input)} />
         </label>
         <label className="small">
-          output $ <input className="input price" inputMode="decimal" value={output} onChange={(e) => setOutput(e.target.value)} placeholder="0.28" />
+          output $ <input className="input price" inputMode="decimal" value={output} onChange={(e) => setOutput(e.target.value)} placeholder={String(settings.assumedPrice.output)} />
         </label>
         <Button size="sm" variant={price ? "secondary" : "primary"} type="submit" disabled={!valid || unchanged}>
           Save price

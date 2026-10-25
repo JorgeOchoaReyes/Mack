@@ -14,6 +14,20 @@ import type { ChatRequest, ChatResponse, ModelProvider } from "./provider";
 
 export type Price = { input: number; output: number };
 
+/**
+ * The price assumed for a model whose price nobody entered: high on purpose
+ * (above every open model on Fireworks), so an unpriced model's spend is
+ * overestimated and the limits stop it early, never late. Entering the real
+ * price makes the meter accurate.
+ */
+export const ASSUMED_PRICE: Price = { input: 10, output: 30 };
+
+/** The price the meters count with: the model's own, or the assumed one. */
+export function priceFor(prices: Record<string, Price>, model: string, assumed: Price = ASSUMED_PRICE): { price: Price; assumed: boolean } {
+  const own = prices[model];
+  return own ? { price: own, assumed: false } : { price: assumed, assumed: true };
+}
+
 export type Meter = {
   /** USD spent so far in this session. */
   spent: number;
