@@ -20,6 +20,11 @@ and how Mack keeps up with upstream.
   branch out from the statement in parallel. Each hands back one file, which
   may keep `sorry` gaps; Lean scores it, and later rounds continue the most
   promising nodes instead of starting over, until the verifier accepts one.
+- **Ultramath.** Several members attack one hard problem, each on a
+  direction no other holds (a duplicate is refused), sharing a board of
+  lemmas, counterexamples and dead ends. With a Lean statement the strict
+  verifier judges submissions; for a problem written in plain words, a
+  coordinating agent referees them, as upstream's does.
 - **Fast checks.** A resident Lean REPL keeps Mathlib loaded, so checking a
   partial proof takes seconds and shows the goal left at each `sorry`. The
   final verification still runs in a fresh Lean process.
@@ -54,7 +59,7 @@ upstream module each comes from.
   `program-files/prover`, `program-files/discovery`, `interfaces/explore`.
   Includes a resident Lean REPL for fast checks of partial proofs, replacing
   one `lake env lean` run per check.
-- [ ] **3. Ultramath.** Several agents attack one hard problem from different
+- [x] **3. Ultramath.** Several agents attack one hard problem from different
   directions: a duplicate check on proposed directions, a shared board of
   lemmas, counterexamples and dead ends, and a coordinating agent that
   reviews reports and accepts a solution. From upstream `interfaces/swarm`.

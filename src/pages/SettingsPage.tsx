@@ -3,6 +3,7 @@ import { UPSTREAM } from "../../core/upstream";
 import { api, type Settings } from "../api";
 import { Button, Field, Toggle } from "../components/ui";
 import type { Limits } from "../../core/search/tree";
+import type { UltramathLimits } from "../../core/ultramath/swarm";
 
 type Props = {
   settings: Settings;
@@ -16,6 +17,12 @@ const SEARCH_FIELDS: { key: keyof Limits; label: string; hint: string; min: numb
   { key: "fanout", label: "Fan-out", hint: "Most continuations of one node.", min: 1, max: 8 },
   { key: "callsPerContinuation", label: "Calls per worker", hint: "Model calls one worker may make, revising after each check.", min: 1, max: 10 },
   { key: "modelCalls", label: "Model-call budget", hint: "Most model calls in the whole search.", min: 1, max: 500 },
+];
+
+const ULTRA_FIELDS: { key: keyof UltramathLimits; label: string; hint: string; min: number; max: number }[] = [
+  { key: "members", label: "Members", hint: "Agents working at once, each on its own direction (upstream allows up to 16).", min: 1, max: 16 },
+  { key: "rounds", label: "Rounds", hint: "In each round every active member takes one turn.", min: 1, max: 50 },
+  { key: "modelCalls", label: "Model-call budget", hint: "Most model calls in the whole swarm.", min: 1, max: 1000 },
 ];
 
 export function SettingsPage({ settings, saveSettings, onGo }: Props) {
@@ -76,6 +83,29 @@ export function SettingsPage({ settings, saveSettings, onGo }: Props) {
           onChange={(v) => void saveSettings({ useRepl: v })}
           label="Use the resident Lean REPL for quick checks (keeps Mathlib loaded between checks; the final verification always uses a fresh Lean)"
         />
+      </section>
+
+      <section className="settings-group">
+        <h2>Ultramath</h2>
+        <p className="muted">
+          Used when the Prove screen is set to Ultramath. Duplicate checks and the judge's reviews count toward the model-call budget.
+        </p>
+        <div className="grid-2">
+          {ULTRA_FIELDS.map((f) => (
+            <Field key={f.key} label={f.label} hint={f.hint}>
+              <input
+                className="input"
+                type="number"
+                min={f.min}
+                max={f.max}
+                value={settings.ultramath[f.key]}
+                onChange={(e) =>
+                  void saveSettings({ ultramath: { ...settings.ultramath, [f.key]: Math.max(f.min, Math.min(f.max, Number(e.target.value) || f.min)) } })
+                }
+              />
+            </Field>
+          ))}
+        </div>
       </section>
 
       <section className="settings-group">

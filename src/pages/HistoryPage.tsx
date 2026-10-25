@@ -4,6 +4,7 @@ import { api, type RunEvent, type RunRecord, type RunSummary } from "../api";
 import { CodeEditor } from "../components/CodeEditor";
 import { SolvedCard, Timeline } from "../components/RunView";
 import { TreeSummary, TreeView, type NodeEvent } from "../components/TreeView";
+import { AcceptedCard, UltramathView } from "../components/UltramathView";
 import { Button, formatMs, timeAgo } from "../components/ui";
 
 type Props = { refreshKey: number; onRerun: (problem: string) => void };
@@ -21,6 +22,8 @@ export function HistoryPage({ refreshKey, onRerun }: Props) {
     const rounds = open.events.filter((e) => e.type === "round").length;
     const solved = open.events.find((e): e is Extract<RunEvent, { type: "solved" }> => e.type === "solved");
     const isSearch = open.mode === "search";
+    const accepted = open.events.find((e): e is Extract<RunEvent, { type: "accepted" }> => e.type === "accepted");
+    const where = isSearch ? `Node ${solved?.n} of the search tree` : open.mode === "ultramath" ? `Member ${solved?.n}` : undefined;
     return (
       <div className="page">
         <div className="page-head">
@@ -52,11 +55,15 @@ export function HistoryPage({ refreshKey, onRerun }: Props) {
           <CodeEditor value={open.problem} readOnly />
         </div>
         {solved ? (
-          <SolvedCard solved={solved} problem={open.problem} where={isSearch ? `Node ${solved.n} of the search tree` : undefined} />
+          <SolvedCard solved={solved} problem={open.problem} where={where} />
+        ) : accepted ? (
+          <AcceptedCard accepted={accepted} />
         ) : (
           open.message && <div className="notice notice-bad">{open.message}</div>
         )}
-        {isSearch ? (
+        {open.mode === "ultramath" ? (
+          <UltramathView events={open.events} />
+        ) : isSearch ? (
           <>
             <TreeSummary nodes={nodes} rounds={rounds} />
             <TreeView nodes={nodes} />
@@ -87,7 +94,12 @@ export function HistoryPage({ refreshKey, onRerun }: Props) {
               <span className="run-thm mono">{r.theorem}</span>
               <span className="muted small">{r.outcome === "solved" ? "Verified" : r.message.split("\n")[0]}</span>
               <span className="run-meta muted small">
-                {r.mode === "search" ? `search tree, ${r.attempts} node${r.attempts === 1 ? "" : "s"}` : `${r.attempts} attempt${r.attempts === 1 ? "" : "s"}`} · {r.model.split("/").pop()} · {timeAgo(r.startedAt)}
+                {r.mode === "search"
+                  ? `search tree, ${r.attempts} node${r.attempts === 1 ? "" : "s"}`
+                  : r.mode === "ultramath"
+                    ? `Ultramath, ${r.attempts} turn${r.attempts === 1 ? "" : "s"}`
+                    : `${r.attempts} attempt${r.attempts === 1 ? "" : "s"}`}{" "}
+                · {r.model.split("/").pop()} · {timeAgo(r.startedAt)}
               </span>
             </button>
           ))}

@@ -15,6 +15,7 @@ import { PROVIDERS, providerInfo, type ProviderId } from "../core/model/provider
 import { prove, type ProveEvent } from "../core/prove";
 import { search, type SearchEvent } from "../core/search/search";
 import { DEFAULT_LIMITS, type Limits } from "../core/search/tree";
+import { DEFAULT_ULTRAMATH, problemKind, ultramath, type UltramathEvent, type UltramathLimits } from "../core/ultramath/swarm";
 import { checkUpstream } from "../core/upstream";
 
 export type Settings = {
@@ -26,9 +27,10 @@ export type Settings = {
   leanWorkspace: string;
   timeoutMs: number;
   maxAttempts: number;
-  /** "single": one agent revises one proof; "search": the proof search tree. */
+  /** "single": one agent revises one proof; "search": the proof search tree; "ultramath": a swarm of members. */
   mode: RunMode;
   search: Limits;
+  ultramath: UltramathLimits;
   /** Use the resident Lean REPL for quick checks when it is built. */
   useRepl: boolean;
   /** Check Open Math Harness for methodology changes on every launch. */
@@ -37,9 +39,9 @@ export type Settings = {
   upstreamDismissed: string;
 };
 
-export type RunMode = "single" | "search";
+export type RunMode = "single" | "search" | "ultramath";
 
-export type RunEvent = ProveEvent | SearchEvent;
+export type RunEvent = ProveEvent | SearchEvent | UltramathEvent;
 
 export type KeySource = "env" | "saved" | "none";
 
@@ -85,6 +87,7 @@ const DEFAULTS: Settings = {
   maxAttempts: 8,
   mode: "single",
   search: DEFAULT_LIMITS,
+  ultramath: DEFAULT_ULTRAMATH,
   useRepl: true,
   upstreamCheck: true,
   upstreamDismissed: "",
@@ -120,6 +123,7 @@ function readSettings(): Settings {
       ...rest,
       models,
       search: { ...DEFAULTS.search, ...saved.search },
+      ultramath: { ...DEFAULTS.ultramath, ...saved.ultramath },
       leanWorkspace: saved.leanWorkspace || DEFAULTS.leanWorkspace,
     };
   } catch {
@@ -285,7 +289,8 @@ ipcMain.handle("prove:start", async (e, problem: string) => {
   const s = readSettings();
   const model = s.models[s.provider];
   if (!model) throw new Error(`Choose a ${providerInfo(s.provider).label} model in Setup first.`);
-  if (!hasProject(s.leanWorkspace)) throw new Error("Install Lean and Mathlib in Setup first.");
+  const needsLean = s.mode !== "ultramath" || problemKind(problem) === "lean";
+  if (needsLean && !hasProject(s.leanWorkspace)) throw new Error("Install Lean and Mathlib in Setup first.");
   const provider = makeProvider(s, s.provider);
   proving = new AbortController();
   const record: RunRecord = {
@@ -302,13 +307,16 @@ ipcMain.handle("prove:start", async (e, problem: string) => {
   };
   const send = (ev: RunEvent) => {
     if (ev.type !== "status") record.events.push(ev);
-    if (ev.type === "solved") record.outcome = "solved";
+    if (ev.type === "solved" || ev.type === "accepted") record.outcome = "solved";
     if (ev.type === "failed") record.message = ev.message;
     if (!e.sender.isDestroyed()) e.sender.send("prove:event", ev);
   };
   try {
     const run = leanRunner({ workspace: s.leanWorkspace, timeoutMs: s.timeoutMs });
-    if (s.mode === "search") {
+    if (s.mode === "ultramath") {
+      const lean = needsLean ? { run, check: quickCheck(s, 2) ?? (async (src: string) => checkFromRun(await run(src))) } : {};
+      await ultramath({ problem, provider, model, ...lean, limits: s.ultramath, signal: proving.signal, onEvent: send });
+    } else if (s.mode === "search") {
       // Up to two REPLs for parallel workers: each holds Mathlib in memory.
       const check = quickCheck(s, Math.min(2, s.search.w)) ?? (async (src: string) => checkFromRun(await run(src)));
       await search({ frozen: problem, provider, model, run, check, limits: s.search, signal: proving.signal, onEvent: send });
@@ -341,7 +349,7 @@ ipcMain.handle("runs:list", (): RunSummary[] =>
       try {
         const r = JSON.parse(readFileSync(join(runsDir(), f), "utf8")) as RunRecord;
         const { events, problem, ...rest } = r;
-        const attempts = events.filter((x) => x.type === "attempt" || x.type === "node").length;
+        const attempts = events.filter((x) => x.type === "attempt" || x.type === "node" || x.type === "turn").length;
         return [{ ...rest, theorem: theoremOf(problem), attempts }];
       } catch {
         return [];

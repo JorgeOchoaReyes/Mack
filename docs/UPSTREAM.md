@@ -36,7 +36,7 @@ upstream module.
 | `program-files/discovery` (rollout, `admit`, `InitialPolicy`) + `interfaces/explore` (CONTINUE(v)) | `core/search/tree.ts`, `core/search/search.ts` | Adapted: in-process workers; no plan board or resume yet |
 | `interfaces/discovery/src/scoring.rs` (scoring v3) | `core/search/tree.ts` (`scoreOf`, `partialScore`) | Simplified: closed `have` steps count without the automation-suite and hollow-leaf analysis |
 | `program-files/prover/prompts/putnam.j2` (fixed-loop worker prompt) | `core/search/search.ts` (`workerSystem`) | Ported, competition framing made general |
-| `interfaces/swarm` (Ultramath) | — | Planned, roadmap step 3 |
+| `interfaces/swarm` (Ultramath) + `prompts/templates/agents/swarm/*`, `roles/swarm-member.toml` | `core/ultramath/swarm.ts` | Adapted: a tagged text protocol instead of tools; the Lean verifier judges Lean problems, the coordinating agent judges informal ones; no resume |
 | `program-files/chat-agent`, tools, `program-files/memory`, `program-files/approvals` | — | Planned, roadmap step 4 |
 | `kernel/` + `platform/` (capability microkernel, bubblewrap confinement) | — | Not ported: Linux-only. Mack restricts each agent's tools in-process instead, which is weaker. |
 | `program-files/openrouter` | `core/model/openai-compatible.ts` behind `core/model/provider.ts`; `core/model/providers.ts` lists Fireworks, OpenRouter and a custom endpoint | Adapted: any OpenAI-compatible provider, OpenRouter among them |

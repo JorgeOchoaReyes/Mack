@@ -362,3 +362,16 @@ nav { display: flex; flex-direction: column; gap: 2px; }
 .provider-tab.active { border-color: var(--accent-edge); background: var(--accent); color: #111; font-weight: 600; }
 .provider-tab.active .ok { color: #111; }
 .model-select { border: 1px solid var(--border); border-radius: 99px; background: var(--surface-2); color: var(--text); font-size: 12px; padding: 3px 8px; max-width: 300px; }
+
+/* Ultramath */
+.ultra { display: grid; gap: 14px; }
+.ultra-members { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
+.ultra-member { border: 1px solid var(--border); border-radius: 10px; padding: 9px 11px; background: var(--surface); display: grid; gap: 4px; }
+.ultra-h { display: flex; align-items: center; gap: 6px; margin: 0 0 6px; font-size: 13px; }
+.ultra-board { display: grid; gap: 6px; }
+.ultra-post { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; border: 1px solid var(--border); border-radius: 9px; padding: 7px 10px; background: var(--surface); }
+.ultra-text, .ultra-solution { width: 100%; margin: 0; white-space: pre-wrap; font-size: 12.5px; font-family: var(--mono, ui-monospace, monospace); }
+.ultra-solution { border: 1px solid var(--border); border-radius: 9px; padding: 10px; background: var(--sunken); max-height: 420px; overflow: auto; }
+.ultra-report { border: 1px solid var(--border); border-left: 3px solid var(--border-strong); border-radius: 9px; padding: 8px 11px; display: grid; gap: 4px; margin-bottom: 6px; }
+.ultra-report.tone-ok { border-left-color: var(--ok); }
+.ultra-report.tone-bad { border-left-color: var(--bad); }

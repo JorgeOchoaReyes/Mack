@@ -10,8 +10,8 @@
     { "path": "program-files/discovery/", "area": "Proof search", "mack": "core/search/tree.ts, core/search/search.ts" },
     { "path": "interfaces/discovery/", "area": "Proof search", "mack": "core/search/tree.ts, core/search/search.ts" },
     { "path": "interfaces/explore/", "area": "Proof search", "mack": "core/search/tree.ts, core/search/search.ts" },
-    { "path": "interfaces/swarm/", "area": "Ultramath", "mack": "planned: Ultramath" },
-    { "path": "prompts/", "area": "Prompts", "mack": "core/prove.ts (SYSTEM prompt)" },
+    { "path": "interfaces/swarm/", "area": "Ultramath", "mack": "core/ultramath/swarm.ts" },
+    { "path": "prompts/", "area": "Prompts", "mack": "core/prove.ts (SYSTEM prompt), core/ultramath/swarm.ts (swarm prompts)" },
     { "path": "memories/", "area": "Memory", "mack": "planned: project memory" },
     { "path": "program-files/memory/", "area": "Memory", "mack": "planned: project memory" },
     { "path": "interfaces/memory/", "area": "Memory", "mack": "planned: project memory" }
