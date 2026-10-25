@@ -1,17 +1,32 @@
-import { FlaskConical, GitCompare, History, Settings as SettingsIcon, Wrench, X } from "lucide-react";
+import { BookOpen, FlaskConical, GitCompare, History, Settings as SettingsIcon, Wrench, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { api, type Health, type Settings, type Upstream } from "./api";
 import { Logo } from "./components/Logo";
 import { Button, Dot } from "./components/ui";
 import { EXAMPLES } from "./examples";
+import { GuidePage } from "./pages/GuidePage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { ProvePage } from "./pages/ProvePage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { SetupPage } from "./pages/SetupPage";
+import { UpstreamPage } from "./pages/UpstreamPage";
 
-type Page = "prove" | "history" | "setup" | "settings";
+type Page = "prove" | "history" | "upstream" | "setup" | "settings" | "guide";
 
 const DRAFT_KEY = "mack.draft";
+const SEEN_GUIDE_KEY = "mack.seenGuide";
+const UPSTREAM_RECHECK_MS = 6 * 60 * 60 * 1000;
+
+/** The Guide on first launch, Prove afterwards. */
+function firstPage(): Page {
+  try {
+    if (localStorage.getItem(SEEN_GUIDE_KEY)) return "prove";
+    localStorage.setItem(SEEN_GUIDE_KEY, "1");
+  } catch {
+    return "prove";
+  }
+  return "guide";
+}
 
 function loadDraft(): string {
   try {
@@ -22,7 +37,7 @@ function loadDraft(): string {
 }
 
 export function App() {
-  const [page, setPage] = useState<Page>("prove");
+  const [page, setPage] = useState<Page>(firstPage);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [health, setHealth] = useState<Health | null>(null);
   const [upstream, setUpstream] = useState<Upstream | null>(null);
@@ -38,6 +53,9 @@ export function App() {
       refreshHealth();
     });
     void recheckUpstream();
+    // Keep checking while Mack stays open; the main process returns "off" when checks are disabled.
+    const timer = setInterval(() => void recheckUpstream(), UPSTREAM_RECHECK_MS);
+    return () => clearInterval(timer);
   }, [refreshHealth, recheckUpstream]);
 
   const saveSettings = async (patch: Partial<Settings>) => {
@@ -64,8 +82,10 @@ export function App() {
   const nav: { id: Page; label: string; icon: typeof FlaskConical; badge?: boolean }[] = [
     { id: "prove", label: "Prove", icon: FlaskConical },
     { id: "history", label: "History", icon: History },
+    { id: "upstream", label: "Upstream", icon: GitCompare, badge: showBanner },
     { id: "setup", label: "Setup", icon: Wrench, badge: health !== null && !allReady },
-    { id: "settings", label: "Settings", icon: SettingsIcon, badge: showBanner },
+    { id: "settings", label: "Settings", icon: SettingsIcon },
+    { id: "guide", label: "Guide", icon: BookOpen },
   ];
 
   return (
@@ -110,8 +130,8 @@ export function App() {
               <strong>Open Math Harness updated its methodology.</strong> {upstream.commits} new commit{upstream.commits === 1 ? "" : "s"} change{" "}
               {upstream.files.length} file{upstream.files.length === 1 ? "" : "s"} Mack follows. Mack keeps working as it is until they are ported.
             </div>
-            <Button size="sm" onClick={() => void api.openExternal(upstream.compareUrl)}>
-              View changes
+            <Button size="sm" onClick={() => setPage("upstream")}>
+              See what changed
             </Button>
             <Button
               size="sm"
@@ -149,7 +169,9 @@ export function App() {
             />
           )}
           {page === "setup" && <SetupPage health={health} settings={settings} onChanged={refreshHealth} saveSettings={saveSettings} />}
-          {page === "settings" && <SettingsPage settings={settings} saveSettings={saveSettings} upstream={upstream} recheckUpstream={recheckUpstream} />}
+          {page === "upstream" && <UpstreamPage settings={settings} saveSettings={saveSettings} upstream={upstream} recheckUpstream={recheckUpstream} />}
+          {page === "settings" && <SettingsPage settings={settings} saveSettings={saveSettings} onGo={setPage} />}
+          {page === "guide" && <GuidePage onGo={setPage} />}
         </div>
       </main>
     </div>
