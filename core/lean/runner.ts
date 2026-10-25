@@ -6,10 +6,11 @@ import { spawn } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { lakeCommand, leanEnv } from "./toolchain";
 import type { LeanRun, RunResult } from "./verify";
 
 export type LeanConfig = {
-  /** A Lake project with Mathlib as a dependency (see scripts/setup-lean.ps1). */
+  /** A Lake project with Mathlib as a dependency (see core/lean/setup.ts). */
   workspace: string;
   timeoutMs: number;
 };
@@ -29,8 +30,9 @@ export function leanRunner(config: LeanConfig): LeanRun {
             resolve(r);
           }
         };
-        const child = spawn("lake", ["env", "lean", file], {
+        const child = spawn(lakeCommand(), ["env", "lean", file], {
           cwd: config.workspace,
+          env: leanEnv(),
           stdio: ["ignore", "pipe", "pipe"],
           windowsHide: true,
           shell: false,

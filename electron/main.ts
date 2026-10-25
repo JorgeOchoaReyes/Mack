@@ -1,11 +1,13 @@
-// The Electron main process: owns settings, the API key, Lean and the model
-// provider. The renderer only sees what preload.ts exposes; it never receives
-// the key.
+// The Electron main process: owns settings, the API key, Lean, setup, run
+// history and the model provider. The renderer only sees what preload.ts
+// exposes; the key never crosses to it.
 
-import { app, BrowserWindow, ipcMain, safeStorage, shell } from "electron";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, safeStorage, shell } from "electron";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { leanRunner } from "../core/lean/runner";
+import { DEFAULT_WORKSPACE, hasMathlib, hasProject, runSetup, verifyWorkspace, type SetupEvent } from "../core/lean/setup";
+import { lakeVersion } from "../core/lean/toolchain";
 import { FireworksProvider } from "../core/model/fireworks";
 import { prove, type ProveEvent } from "../core/prove";
 import { checkUpstream } from "../core/upstream";
@@ -21,17 +23,50 @@ export type Settings = {
   upstreamDismissed: string;
 };
 
+export type KeySource = "env" | "saved" | "none";
+
+export type Health = {
+  lake: string | null;
+  workspace: string;
+  hasProject: boolean;
+  hasMathlib: boolean;
+  keySource: KeySource;
+  model: string;
+};
+
+export type RunRecord = {
+  id: string;
+  startedAt: number;
+  finishedAt: number;
+  model: string;
+  problem: string;
+  outcome: "solved" | "failed";
+  message: string;
+  events: ProveEvent[];
+};
+
+export type RunSummary = Pick<RunRecord, "id" | "startedAt" | "finishedAt" | "model" | "outcome" | "message"> & {
+  theorem: string;
+  attempts: number;
+};
+
 const DEFAULTS: Settings = {
   model: "",
-  leanWorkspace: "",
+  leanWorkspace: DEFAULT_WORKSPACE,
   timeoutMs: 300_000,
   maxAttempts: 8,
   upstreamCheck: true,
   upstreamDismissed: "",
 };
 
-const settingsPath = () => join(app.getPath("userData"), "settings.json");
-const keyPath = () => join(app.getPath("userData"), "fireworks.key");
+const userData = (...p: string[]) => join(app.getPath("userData"), ...p);
+const settingsPath = () => userData("settings.json");
+const keyPath = () => userData("fireworks.key");
+const runsDir = () => {
+  const d = userData("runs");
+  mkdirSync(d, { recursive: true });
+  return d;
+};
 
 /** `KEY=value` lines of a `.env` next to the app, for development; never committed (see .gitignore). */
 function loadDotEnv(): void {
@@ -39,16 +74,21 @@ function loadDotEnv(): void {
   if (!existsSync(file)) return;
   for (const line of readFileSync(file, "utf8").split(/\r?\n/)) {
     const m = /^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$/.exec(line);
-    if (m && process.env[m[1]] === undefined) process.env[m[1]] = m[2].replace(/^["']|["']$/g, "");
+    if (m && m[2] && process.env[m[1]] === undefined) process.env[m[1]] = m[2].replace(/^["']|["']$/g, "");
   }
 }
 
 function readSettings(): Settings {
   try {
-    return { ...DEFAULTS, ...(JSON.parse(readFileSync(settingsPath(), "utf8")) as Partial<Settings>) };
+    const saved = JSON.parse(readFileSync(settingsPath(), "utf8")) as Partial<Settings>;
+    return { ...DEFAULTS, ...saved, leanWorkspace: saved.leanWorkspace || DEFAULTS.leanWorkspace };
   } catch {
     return { ...DEFAULTS };
   }
+}
+
+function keySource(): KeySource {
+  return process.env.FIREWORKS_API_KEY ? "env" : existsSync(keyPath()) ? "saved" : "none";
 }
 
 /** The environment variable wins; otherwise the key saved in the app, encrypted with the OS keystore. */
@@ -62,23 +102,34 @@ function readKey(): string {
   }
 }
 
-let running: AbortController | null = null;
+function theoremOf(problem: string): string {
+  return /^theorem\s+([^\s:({[]+)/m.exec(problem)?.[1] ?? "untitled";
+}
+
+let proving: AbortController | null = null;
+let settingUp: AbortController | null = null;
 
 function createWindow(): void {
   const win = new BrowserWindow({
-    width: 1200,
-    height: 820,
+    width: 1320,
+    height: 860,
+    minWidth: 960,
+    minHeight: 640,
     title: "Mack",
+    icon: join(app.getAppPath(), "build", "icon.png"),
+    backgroundColor: nativeTheme.shouldUseDarkColors ? "#0f0f10" : "#f6f6f3",
+    autoHideMenuBar: true,
     webPreferences: { preload: join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false, sandbox: true },
+  });
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith("https://")) void shell.openExternal(url);
+    return { action: "deny" };
   });
   if (process.env.VITE_DEV_SERVER_URL) void win.loadURL(process.env.VITE_DEV_SERVER_URL);
   else void win.loadFile(join(__dirname, "..", "..", "dist", "index.html"));
 }
 
-ipcMain.handle("settings:get", () => ({
-  settings: readSettings(),
-  keySource: process.env.FIREWORKS_API_KEY ? "env" : existsSync(keyPath()) ? "saved" : "none",
-}));
+ipcMain.handle("settings:get", () => readSettings());
 
 ipcMain.handle("settings:set", (_e, s: Partial<Settings>) => {
   const next = { ...readSettings(), ...s };
@@ -89,8 +140,48 @@ ipcMain.handle("settings:set", (_e, s: Partial<Settings>) => {
 ipcMain.handle("key:set", (_e, key: string) => {
   if (!safeStorage.isEncryptionAvailable()) throw new Error("OS encryption is unavailable; set FIREWORKS_API_KEY in .env instead");
   writeFileSync(keyPath(), safeStorage.encryptString(key.trim()));
-  return true;
+  return keySource();
 });
+
+ipcMain.handle("key:clear", () => {
+  rmSync(keyPath(), { force: true });
+  return keySource();
+});
+
+ipcMain.handle("health:get", async (): Promise<Health> => {
+  const s = readSettings();
+  return {
+    lake: await lakeVersion(s.leanWorkspace),
+    workspace: s.leanWorkspace,
+    hasProject: hasProject(s.leanWorkspace),
+    hasMathlib: hasMathlib(s.leanWorkspace),
+    keySource: keySource(),
+    model: s.model,
+  };
+});
+
+ipcMain.handle("workspace:verify", async () => verifyWorkspace(readSettings().leanWorkspace));
+
+ipcMain.handle("workspace:pick", async (e) => {
+  const win = BrowserWindow.fromWebContents(e.sender);
+  const r = await dialog.showOpenDialog(win!, { properties: ["openDirectory", "createDirectory"], title: "Choose the Lean workspace" });
+  return r.canceled ? null : r.filePaths[0];
+});
+
+ipcMain.handle("setup:start", async (e) => {
+  if (settingUp) throw new Error("setup is already running");
+  settingUp = new AbortController();
+  const send = (ev: SetupEvent) => {
+    if (!e.sender.isDestroyed()) e.sender.send("setup:event", ev);
+  };
+  try {
+    return await runSetup(readSettings().leanWorkspace, send, settingUp.signal);
+  } finally {
+    settingUp = null;
+  }
+});
+
+ipcMain.handle("setup:stop", () => settingUp?.abort());
 
 ipcMain.handle("upstream:check", async () => {
   const s = readSettings();
@@ -100,40 +191,96 @@ ipcMain.handle("upstream:check", async () => {
   return report;
 });
 
-ipcMain.handle("open:github", (_e, url: string) => {
-  if (!url.startsWith("https://github.com/")) throw new Error("only github.com links open from Mack");
+ipcMain.handle("open:external", (_e, url: string) => {
+  if (!/^https:\/\/(github\.com|fireworks\.ai|app\.fireworks\.ai|leanprover-community\.github\.io)\//.test(url)) {
+    throw new Error("Mack only opens known links");
+  }
   return shell.openExternal(url);
 });
 
 ipcMain.handle("models:list", async () => new FireworksProvider(readKey()).listModels());
 
-ipcMain.handle("prove:start", async (e, frozen: string) => {
-  if (running) throw new Error("a proof run is already in progress");
+ipcMain.handle("prove:start", async (e, problem: string) => {
+  if (proving) throw new Error("a proof run is already in progress");
   const s = readSettings();
-  if (!s.model) throw new Error("choose a model in Settings first");
-  if (!s.leanWorkspace) throw new Error("set the Lean workspace in Settings first");
+  if (!readKey()) throw new Error("Add your Fireworks API key in Setup first.");
+  if (!s.model) throw new Error("Choose a model in Setup first.");
+  if (!hasProject(s.leanWorkspace)) throw new Error("Install Lean and Mathlib in Setup first.");
   const provider = new FireworksProvider(readKey());
-  running = new AbortController();
+  proving = new AbortController();
+  const record: RunRecord = {
+    id: `${Date.now()}`,
+    startedAt: Date.now(),
+    finishedAt: 0,
+    model: s.model,
+    problem,
+    outcome: "failed",
+    message: "",
+    events: [],
+  };
   const send = (ev: ProveEvent) => {
+    if (ev.type !== "status") record.events.push(ev);
+    if (ev.type === "solved") record.outcome = "solved";
+    if (ev.type === "failed") record.message = ev.message;
     if (!e.sender.isDestroyed()) e.sender.send("prove:event", ev);
   };
   try {
     await prove({
-      frozen,
+      frozen: problem,
       provider,
       model: s.model,
       run: leanRunner({ workspace: s.leanWorkspace, timeoutMs: s.timeoutMs }),
       maxAttempts: s.maxAttempts,
-      signal: running.signal,
+      signal: proving.signal,
       onEvent: send,
     });
   } finally {
-    running = null;
+    proving = null;
+    record.finishedAt = Date.now();
+    writeFileSync(join(runsDir(), `${record.id}.json`), JSON.stringify(record));
   }
+  return record.id;
 });
 
-ipcMain.handle("prove:stop", () => {
-  running?.abort();
+ipcMain.handle("prove:stop", () => proving?.abort());
+
+ipcMain.handle("runs:list", (): RunSummary[] =>
+  readdirSync(runsDir())
+    .filter((f) => f.endsWith(".json"))
+    .flatMap((f) => {
+      try {
+        const r = JSON.parse(readFileSync(join(runsDir(), f), "utf8")) as RunRecord;
+        const { events, problem, ...rest } = r;
+        return [{ ...rest, theorem: theoremOf(problem), attempts: events.filter((x) => x.type === "attempt").length }];
+      } catch {
+        return [];
+      }
+    })
+    .sort((a, b) => b.startedAt - a.startedAt),
+);
+
+ipcMain.handle("runs:get", (_e, id: string): RunRecord | null => {
+  if (!/^\d+$/.test(id)) return null;
+  const f = join(runsDir(), `${id}.json`);
+  return existsSync(f) ? (JSON.parse(readFileSync(f, "utf8")) as RunRecord) : null;
+});
+
+ipcMain.handle("runs:delete", (_e, id: string) => {
+  if (/^\d+$/.test(id)) rmSync(join(runsDir(), `${id}.json`), { force: true });
+});
+
+ipcMain.handle("file:saveLean", async (e, name: string, text: string) => {
+  const win = BrowserWindow.fromWebContents(e.sender);
+  const r = await dialog.showSaveDialog(win!, { defaultPath: `${name}.lean`, filters: [{ name: "Lean", extensions: ["lean"] }] });
+  if (r.canceled || !r.filePath) return false;
+  writeFileSync(r.filePath, text, "utf8");
+  return true;
+});
+
+ipcMain.handle("file:openLean", async (e) => {
+  const win = BrowserWindow.fromWebContents(e.sender);
+  const r = await dialog.showOpenDialog(win!, { properties: ["openFile"], filters: [{ name: "Lean", extensions: ["lean"] }] });
+  return r.canceled ? null : readFileSync(r.filePaths[0], "utf8");
 });
 
 loadDotEnv();

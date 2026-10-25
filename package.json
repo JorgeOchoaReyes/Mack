@@ -10,9 +10,19 @@
     "start": "npm run build && electron .",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.electron.json --noEmit",
     "test": "vitest run",
-    "setup:lean": "powershell -ExecutionPolicy Bypass -File scripts/setup-lean.ps1"
+    "icons": "node scripts/make-icons.mjs",
+    "dist": "npm run build && electron-builder --win",
+    "setup:lean": "tsc -p tsconfig.electron.json && node dist-electron/scripts/setup-lean.js"
   },
   "dependencies": {
+    "@codemirror/autocomplete": "^6.20.4",
+    "@codemirror/commands": "^6.11.1",
+    "@codemirror/language": "^6.13.1",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.15",
+    "@lezer/highlight": "^1.2.5",
+    "codemirror": "^6.0.2",
+    "lucide-react": "^1.61.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   },
@@ -22,8 +32,36 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
     "electron": "^45.0.0",
+    "electron-builder": "^26.18.0",
+    "sharp": "^0.35.5",
     "typescript": "^7.0.2",
     "vite": "^8.3.5",
     "vitest": "^5.0.5"
+  },
+  "author": "Jorge Ochoa Reyes",
+  "build": {
+    "appId": "io.github.jorgeochoareyes.mack",
+    "productName": "Mack",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**",
+      "dist-electron/**",
+      "build/icon.png",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Mack"
+    }
   }
 }
