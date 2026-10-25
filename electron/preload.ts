@@ -50,6 +50,7 @@ const api = {
   reviewChanges: (projectId: string) => ipcRenderer.invoke("review:changes", projectId),
   reviewFile: (projectId: string, path: string) => ipcRenderer.invoke("review:file", projectId, path) as Promise<string>,
   reviewInit: (projectId: string) => ipcRenderer.invoke("review:init", projectId) as Promise<boolean>,
+  swarmRecords: (projectId: string, sessionId: string) => ipcRenderer.invoke("swarms:records", projectId, sessionId),
   listDiscovery: () => ipcRenderer.invoke("discovery:list"),
   discoveryStatus: (run: string) => ipcRenderer.invoke("discovery:status", run),
   discoveryTree: (run: string, problem: string) => ipcRenderer.invoke("discovery:tree", run, problem),

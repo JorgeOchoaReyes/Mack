@@ -20,6 +20,7 @@ import { checkUpstream } from "../core/upstream";
 import { registerChat } from "./chat";
 import { RunManager, type Problem, type RunStatus } from "../core/search/runs";
 import { RUN_TOOLS } from "../core/search/run-tools";
+import { CHAT_TOOLS as SWARM_CHAT_TOOLS, SwarmService } from "../core/ultramath/service";
 import { confine, registerTools } from "../core/chat/tools";
 import { frozenObjection } from "../core/lean/rules";
 import { basename } from "node:path";
@@ -484,6 +485,21 @@ const runs = new RunManager(
 );
 
 registerTools(RUN_TOOLS);
+registerTools(SWARM_CHAT_TOOLS);
+
+const swarms = new SwarmService({
+  provider: () => {
+    const s = readSettings();
+    return { provider: makeProvider(s, s.provider), model: s.models[s.provider] };
+  },
+  lean: () => {
+    const s = readSettings();
+    if (!hasProject(s.leanWorkspace)) return undefined;
+    const run = leanRunner({ workspace: s.leanWorkspace, timeoutMs: s.timeoutMs });
+    return { run, check: quickCheck(s, 2) ?? undefined };
+  },
+  wake: (projectId, sessionId, text) => chat.wake(projectId, sessionId, "job", text),
+});
 
 const chat = registerChat({
   userData,
@@ -495,8 +511,35 @@ const chat = registerChat({
     return { run, check: quickCheck(s, 1) };
   },
   runProof,
-  extraTools: ({ projectId, root, sessionId }) => (call) => runTool(call, { projectId, root, sessionId }),
+  extraTools: ({ projectId, root, sessionId }) => (call) => runTool(call, { projectId, root, sessionId }) ?? swarmTool(call, { projectId, root, sessionId }),
 });
+
+// Swarms that were running when Mack last stopped are recorded as interrupted, ready to resume.
+for (const p of chat.projects()) swarms.markInterrupted(p.folder);
+
+/** The chat's `ultramath_*` tools; the swarm is the chat's, named by the session, never by an argument. */
+function swarmTool(call: { name: string; args: Record<string, unknown> }, ctx: { projectId: string; root: string; sessionId: string }): Promise<string> | undefined {
+  const a = call.args;
+  const now = (f: () => string) => (async () => f())();
+  switch (call.name) {
+    case "ultramath_start":
+      return now(() => swarms.start(ctx.projectId, ctx.root, ctx.sessionId, a));
+    case "ultramath_status":
+      return now(() => swarms.status(ctx.sessionId, a.swarm));
+    case "ultramath_verdict":
+      return now(() => swarms.verdict(ctx.sessionId, a));
+    case "ultramath_records":
+      return now(() => swarms.records(ctx.sessionId, a));
+    case "ultramath_stop":
+      return now(() => swarms.stop(ctx.sessionId, a.swarm));
+    case "ultramath_resume":
+      return now(() => swarms.resume(ctx.projectId, ctx.root, ctx.sessionId, a));
+    default:
+      return undefined;
+  }
+}
+
+ipcMain.handle("swarms:records", (_e, projectId: string, sessionId: string) => swarms.recordsFor(chat.project(projectId).folder, sessionId));
 
 /** The chat's `discovery_*` tools: start, watch, stop and resume proof-search runs of the chat's project. */
 function runTool(call: { name: string; args: Record<string, unknown> }, ctx: { projectId: string; root: string; sessionId: string }): Promise<string> | undefined {
@@ -578,6 +621,7 @@ void app.whenReady().then(createWindow);
 app.on("window-all-closed", () => app.quit());
 app.on("will-quit", () => {
   runs.stopAll();
+  swarms.stopAll();
   repl?.pool.stop();
   chat.stopAll();
 });

@@ -1,4 +1,6 @@
-import { AlarmClock, Brain, ChevronRight, Download, GitCompare, KeyRound, FolderOpen, FolderPlus, Lightbulb, MessageSquarePlus, Paperclip, Send, ShieldAlert, Square, Terminal, Trash2, Wrench, X, Zap } from "lucide-react";
+import { UltramathView } from "../components/UltramathView";
+import type { RunEvent, SwarmRecord } from "../api";
+import { AlarmClock, Brain, ChevronRight, Users, Download, GitCompare, KeyRound, FolderOpen, FolderPlus, Lightbulb, MessageSquarePlus, Paperclip, Send, ShieldAlert, Square, Terminal, Trash2, Wrench, X, Zap } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   api,
@@ -44,7 +46,7 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
   const [error, setError] = useState("");
   const [suggestion, setSuggestion] = useState<string | null>(null);
   const [approvals, setApprovals] = useState<PendingApproval[]>([]);
-  const [panel, setPanel] = useState<"none" | "memory" | "tools" | "review">("none");
+  const [panel, setPanel] = useState<"none" | "memory" | "tools" | "review" | "swarms">("none");
   const [secretMarks, setSecretMarks] = useState<Record<number, Finding[]>>({});
   const [newName, setNewName] = useState("");
   const scroller = useRef<HTMLDivElement>(null);
@@ -261,6 +263,9 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
           <Button size="sm" variant="ghost" icon={GitCompare} disabled={!projectId} onClick={() => setPanel(panel === "review" ? "none" : "review")}>
             Review
           </Button>
+          <Button size="sm" variant="ghost" icon={Users} disabled={!session} onClick={() => setPanel(panel === "swarms" ? "none" : "swarms")}>
+            Ultramath
+          </Button>
           {session && (
             <Button size="sm" variant="ghost" icon={Download} onClick={() => void api.exportSession(projectId, session.id)} title="Save this chat as Markdown, secrets masked">
               Export
@@ -272,6 +277,7 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
       <section className="chat-main">
         {panel === "memory" && projectId && <MemoryPanel projectId={projectId} onClose={() => setPanel("none")} />}
         {panel === "review" && projectId && <ReviewPanel projectId={projectId} onClose={() => setPanel("none")} />}
+        {panel === "swarms" && session && <SwarmsPanel projectId={projectId} sessionId={session.id} onClose={() => setPanel("none")} />}
         {panel === "tools" && <ToolsPanel health={health} settings={settings} saveSettings={saveSettings} sessionId={session?.id} onClose={() => setPanel("none")} />}
 
         <div className="chat-scroll" ref={scroller}>
@@ -802,6 +808,53 @@ function ReviewPanel({ projectId, onClose }: { projectId: string; onClose: () =>
           )}
         </div>
       ))}
+    </div>
+  );
+}
+
+/** A swarm's records as the events the Ultramath view draws. */
+function swarmEvents(records: SwarmRecord[]): RunEvent[] {
+  const out: RunEvent[] = [];
+  for (const r of records) {
+    if (r.event === "started") out.push({ type: "start", kind: r.kind, members: r.members.length });
+    if (r.event === "direction") out.push({ type: "direction", direction: { id: r.id, member: Number(r.member.slice(1)), text: r.text, state: r.state, reason: r.reason } });
+    if (r.event === "refused") out.push({ type: "refused", member: Number(r.member.slice(1)), text: r.text, duplicateOf: r.duplicate_of, reason: r.reason });
+    if (r.event === "finding") out.push({ type: "post", post: { id: r.seq, member: Number(r.member.slice(1)), direction: r.direction, kind: r.kind, text: r.text } });
+    if (r.event === "member") out.push({ type: "turn", member: Number(r.member.slice(1)), round: r.run, summary: `run ${r.run}: ${r.state}`, tokens: 0 });
+    if (r.event === "verdict") out.push({ type: "report", member: Number(r.member.slice(1)), direction: r.direction, report: `judged by the ${r.by}`, accepted: r.accepted, reason: r.reason });
+  }
+  return out;
+}
+
+function SwarmsPanel({ projectId, sessionId, onClose }: { projectId: string; sessionId: string; onClose: () => void }) {
+  const [swarms, setSwarms] = useState<{ id: string; records: SwarmRecord[] }[]>([]);
+  useEffect(() => {
+    const load = () => void api.swarmRecords(projectId, sessionId).then(setSwarms);
+    load();
+    const t = setInterval(load, 4000);
+    return () => clearInterval(t);
+  }, [projectId, sessionId]);
+  return (
+    <div className="chat-panel">
+      <div className="row gap-sm">
+        <Users size={16} />
+        <b>Ultramath in this chat</b>
+        <button className="icon-btn" style={{ marginLeft: "auto" }} onClick={onClose}>
+          <X size={15} />
+        </button>
+      </div>
+      {swarms.length === 0 && <p className="muted small">No swarm yet. Ask the assistant to start Ultramath on a hard problem; it needs your approval.</p>}
+      {swarms.map((s) => {
+        const last = [...s.records].reverse().find((r) => ["started", "resumed", "ended", "interrupted"].includes(r.event));
+        return (
+          <details key={s.id} open={s === swarms[swarms.length - 1]}>
+            <summary className="small">
+              <b>{s.id}</b> — {last?.event === "ended" ? `ended ${last.outcome}` : last?.event === "interrupted" ? "interrupted (ask the assistant to resume it)" : "running"}
+            </summary>
+            <UltramathView events={swarmEvents(s.records)} />
+          </details>
+        );
+      })}
     </div>
   );
 }

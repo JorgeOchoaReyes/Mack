@@ -51,6 +51,7 @@ export const UPLOADS = "uploads";
 export type ChatControl = {
   wake: (projectId: string, sessionId: string, source: "reminder" | "job", text: string) => void;
   project: (id: string) => Project;
+  projects: () => Project[];
   stopAll: () => void;
 };
 
@@ -565,6 +566,7 @@ export function registerChat(d: Deps): ChatControl {
   return {
     wake,
     project,
+    projects,
     stopAll: () => {
       plugins.stopAll();
       jobs.stopAll();

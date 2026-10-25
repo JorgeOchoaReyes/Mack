@@ -9,6 +9,7 @@ import type { ChatWire, PendingApproval, Project, SendOptions, SessionSummary } 
 import type { ReasoningEffort } from "../core/model/provider";
 import type { Finding } from "../core/secrets";
 import type { RunStatus } from "../core/search/runs";
+import type { SwarmRecord } from "../core/ultramath/service";
 import type { SearchNode } from "../core/search/tree";
 import type { ChangedFile } from "../core/git";
 import type { UpdateState } from "../electron/updates";
@@ -23,7 +24,7 @@ declare global {
 }
 
 export type Upstream = (UpstreamReport & { dismissed?: boolean }) | { kind: "off" };
-export type { RunStatus, SearchNode };
+export type { RunStatus, SearchNode, SwarmRecord };
 export type { ChangedFile, Finding, ProviderId, ReasoningEffort, UpdateState };
 export type { ChatEvent, ChatSession, ChatWire, PendingApproval, Project, SessionSummary, StoredMessage, ToolOutcome, ToolSpec };
 export type { Health, KeySource, ProveEvent, RunEvent, RunMode, RunRecord, RunSummary, SetupEvent, Settings };
@@ -71,6 +72,7 @@ export const api = {
   reviewFile: (projectId: string, path: string) => m().reviewFile(projectId, path),
   reviewInit: (projectId: string) => m().reviewInit(projectId),
   listPlugins: (sessionId: string) => m().listPlugins(sessionId),
+  swarmRecords: (projectId: string, sessionId: string) => m().swarmRecords(projectId, sessionId) as Promise<{ id: string; records: SwarmRecord[] }[]>,
   listDiscovery: () => m().listDiscovery() as Promise<RunStatus[]>,
   discoveryStatus: (run: string) => m().discoveryStatus(run) as Promise<RunStatus>,
   discoveryTree: (run: string, problem: string) => m().discoveryTree(run, problem) as Promise<SearchNode[]>,

@@ -29,9 +29,12 @@ and how Mack keeps up with upstream.
   none.
 - **Ultramath.** Several members attack one hard problem, each on a
   direction no other holds (a duplicate is refused), sharing a board of
-  lemmas, counterexamples and dead ends. With a Lean statement the strict
-  verifier judges submissions; for a problem written in plain words, a
-  coordinating agent referees them, as upstream's does.
+  lemmas, counterexamples and dead ends. Started from Chat, it runs
+  alongside the conversation: members work in their own `.ultramath/`
+  folders with tools, the chat's agent judges what they submit (with a Lean
+  statement the strict verifier decides first), and an interrupted swarm
+  resumes from its records. The Prove screen also runs a quick in-place
+  version.
 - **Research chat.** Projects are folders. The assistant reads and searches
   project files and PDFs, checks and verifies Lean, searches and reads the
   web, and, once you approve each exact call, writes files or starts proof
