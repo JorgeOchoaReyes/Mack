@@ -2,13 +2,16 @@
 // own key; Mack ships none. This file imports nothing from Node, so the
 // renderer can show the same list.
 
-export type ProviderId = "fireworks" | "openrouter" | "custom";
+export type ProviderId = "fireworks" | "openrouter" | "litellm" | "custom";
 
 export type ProviderInfo = {
   id: ProviderId;
   label: string;
-  /** Fixed endpoint; the custom provider's comes from settings. */
+  /** Fixed endpoint; otherwise the person sets it, in the setting `endpointSetting` names. */
   baseUrl?: string;
+  endpointSetting?: "litellmBaseUrl" | "customBaseUrl";
+  /** Where prices come from: a `pricing` field on `/models` (the default), or LiteLLM's `/model/info`. */
+  prices?: "models" | "litellm";
   /** Read from the environment (or `.env`) before the key saved in the app. */
   keyEnv: string;
   keyRequired: boolean;
@@ -42,8 +45,20 @@ export const PROVIDERS: ProviderInfo[] = [
     blurb: "One key for models from many vendors (upstream's default provider).",
   },
   {
+    id: "litellm",
+    label: "LiteLLM",
+    endpointSetting: "litellmBaseUrl",
+    prices: "litellm",
+    keyEnv: "LITELLM_API_KEY",
+    keyRequired: false,
+    keyPlaceholder: "sk-… master or virtual key (optional)",
+    modelPlaceholder: "a model_name from your LiteLLM config",
+    blurb: "A LiteLLM proxy: one endpoint for the models of many providers. Mack reads the prices you configured there.",
+  },
+  {
     id: "custom",
     label: "OpenAI-compatible",
+    endpointSetting: "customBaseUrl",
     keyEnv: "CUSTOM_API_KEY",
     keyRequired: false,
     keyPlaceholder: "optional",

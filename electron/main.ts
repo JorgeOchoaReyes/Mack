@@ -43,6 +43,8 @@ export type Settings = {
   models: Record<ProviderId, string>;
   /** The custom OpenAI-compatible endpoint, such as http://localhost:11434/v1. */
   customBaseUrl: string;
+  /** The LiteLLM proxy, such as http://localhost:4000/v1. */
+  litellmBaseUrl: string;
   leanWorkspace: string;
   timeoutMs: number;
   maxAttempts: number;
@@ -129,8 +131,9 @@ export type RunSummary = Pick<RunRecord, "id" | "startedAt" | "finishedAt" | "mo
 
 const DEFAULTS: Settings = {
   provider: "fireworks",
-  models: { fireworks: "", openrouter: "", custom: "" },
+  models: { fireworks: "", openrouter: "", litellm: "", custom: "" },
   customBaseUrl: "http://localhost:11434/v1",
+  litellmBaseUrl: "http://localhost:4000/v1",
   leanWorkspace: DEFAULT_WORKSPACE,
   // A cold first load of Mathlib on Windows can take minutes (antivirus scans every .olean).
   timeoutMs: 600_000,
@@ -236,9 +239,10 @@ function makeBaseProvider(s: Settings, id: ProviderId): OpenAICompatibleProvider
   const key = readKey(id);
   if (info.keyRequired && !key) throw new Error(`Add your ${info.label} API key in Setup first.`);
   const headers: Record<string, string> = id === "openrouter" ? { "HTTP-Referer": "https://github.com/JorgeOchoaReyes/Mack", "X-Title": "Mack" } : {};
-  return new OpenAICompatibleProvider(info.label, info.baseUrl ?? s.customBaseUrl, key, {
+  return new OpenAICompatibleProvider(info.label, info.baseUrl ?? s[info.endpointSetting ?? "customBaseUrl"], key, {
     extraHeaders: headers,
     reasoning: id === "openrouter" ? "openrouter" : "openai",
+    prices: info.prices,
   });
 }
 

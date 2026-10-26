@@ -1,8 +1,8 @@
 # Mack ⚡
 
 A Windows desktop app for Lean-checked math research. Open models (through
-[Fireworks](https://fireworks.ai), [OpenRouter](https://openrouter.ai) or any
-OpenAI-compatible server) propose proofs; **Lean decides** whether they hold.
+[Fireworks](https://fireworks.ai), [OpenRouter](https://openrouter.ai), a
+[LiteLLM](https://docs.litellm.ai) proxy or any OpenAI-compatible server) propose proofs; **Lean decides** whether they hold.
 
 Mack follows the methodology of
 [Open Math Harness](https://github.com/openmathmodel/open-math-harness), the
@@ -66,7 +66,8 @@ and how Mack keeps up with upstream.
   - Lean elaborates it;
   - it depends only on `propext`, `Classical.choice` and `Quot.sound`;
   - its fully elaborated type matches the original statement exactly.
-- **Your choice of model provider.** Fireworks, OpenRouter, or any
+- **Your choice of model provider.** Fireworks, OpenRouter, a LiteLLM proxy
+  (its configured prices are read for the spending limits), or any
   OpenAI-compatible endpoint (Ollama, LM Studio, vLLM), each with its own key
   and model, switchable per run from the Prove screen.
 - **One-click setup.** Mack installs Lean (elan) and a Mathlib workspace with
@@ -99,8 +100,8 @@ upstream module each comes from.
   per-project memory across sessions, with protected actions waiting for
   your approval. From upstream `program-files/chat-agent`,
   `program-files/memory`, `program-files/approvals`.
-- [x] **5. More model providers.** OpenRouter and other OpenAI-compatible
-  endpoints next to Fireworks, chosen per run.
+- [x] **5. More model providers.** OpenRouter, LiteLLM and other
+  OpenAI-compatible endpoints next to Fireworks, chosen per run.
 - [x] **6. Distribution.** a GitHub Release built on every merge to
   `main`, auto-update in the app, and the upstream check comparing against
   the installed version. See [docs/RELEASING.md](docs/RELEASING.md).
@@ -119,7 +120,8 @@ outside the project folder where no tool reaches.
 
 You need Windows 10 or 11, [Git](https://git-scm.com) (Lake fetches Mathlib
 with it), about 10 GB of free disk, and **your own model provider key**
-(Fireworks or OpenRouter), or a local OpenAI-compatible server. No key or
+(Fireworks or OpenRouter), a LiteLLM proxy, or a local OpenAI-compatible
+server. No key or
 credential ships with Mack.
 
 Download `Mack-Setup-<version>.exe` from the
@@ -140,8 +142,9 @@ desktop shortcuts. Then open Mack and follow **Setup**:
 
 1. **Lean and Mathlib**: click *Install*. It takes 5–20 minutes and about
    5 GB, mostly Mathlib's prebuilt cache.
-2. **Model provider and key**: pick Fireworks, OpenRouter or a custom
-   endpoint and paste your key. It is encrypted with Windows' credential
+2. **Model provider and key**: pick Fireworks, OpenRouter, LiteLLM (its
+   address, default `http://localhost:4000/v1`) or a custom endpoint and paste
+   your key. It is encrypted with Windows' credential
    protection and only sent to that provider. For development you can instead
    copy `.env.example` to `.env` and set `FIREWORKS_API_KEY`,
    `OPENROUTER_API_KEY` or `CUSTOM_API_KEY`; `.env` is gitignored.
