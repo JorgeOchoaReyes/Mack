@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { citations, NUDGE, runSubAgent, runTurn, toModelMessages, type ChatSession, type StoredMessage } from "../core/chat/agent";
+import { citations, CUT_OFF, NO_ANSWER, NUDGE, runSubAgent, runTurn, toModelMessages, type ChatSession, type StoredMessage } from "../core/chat/agent";
 import { execute, type ExecutorContext, type SessionHooks } from "../core/chat/executor";
 import { JobManager, runCommand } from "../core/chat/shell";
 import { frontMatter, listSkills } from "../core/chat/skills";
@@ -77,6 +77,13 @@ describe("provider: streaming, reasoning, images, retries", () => {
     expect(body.reasoning_effort).toBe("low");
   });
 
+  it("marks a reply that stopped at max_tokens as truncated", async () => {
+    const sse = ['data: {"choices":[{"delta":{"content":""},"finish_reason":"length"}]}', "data: [DONE]", ""].join("\n\n");
+    vi.stubGlobal("fetch", async () => new Response(sse, { headers: { "content-type": "text/event-stream" } }));
+    const p = new OpenAICompatibleProvider("X", "https://x.test/v1", "k");
+    expect(await p.chat({ model: "m", messages: [], onDelta: () => {} })).toEqual({ content: "", usage: undefined, truncated: true });
+  });
+
   it("does not retry a refusal", async () => {
     let calls = 0;
     vi.stubGlobal("fetch", async () => (calls++, new Response("bad key", { status: 401 })));
@@ -92,6 +99,28 @@ describe("agent turn", () => {
     await runTurn(s, { provider, model: "m", projectName: "P", memory: "", execute: (c) => execute(c, { root, policy: {}, ask: async () => false }), onEvent: () => {} });
     expect(provider.requests.length).toBe(3);
     expect(provider.requests[2].messages.at(-1)?.content).toContain(NUDGE);
+  });
+
+  it("does not nudge a reply cut off at the limit with no text, and says why", async () => {
+    let i = 0;
+    const provider: ModelProvider & { requests: ChatRequest[] } = {
+      name: "fake",
+      requests: [],
+      listModels: async () => [],
+      chat: async (r) => (provider.requests.push(r), i++ === 0 ? { content: '```tool\n{"name": "list_files", "args": {}}\n```' } : { content: "", truncated: true }),
+    };
+    const s = session([{ role: "user", content: "look", at: 0 }]);
+    await runTurn(s, { provider, model: "m", projectName: "P", memory: "", execute: (c) => execute(c, { root, policy: {}, ask: async () => false }), onEvent: () => {} });
+    expect(provider.requests.length).toBe(2);
+    expect(s.messages.at(-1)).toMatchObject({ role: "assistant", content: CUT_OFF });
+  });
+
+  it("says so when the reply after the nudge is empty too", async () => {
+    const provider = scripted(['```tool\n{"name": "list_files", "args": {}}\n```', "", ""]);
+    const s = session([{ role: "user", content: "look", at: 0 }]);
+    await runTurn(s, { provider, model: "m", projectName: "P", memory: "", execute: (c) => execute(c, { root, policy: {}, ask: async () => false }), onEvent: () => {} });
+    expect(provider.requests.length).toBe(3);
+    expect(s.messages.at(-1)).toMatchObject({ role: "assistant", content: NO_ANSWER });
   });
 
   it("takes send-now messages between steps", async () => {

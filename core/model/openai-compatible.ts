@@ -103,7 +103,7 @@ export class OpenAICompatibleProvider implements ModelProvider {
       return this.readStream(res.body, request.onDelta, markStreamed);
     }
     const json = (await res.json()) as {
-      choices?: { message?: { content?: string | null } }[];
+      choices?: { message?: { content?: string | null }; finish_reason?: string | null }[];
       usage?: { prompt_tokens?: number; completion_tokens?: number };
       error?: { message?: string };
     };
@@ -114,6 +114,7 @@ export class OpenAICompatibleProvider implements ModelProvider {
     return {
       content,
       usage: json.usage && { promptTokens: json.usage.prompt_tokens ?? 0, completionTokens: json.usage.completion_tokens ?? 0 },
+      ...(json.choices?.[0]?.finish_reason === "length" ? { truncated: true } : {}),
     };
   }
 
@@ -124,11 +125,12 @@ export class OpenAICompatibleProvider implements ModelProvider {
     let buffer = "";
     let content = "";
     let usage: ChatResponse["usage"];
+    let truncated = false;
     const handle = (line: string) => {
       if (!line.startsWith("data:")) return;
       const data = line.slice(5).trim();
       if (!data || data === "[DONE]") return;
-      let j: { choices?: { delta?: { content?: string | null } }[]; usage?: { prompt_tokens?: number; completion_tokens?: number }; error?: { message?: string } };
+      let j: { choices?: { delta?: { content?: string | null }; finish_reason?: string | null }[]; usage?: { prompt_tokens?: number; completion_tokens?: number }; error?: { message?: string } };
       try {
         j = JSON.parse(data);
       } catch {
@@ -141,6 +143,7 @@ export class OpenAICompatibleProvider implements ModelProvider {
         markStreamed();
         onDelta(piece);
       }
+      if (j.choices?.[0]?.finish_reason === "length") truncated = true;
       if (j.usage) usage = { promptTokens: j.usage.prompt_tokens ?? 0, completionTokens: j.usage.completion_tokens ?? 0 };
     };
     for (;;) {
@@ -154,7 +157,7 @@ export class OpenAICompatibleProvider implements ModelProvider {
       }
     }
     handle(buffer);
-    return { content, usage };
+    return { content, usage, ...(truncated ? { truncated } : {}) };
   }
 
   /** Prices the catalogue publishes, USD per million tokens (OpenRouter gives them per token); empty when it gives none. */
