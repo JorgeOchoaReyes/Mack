@@ -69,6 +69,12 @@ describe("tool protocol", () => {
     expect(errors.length).toBe(2);
     expect(visibleText('Let me look.\n```tool\n{"name":"x"}\n```')).toBe("Let me look.");
   });
+
+  it("reads <tool> tags as tool blocks too", () => {
+    const reply = '\n\n<tool>\n{"name": "read_file", "args": {"path": "a.md"}}\n</tool>';
+    expect(parseToolCalls(reply).calls).toEqual([{ name: "read_file", args: { path: "a.md" } }]);
+    expect(visibleText(reply)).toBe("");
+  });
 });
 
 describe("approvals guard", () => {
