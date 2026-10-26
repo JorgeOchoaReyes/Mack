@@ -91,7 +91,7 @@ export type TurnOptions = {
 
 export const NUDGE = "Your last reply had no text. Answer the person now, in words, from what your tools returned.";
 /** The most a chat reply may use, thinking included. */
-export const REPLY_TOKENS = 16384;
+export const REPLY_TOKENS = 32768;
 export const CUT_OFF = `(My reply used all ${REPLY_TOKENS.toLocaleString("en-US")} tokens on thinking and was cut off before any answer. Lower the reasoning effort, or ask for a smaller step.)`;
 export const NO_ANSWER = "(The model gave no answer. Ask again, or lower the reasoning effort.)";
 
