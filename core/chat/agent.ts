@@ -6,8 +6,9 @@
 //
 // As upstream's: a reply with no text at all after tool work is answered once
 // with a nudge, and the next reply ends the turn whatever it holds. A reply
-// cut off at the token limit with no text is not nudged (asking again at full
-// price spent dollars for nothing): the turn ends and says why. Messages
+// cut off at the token limit with no text (the model still thinking) is asked
+// once more for just the next step, with low reasoning effort from then on;
+// if that is cut off too, the turn ends and says why. Messages
 // the person marks "send now" reach the model between steps, once the step's
 // tool calls have returned; a due reminder starts a turn inside a frame that
 // marks it as the agent's own note, never as the person's words.
@@ -92,8 +93,20 @@ export type TurnOptions = {
 export const NUDGE = "Your last reply had no text. Answer the person now, in words, from what your tools returned.";
 /** The most a chat reply may use, thinking included. */
 export const REPLY_TOKENS = 32768;
-export const CUT_OFF = `(My reply used all ${REPLY_TOKENS.toLocaleString("en-US")} tokens on thinking and was cut off before any answer. Lower the reasoning effort, or ask for a smaller step.)`;
-export const NO_ANSWER = "(The model gave no answer. Ask again, or lower the reasoning effort.)";
+export const CUT_OFF = [
+  "**No answer this time: the model used its whole thinking budget twice without reaching a step.** Mack already retried once, asking for just the next step with low reasoning.",
+  "",
+  "Typing *continue* will most likely hit the same wall. What works:",
+  "",
+  '- **Ask for one specific step**, for example: *"Write OddPerfect/Corollary.lean stating ω(N) ≥ 2 and prove it from odd_perfect_not_prime_pow."* A concrete request needs much less planning than "do the next step".',
+  "- **Or lower the reasoning:** click the 🧠 button under the message box, pick *low* (or *off*), and send your message again.",
+  "",
+  "Each cut-off attempt costs about as much as one long reply; the chat's cost is shown next to that button.",
+].join("\n");
+export const RECOVER =
+  "Your last reply ran out of room while you were still thinking, so nothing reached the person. Do not plan the whole task. Take only the next concrete step now: one tool call, or a short answer or question for the person.";
+export const NO_ANSWER =
+  "**No answer this time: the model replied with nothing, even after a reminder.** Sending the same message again may work, but asking for one specific step, or lowering the reasoning with the 🧠 button under the message box, works more often.";
 
 export function systemPrompt(o: { projectName: string; memory: string; skills?: { name: string; description: string }[]; tools?: string[]; own?: ToolSpec[]; intro?: string }): string {
   const specs = toolSpecs(o.tools, o.own);
@@ -207,6 +220,8 @@ export async function runTurn(session: ChatSession, o: TurnOptions): Promise<voi
   let system = systemPrompt({ ...o, own: o.ownTools?.() });
   const maxSteps = o.maxSteps ?? 40;
   let nudged = false;
+  let recovered = false;
+  let effort = o.effort;
   let workedWithTools = false;
   for (let step = 1; step <= maxSteps; step++) {
     if (o.signal?.aborted) return o.onEvent({ type: "error", message: "Stopped." });
@@ -221,7 +236,7 @@ export async function runTurn(session: ChatSession, o: TurnOptions): Promise<voi
         messages: trimContext(toModelMessages(system, session.messages, o.vision, session.checkpoint)),
         maxTokens: REPLY_TOKENS,
         temperature: 0.4,
-        reasoningEffort: o.effort,
+        reasoningEffort: effort,
         signal: o.signal,
         onDelta: (text) => o.onEvent({ type: "delta", text }),
       });
@@ -238,7 +253,15 @@ export async function runTurn(session: ChatSession, o: TurnOptions): Promise<voi
     const { calls, errors } = parseToolCalls(reply, o.tools, o.ownTools?.());
     if (!calls.length && !errors.length) {
       if (!visibleText(reply)) {
-        // An empty answer after tool work gets one nudge, unless the limit cut it off; otherwise the turn ends and says why.
+        // A reply cut off while thinking is asked once more, for one step only and with low effort, for the rest of the turn.
+        if (truncated && !recovered) {
+          recovered = true;
+          if (effort !== "off") effort = "low";
+          o.onEvent({ type: "status", message: "The model thought too long without answering. Mack is asking it for just the next step, with low reasoning; nothing to do on your side." });
+          session.messages.push({ role: "user", content: RECOVER, at: Date.now(), source: "reminder" });
+          continue;
+        }
+        // An empty answer after tool work gets one nudge; otherwise the turn ends and says why.
         if (!truncated && workedWithTools && !nudged) {
           nudged = true;
           session.messages.push({ role: "user", content: NUDGE, at: Date.now(), source: "reminder" });
