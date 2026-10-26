@@ -1,13 +1,19 @@
 name: Release
-# Push a tag like v0.2.0 (matching package.json's version) to build the
-# Windows installer and publish it as a GitHub Release, which installed
-# copies of Mack update from. The installer is signed when signing secrets
-# are set (see docs/RELEASING.md); without them it is published unsigned.
+# Every merge to main publishes a release that installed copies of Mack
+# update from: version <major>.<minor>.<run number>, with major.minor from
+# package.json, so each release is newer than the last without a commit to
+# bump it. Run it by hand from the Actions tab too. The installer is signed
+# when signing secrets are set (see docs/RELEASING.md); without them it is
+# published unsigned.
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
+  workflow_dispatch:
 permissions:
   contents: write
+concurrency:
+  group: release
+  cancel-in-progress: false
 jobs:
   release:
     runs-on: windows-latest
@@ -17,9 +23,11 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
-      - name: Tag matches package.json
+      - name: Version from the run number
         shell: bash
-        run: test "v$(node -p "require('./package.json').version")" = "${GITHUB_REF_NAME}"
+        run: |
+          base=$(node -p "require('./package.json').version.split('.').slice(0, 2).join('.')")
+          npm version "$base.${GITHUB_RUN_NUMBER}" --no-git-tag-version
       - run: npm run typecheck
       - run: npm test
       - name: Build and publish
