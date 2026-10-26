@@ -571,3 +571,20 @@ nav { display: flex; flex-direction: column; gap: 2px; }
 .chat-session.active { background: var(--accent-soft); }
 .approval-card { animation: pop-in 180ms ease-out both; }
 .chat-panel { animation: fade-in 180ms ease-out both; }
+
+/* The active project, shared by every screen */
+.page-slot { height: 100%; }
+.page-slot[hidden] { display: none; }
+.project-switch { display: grid; gap: 6px; padding: 0 2px; }
+.project-switch-label { font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); padding: 0 4px; }
+.project-switch select { min-width: 0; }
+.files-group { display: flex; align-items: center; justify-content: space-between; padding: 8px 8px 3px; font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.files-group .link { text-transform: none; letter-spacing: 0; font-weight: 400; }
+.file.fresh .file-name { font-weight: 620; }
+.file.fresh { position: relative; padding-right: 20px; }
+.file.fresh::after { content: ""; position: absolute; right: 8px; top: 11px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+.disk-notice { display: flex; align-items: center; gap: 10px; margin: 8px 12px 0; }
+.activity-files { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 0 2px 22px; }
+.prove-chip { cursor: pointer; padding: 2px 4px 2px 9px; gap: 6px; }
+.prove-chip:hover { border-color: var(--accent-edge); }
+.prove-chip-go { display: inline-flex; align-items: center; gap: 3px; font-family: var(--sans, inherit); font-size: 11px; color: var(--accent-text); background: var(--accent-soft); border-radius: 99px; padding: 1px 7px; }

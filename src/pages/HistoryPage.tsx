@@ -5,12 +5,14 @@ import { CodeEditor } from "../components/CodeEditor";
 import { SolvedCard, Timeline } from "../components/RunView";
 import { TreeSummary, TreeView, type NodeEvent } from "../components/TreeView";
 import { AcceptedCard, UltramathView } from "../components/UltramathView";
-import { Button, formatMs, timeAgo } from "../components/ui";
+import { Button, formatMs, ScopeSwitch, timeAgo } from "../components/ui";
 
-type Props = { refreshKey: number; onRerun: (problem: string) => void };
+type Props = { refreshKey: number; projectId: string; projectName: string; onRerun: (problem: string) => void };
 
-export function HistoryPage({ refreshKey, onRerun }: Props) {
-  const [runs, setRuns] = useState<RunSummary[]>([]);
+export function HistoryPage({ refreshKey, projectId, projectName, onRerun }: Props) {
+  const [allRuns, setRuns] = useState<RunSummary[]>([]);
+  const [all, setAll] = useState(!projectId);
+  const runs = all || !projectId ? allRuns : allRuns.filter((r) => r.projectId === projectId);
   const [open, setOpen] = useState<RunRecord | null>(null);
 
   const reload = () => void api.listRuns().then(setRuns);
@@ -80,18 +82,22 @@ export function HistoryPage({ refreshKey, onRerun }: Props) {
       <div className="page-head">
         <h1>History</h1>
         <p className="muted">Every run is kept on this computer, with each attempt and what Lean said about it.</p>
+        <ScopeSwitch projectName={projectName} all={all || !projectId} onChange={setAll} />
       </div>
       {runs.length === 0 ? (
         <div className="empty">
           <History size={28} />
-          <p>No runs yet.</p>
+          <p>{allRuns.length && !all ? `No runs in ${projectName} yet.` : "No runs yet."}</p>
         </div>
       ) : (
         <div className="run-list">
           {runs.map((r) => (
             <button key={r.id} className="run-row" onClick={() => void api.getRun(r.id).then(setOpen)}>
               {r.outcome === "solved" ? <ShieldCheck size={17} className="ok" /> : <CircleAlert size={17} className="bad" />}
-              <span className="run-thm mono">{r.theorem}</span>
+              <span className="run-thm mono" title={r.file}>
+                {r.theorem}
+                {r.file ? <span className="muted small"> · {r.file}</span> : null}
+              </span>
               <span className="muted small">{r.outcome === "solved" ? "Verified" : r.message.split("\n")[0]}</span>
               <span className="run-meta muted small">
                 {r.mode === "search"

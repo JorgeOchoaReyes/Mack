@@ -1,6 +1,8 @@
 import { BookOpen, CircleDollarSign, Download, FlaskConical, Lightbulb, Rows3, GitCompare, History, MessagesSquare, Settings as SettingsIcon, Wrench, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { api, type Health, type LedgerState, type Settings, type UpdateState, type Upstream } from "./api";
+import { api, errorText, type Health, type LedgerState, type Project, type Settings, type UpdateState, type Upstream } from "./api";
+import { ProjectSwitcher } from "./components/ProjectSwitcher";
+import { useProjectFiles } from "./project";
 import { formatUsd } from "../core/model/metered";
 import { Logo } from "./components/Logo";
 import { Button, Dot } from "./components/ui";
@@ -18,6 +20,8 @@ import { UpstreamPage } from "./pages/UpstreamPage";
 type Page = "prove" | "chat" | "runs" | "feedback" | "history" | "upstream" | "setup" | "settings" | "guide";
 
 const DRAFT_KEY = "mack.draft";
+/** The chat's project before projects were shared by every screen. */
+const LEGACY_CHAT_PROJECT = "mack.chatProject";
 const SEEN_GUIDE_KEY = "mack.seenGuide";
 const UPSTREAM_RECHECK_MS = 6 * 60 * 60 * 1000;
 
@@ -49,6 +53,13 @@ export function App() {
   const [runsVersion, setRunsVersion] = useState(0);
   const [update, setUpdate] = useState<UpdateState | null>(null);
   const [spend, setSpend] = useState<LedgerState | null>(null);
+  const [projects, setProjects] = useState<Project[] | null>(null);
+  /** A project file Chat asked Prove to open, and a message Prove handed to Chat; `n` makes a repeat count. */
+  const [proveOpen, setProveOpen] = useState<{ path: string; n: number } | null>(null);
+  const [chatDraft, setChatDraft] = useState<{ text: string; n: number } | null>(null);
+
+  const reloadProjects = useCallback(async () => setProjects(await api.listProjects()), []);
+  useEffect(() => void reloadProjects(), [reloadProjects]);
 
   useEffect(() => {
     void api.globalSpend().then(setSpend);
@@ -87,7 +98,42 @@ export function App() {
     }
   };
 
+  const projectId = activeProjectId(settings, projects);
+  const files = useProjectFiles(projectId);
+
+  // Keep the saved choice in step with what is shown: a removed project falls back to the first one.
+  useEffect(() => {
+    if (settings && projects && projectId !== settings.activeProject) void saveSettings({ activeProject: projectId });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, projects]);
+
+  const chooseProject = (id: string) => void saveSettings({ activeProject: id });
+  const createProject = async (name: string): Promise<string> => {
+    try {
+      const p = await api.createProject(name);
+      await reloadProjects();
+      await saveSettings({ activeProject: p.id });
+      return "";
+    } catch (e) {
+      return errorText(e);
+    }
+  };
+  const openProject = async (): Promise<string> => {
+    try {
+      const p = await api.openProject();
+      if (p) {
+        await reloadProjects();
+        await saveSettings({ activeProject: p.id });
+      }
+      return "";
+    } catch (e) {
+      return errorText(e);
+    }
+  };
+
   if (!settings) return <div className="boot" />;
+
+  const project = projects?.find((p) => p.id === projectId);
 
   const leanOk = !!health?.lake && !!health?.hasMathlib;
   const keyOk = !!health && health.keySource !== "none";
@@ -96,7 +142,7 @@ export function App() {
   const showBanner = upstream?.kind === "changed" && !upstream.dismissed;
 
   const nav: { id: Page; label: string; icon: typeof FlaskConical; badge?: boolean }[] = [
-    { id: "prove", label: "Prove", icon: FlaskConical },
+    { id: "prove", label: "Prove", icon: FlaskConical, badge: page !== "prove" && files.fresh > 0 },
     { id: "chat", label: "Chat", icon: MessagesSquare },
     { id: "runs", label: "Runs", icon: Rows3 },
     { id: "history", label: "History", icon: History },
@@ -119,12 +165,13 @@ export function App() {
             <div className="brand-sub">Lean-checked research</div>
           </div>
         </div>
+        <ProjectSwitcher projects={projects ?? []} current={projectId} onChoose={chooseProject} onCreate={createProject} onOpen={openProject} />
         <nav>
           {nav.map((n) => (
             <button key={n.id} className={`nav-item ${page === n.id ? "active" : ""}`} onClick={() => setPage(n.id)}>
               <n.icon size={17} />
               <span>{n.label}</span>
-              {n.badge && <span className="nav-badge" />}
+              {n.badge && <span className="nav-badge" title={n.id === "prove" ? `${files.fresh} new or changed .lean file${files.fresh === 1 ? "" : "s"} in ${project?.name ?? "the project"}` : undefined} />}
             </button>
           ))}
         </nav>
@@ -198,10 +245,18 @@ export function App() {
           </div>
         )}
         <div className="content-inner">
-          {page === "prove" && (
+          {/* Prove and Chat stay mounted, so a run or a reply keeps going while the other is open. */}
+          <div className="page-slot" hidden={page !== "prove"}>
             <ProvePage
               problem={problem}
               setProblem={setProblem}
+              project={project ?? null}
+              files={files}
+              openRequest={proveOpen}
+              onAskChat={(text) => {
+                setChatDraft({ text, n: Date.now() });
+                setPage("chat");
+              }}
               health={health}
               settings={settings}
               saveSettings={saveSettings}
@@ -209,13 +264,30 @@ export function App() {
               onHealthChange={refreshHealth}
               onRunFinished={() => setRunsVersion((v) => v + 1)}
             />
-          )}
-          {page === "runs" && <RunsPage />}
+          </div>
+          <div className="page-slot" hidden={page !== "chat"}>
+            <ChatPage
+              project={project ?? null}
+              hasProjects={!!projects?.length}
+              onCreateProject={createProject}
+              incomingDraft={chatDraft}
+              onOpenInProve={(path) => {
+                setProveOpen({ path, n: Date.now() });
+                setPage("prove");
+              }}
+              health={health}
+              settings={settings}
+              saveSettings={saveSettings}
+              onGoSetup={() => setPage("setup")}
+            />
+          </div>
+          {page === "runs" && <RunsPage projectId={projectId} projectName={project?.name ?? ""} />}
           {page === "feedback" && <FeedbackPage />}
-          {page === "chat" && <ChatPage health={health} settings={settings} saveSettings={saveSettings} onGoSetup={() => setPage("setup")} />}
           {page === "history" && (
             <HistoryPage
               refreshKey={runsVersion}
+              projectId={projectId}
+              projectName={project?.name ?? ""}
               onRerun={(p) => {
                 setProblem(p);
                 setPage("prove");
@@ -230,4 +302,17 @@ export function App() {
       </main>
     </div>
   );
+}
+
+/** The saved active project while it exists; before projects were shared, the chat's last one; else the first. */
+function activeProjectId(settings: Settings | null, projects: Project[] | null): string {
+  if (!settings || !projects) return settings?.activeProject ?? "";
+  if (projects.some((p) => p.id === settings.activeProject)) return settings.activeProject;
+  let legacy = "";
+  try {
+    legacy = localStorage.getItem(LEGACY_CHAT_PROJECT) ?? "";
+  } catch {
+    // No remembered chat project.
+  }
+  return projects.find((p) => p.id === legacy)?.id ?? projects[0]?.id ?? "";
 }

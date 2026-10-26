@@ -3,8 +3,8 @@
 // exposes; the key never crosses to it.
 
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, safeStorage, shell } from "electron";
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, watch, writeFileSync, type FSWatcher } from "node:fs";
+import { dirname, join } from "node:path";
 import { checkFromRun } from "../core/lean/check";
 import { hasRepl, replPool, splitHeader, type ReplPool } from "../core/lean/repl";
 import { analyzeSketch, type Analysis } from "../core/lean/sketch";
@@ -83,7 +83,9 @@ export type Settings = {
   upstreamCheck: boolean;
   /** An upstream head the user chose to stay behind; no banner until upstream moves past it. */
   upstreamDismissed: string;
-  /** The folder the Prove page lists .lean files from; empty when none is open. */
+  /** The project every screen works in (Prove's files, Chat, History, Runs); empty when there is none yet. */
+  activeProject: string;
+  /** Before projects were shared, the folder the Prove page listed; moved into a project on launch. */
   proveFolder: string;
 };
 
@@ -111,6 +113,9 @@ export type Health = {
 
 export type RunRecord = {
   id: string;
+  /** The project the run belongs to, and the project file it proved; absent on older runs. */
+  projectId?: string;
+  file?: string;
   startedAt: number;
   finishedAt: number;
   model: string;
@@ -126,7 +131,7 @@ export type RunRecord = {
   events: RunEvent[];
 };
 
-export type RunSummary = Pick<RunRecord, "id" | "startedAt" | "finishedAt" | "model" | "mode" | "outcome" | "message"> & {
+export type RunSummary = Pick<RunRecord, "id" | "projectId" | "file" | "startedAt" | "finishedAt" | "model" | "mode" | "outcome" | "message"> & {
   theorem: string;
   attempts: number;
 };
@@ -159,6 +164,7 @@ const DEFAULTS: Settings = {
   runConcurrency: 1,
   upstreamCheck: true,
   upstreamDismissed: "",
+  activeProject: "",
   proveFolder: "",
 };
 
@@ -460,8 +466,11 @@ function newMeter(s: Settings, model: string, spent = 0, capped = true): { meter
   return { meter: { spent, limit: capped ? s.maxCostPerSession : 0, estimated: false }, price };
 }
 
+/** Where a proof run came from: its project and, when it proves a project file as saved, that file. */
+export type RunOrigin = { projectId?: string; file?: string };
+
 /** One proof run in the given mode, recorded in the run history. Shared by the Prove screen and the chat's `start_proof`. */
-async function runProof(problem: string, mode: RunMode, forward: (ev: RunEvent) => void): Promise<RunRecord> {
+async function runProof(problem: string, mode: RunMode, forward: (ev: RunEvent) => void, origin: RunOrigin = {}): Promise<RunRecord> {
   if (proving) throw new Error("a proof run is already in progress");
   const s = { ...readSettings(), mode };
   const model = s.models[s.provider];
@@ -481,6 +490,8 @@ async function runProof(problem: string, mode: RunMode, forward: (ev: RunEvent) 
   proving = ctl;
   const record: RunRecord = {
     id: `${Date.now()}`,
+    ...(origin.projectId ? { projectId: origin.projectId } : {}),
+    ...(origin.file ? { file: origin.file } : {}),
     startedAt: Date.now(),
     finishedAt: 0,
     model,
@@ -543,10 +554,16 @@ async function runProof(problem: string, mode: RunMode, forward: (ev: RunEvent) 
   return record;
 }
 
-ipcMain.handle("prove:start", async (e, problem: string) => {
-  const record = await runProof(problem, readSettings().mode, (ev) => {
-    if (!e.sender.isDestroyed()) e.sender.send("prove:event", ev);
-  });
+ipcMain.handle("prove:start", async (e, problem: string, origin?: RunOrigin) => {
+  const o: RunOrigin = { projectId: typeof origin?.projectId === "string" ? origin.projectId : undefined, file: typeof origin?.file === "string" ? origin.file : undefined };
+  const record = await runProof(
+    problem,
+    readSettings().mode,
+    (ev) => {
+      if (!e.sender.isDestroyed()) e.sender.send("prove:event", ev);
+    },
+    o,
+  );
   return record.id;
 });
 
@@ -592,13 +609,15 @@ ipcMain.handle("file:openLean", async (e) => {
   return r.canceled ? null : readFileSync(r.filePaths[0], "utf8");
 });
 
-/** A folder of problems on the Prove page, with its .lean files relative to it. */
-export type LeanFolder = { folder: string; files: string[] };
+/** A project's .lean files, relative to its folder, with when each last changed. */
+export type ProjectFiles = { projectId: string; folder: string; files: { path: string; mtime: number }[] };
 
-const SKIP_DIRS = new Set([".lake", ".git", ".github", ".mack", "node_modules", "build"]);
+// Ultramath members' workspaces hold many scratch files; the project's own files are what Prove lists.
+const SKIP_DIRS = new Set([".lake", ".git", ".github", ".mack", ".ultramath", "node_modules", "build"]);
+const SKIPPED = /(^|[\\/])(\.lake|\.git|\.github|\.mack|\.ultramath|node_modules|build)([\\/]|$)/;
 const MAX_LEAN_FILES = 5000;
 
-function leanFiles(root: string, dir = "", out: string[] = []): string[] {
+function leanFiles(root: string, dir = "", out: ProjectFiles["files"] = []): ProjectFiles["files"] {
   let entries;
   try {
     entries = readdirSync(join(root, dir), { withFileTypes: true });
@@ -609,32 +628,65 @@ function leanFiles(root: string, dir = "", out: string[] = []): string[] {
     if (out.length >= MAX_LEAN_FILES) break;
     const rel = dir ? `${dir}/${e.name}` : e.name;
     if (e.isDirectory() && !SKIP_DIRS.has(e.name)) leanFiles(root, rel, out);
-    else if (e.isFile() && e.name.endsWith(".lean")) out.push(rel);
+    else if (e.isFile() && e.name.endsWith(".lean")) {
+      let mtime = 0;
+      try {
+        mtime = statSync(join(root, rel)).mtimeMs;
+      } catch {
+        // Gone between the listing and the stat; listed without a time.
+      }
+      out.push({ path: rel, mtime });
+    }
   }
   return out;
 }
 
-const leanFolder = (folder: string): LeanFolder | null => (folder && existsSync(folder) ? { folder, files: leanFiles(folder) } : null);
-
-ipcMain.handle("file:openLeanFolder", async (e) => {
-  const win = BrowserWindow.fromWebContents(e.sender);
-  const r = await dialog.showOpenDialog(win!, { properties: ["openDirectory"], title: "Open a folder of Lean problems" });
-  if (r.canceled || !r.filePaths.length) return null;
-  writeSettings({ proveFolder: r.filePaths[0] });
-  return leanFolder(r.filePaths[0]);
-});
-
-ipcMain.handle("file:leanFolder", () => leanFolder(readSettings().proveFolder));
-
-ipcMain.handle("file:closeLeanFolder", () => {
-  writeSettings({ proveFolder: "" });
-});
-
-ipcMain.handle("file:readLeanIn", async (_e, rel: string) => {
-  const folder = readSettings().proveFolder;
-  if (!folder) throw new Error("no folder is open");
+const leanPath = (rel: unknown): string => {
   if (typeof rel !== "string" || !rel.endsWith(".lean")) throw new Error("not a .lean file");
-  return readFileSync(await confine(folder, rel), "utf8");
+  return rel;
+};
+
+ipcMain.handle("project:leanFiles", (_e, projectId: string): ProjectFiles => {
+  const p = chat.project(projectId);
+  return { projectId: p.id, folder: p.folder, files: leanFiles(p.folder) };
+});
+
+ipcMain.handle("project:readLean", async (_e, projectId: string, rel: string) => readFileSync(await confine(chat.project(projectId).folder, leanPath(rel)), "utf8"));
+
+ipcMain.handle("project:writeLean", async (_e, projectId: string, rel: string, text: string) => {
+  if (typeof text !== "string") throw new Error("no text to write");
+  const file = await confine(chat.project(projectId).folder, leanPath(rel));
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, text, "utf8");
+});
+
+/** The active project's folder, watched so Prove lists files the chat, a command or another editor writes. */
+let projectWatch: { projectId: string; watcher: FSWatcher } | null = null;
+
+ipcMain.handle("project:watch", (_e, projectId: string) => {
+  if (projectWatch?.projectId === projectId) return;
+  projectWatch?.watcher.close();
+  projectWatch = null;
+  if (!projectId) return;
+  const folder = chat.project(projectId).folder;
+  let timer: NodeJS.Timeout | undefined;
+  const changed = (_ev: string, name: string | Buffer | null) => {
+    const n = name ? String(name) : "";
+    if (n && SKIPPED.test(n)) return;
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      for (const w of BrowserWindow.getAllWindows()) if (!w.webContents.isDestroyed()) w.webContents.send("project:files", projectId);
+    }, 300);
+  };
+  let watcher: FSWatcher;
+  try {
+    watcher = watch(folder, { recursive: true }, changed);
+  } catch {
+    // Without recursive watching, at least the project's top folder is watched.
+    watcher = watch(folder, changed);
+  }
+  watcher.on("error", () => {});
+  projectWatch = { projectId, watcher };
 });
 
 registerUpdates(() => readSettings().autoUpdate);
@@ -729,6 +781,19 @@ const chat = registerChat({
   githubToken: async () => (await githubAuth()).token,
   extraTools: ({ projectId, root, sessionId }) => (call) => runTool(call, { projectId, root, sessionId }) ?? swarmTool(call, { projectId, root, sessionId }),
 });
+
+// The folder an older Prove page had open becomes a project, so it is listed as before.
+{
+  const s = readSettings();
+  if (s.proveFolder) {
+    try {
+      const p = existsSync(s.proveFolder) ? chat.adopt(s.proveFolder) : null;
+      writeSettings({ proveFolder: "", ...(p && !s.activeProject ? { activeProject: p.id } : {}) });
+    } catch {
+      // A folder that cannot be adopted is simply no longer listed.
+    }
+  }
+}
 
 // Swarms that were running when Mack last stopped are recorded as interrupted, ready to resume.
 for (const p of chat.projects()) swarms.markInterrupted(p.folder);
@@ -831,7 +896,7 @@ ipcMain.handle("discovery:startFiles", async (e) => {
     const objection = frozenObjection(p.frozen);
     if (objection) throw new Error(`${p.id} is not a usable frozen file: ${objection}`);
   }
-  return runs.start({ name: `run-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}`, project: "", problems, limits: s.search, worker: s.searchWorker, concurrency: s.runConcurrency, analysis: s.searchAnalysis });
+  return runs.start({ name: `run-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}`, project: s.activeProject, problems, limits: s.search, worker: s.searchWorker, concurrency: s.runConcurrency, analysis: s.searchAnalysis });
 });
 
 loadDotEnv();

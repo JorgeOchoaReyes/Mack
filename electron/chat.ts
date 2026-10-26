@@ -23,7 +23,7 @@ import { PluginRegistry } from "../core/mcp/plugins";
 import type { LeanRun } from "../core/lean/verify";
 import type { ModelProvider, ReasoningEffort } from "../core/model/provider";
 import { metered, type Meter, type Price } from "../core/model/metered";
-import type { RunEvent, RunMode, RunRecord, Settings } from "./main";
+import type { RunEvent, RunMode, RunOrigin, RunRecord, Settings } from "./main";
 
 export type Project = { id: string; name: string; folder: string; createdAt: number };
 export type SessionSummary = Pick<ChatSession, "id" | "projectId" | "title" | "startedAt" | "updatedAt"> & { messages: number; busy: boolean };
@@ -44,7 +44,7 @@ type Deps = {
   /** A meter for one session, and the model's price; throws when the global limit is reached. `capped: false` leaves out the per-session cap. */
   newMeter: (s: Settings, model: string, spent?: number, capped?: boolean) => { meter: Meter; price: Price | undefined };
   lean: (s: Settings) => { run: LeanRun; check?: LeanCheckRun } | undefined;
-  runProof: (problem: string, mode: RunMode, forward: (ev: RunEvent) => void) => Promise<RunRecord>;
+  runProof: (problem: string, mode: RunMode, forward: (ev: RunEvent) => void, origin?: RunOrigin) => Promise<RunRecord>;
   /** The GitHub token for project pull requests, or "" when none is set up. */
   githubToken: () => Promise<string>;
   /** Runs the tools other features register (Ultramath, proof search, MCP) for one session. */
@@ -59,6 +59,8 @@ export type ChatControl = {
   wake: (projectId: string, sessionId: string, source: "reminder" | "job", text: string) => void;
   project: (id: string) => Project;
   projects: () => Project[];
+  /** The project of a folder: the one already registered for it, or a new one. */
+  adopt: (folder: string) => Project;
   stopAll: () => void;
 };
 
@@ -280,11 +282,16 @@ export function registerChat(d: Deps): ChatControl {
             ctl.signal.addEventListener("abort", () => pending.has(approval.id) && finish(false), { once: true });
             send({ sessionId: session.id, approval });
           }),
-        startProof: async (problem, mode) => {
+        startProof: async (problem, mode, path) => {
           send({ sessionId: session.id, event: { type: "status", message: `A ${mode === "search" ? "search-tree" : "single-agent"} proof run is going…` } });
-          const record = await d.runProof(problem, mode, (ev) => {
-            if (ev.type === "status") send({ sessionId: session.id, event: { type: "status", message: ev.message } });
-          });
+          const record = await d.runProof(
+            problem,
+            mode,
+            (ev) => {
+              if (ev.type === "status") send({ sessionId: session.id, event: { type: "status", message: ev.message } });
+            },
+            { projectId: session.projectId, file: path },
+          );
           const solved = record.events.find((x): x is Extract<RunEvent, { type: "solved" }> => x.type === "solved");
           return solved
             ? `verified: the strict verifier accepted a proof (run ${record.id} in History; axioms: ${solved.axioms.join(", ") || "none"}):\n\`\`\`lean\n${solved.proof}\`\`\``
@@ -626,6 +633,7 @@ export function registerChat(d: Deps): ChatControl {
     wake,
     project,
     projects,
+    adopt: (folder) => projects().find((p) => p.folder === folder) ?? addProject(basename(folder), folder),
     stopAll: () => {
       plugins.stopAll();
       jobs.stopAll();

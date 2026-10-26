@@ -1,6 +1,6 @@
 import { UltramathView } from "../components/UltramathView";
 import type { RunEvent, SwarmRecord } from "../api";
-import { AlarmClock, Brain, ChevronRight, Users, Download, ExternalLink, GitCompare, GitPullRequest, KeyRound, FolderOpen, FolderPlus, MessageSquarePlus, ShieldAlert, Terminal, Trash2, Wrench, X } from "lucide-react";
+import { AlarmClock, Brain, ChevronRight, Users, Download, ExternalLink, GitCompare, GitPullRequest, KeyRound, FolderPlus, MessageSquarePlus, ShieldAlert, Terminal, Trash2, Wrench, X } from "lucide-react";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import {
   api,
@@ -28,20 +28,25 @@ import { Logo } from "../components/Logo";
 import { formatUsd } from "../../core/model/metered";
 import { Badge, Button, Spinner, timeAgo, Toggle } from "../components/ui";
 
-type Props = { health: Health | null; settings: Settings; saveSettings: (s: Partial<Settings>) => Promise<void>; onGoSetup: () => void };
-
-const LAST_PROJECT = "mack.chatProject";
+type Props = {
+  /** The active project, chosen in the sidebar for every screen. */
+  project: Project | null;
+  hasProjects: boolean;
+  /** Resolves to an error message, or "" when the project was created. */
+  onCreateProject: (name: string) => Promise<string>;
+  /** A message another screen handed over, put in the composer. */
+  incomingDraft: { text: string; n: number } | null;
+  /** Open a project .lean file on the Prove screen. */
+  onOpenInProve: (path: string) => void;
+  health: Health | null;
+  settings: Settings;
+  saveSettings: (s: Partial<Settings>) => Promise<void>;
+  onGoSetup: () => void;
+};
 const EFFORTS: ReasoningEffort[] = ["off", "on", "low", "medium", "high", "xhigh"];
 
-export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [projectId, setProjectId] = useState<string>(() => {
-    try {
-      return localStorage.getItem(LAST_PROJECT) ?? "";
-    } catch {
-      return "";
-    }
-  });
+export function ChatPage({ project, hasProjects, onCreateProject, incomingDraft, onOpenInProve, health, settings, saveSettings, onGoSetup }: Props) {
+  const projectId = project?.id ?? "";
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [session, setSession] = useState<ChatSession | null>(null);
   const [draft, setDraft] = useState("");
@@ -60,26 +65,17 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
   const sessionRef = useRef<ChatSession | null>(null);
   sessionRef.current = session;
 
-  const project = projects.find((p) => p.id === projectId);
   const ready = !!health && health.keySource !== "none" && !!health.model;
 
   const create = async (name: string) => {
-    setProjectError("");
-    try {
-      const p = await api.createProject(name);
-      setNewName("");
-      await reloadProjects();
-      setProjectId(p.id);
-    } catch (err) {
-      setProjectError(errorText(err));
-    }
+    const err = await onCreateProject(name);
+    setProjectError(err);
+    if (!err) setNewName("");
   };
 
-  const reloadProjects = useCallback(async () => {
-    const ps = await api.listProjects();
-    setProjects(ps);
-    if (!ps.some((p) => p.id === projectId)) setProjectId(ps[0]?.id ?? "");
-  }, [projectId]);
+  useEffect(() => {
+    if (incomingDraft) setDraft(incomingDraft.text);
+  }, [incomingDraft?.n]);
 
   const reloadSession = useCallback(async () => {
     const cur = sessionRef.current;
@@ -90,17 +86,10 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
   }, []);
 
   useEffect(() => {
-    void reloadProjects();
     void api.listApprovals().then(setApprovals);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(LAST_PROJECT, projectId);
-    } catch {
-      // Remembering the last project is only a convenience.
-    }
     setSession(null);
     setSuggestion(null);
     if (projectId) {
@@ -224,48 +213,12 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
   return (
     <div className="chat">
       <aside className="chat-side">
-        <div className="chat-side-head">
-          <select className="input" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-            {projects.length === 0 && <option value="">No project yet</option>}
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-          <form
-            className="row gap-sm"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void create(newName);
-            }}
-          >
-            <input className="input grow" placeholder="New project name" value={newName} onChange={(e) => setNewName(e.target.value)} />
-            <Button size="sm" icon={FolderPlus} type="submit" disabled={!newName.trim()} title="Create a project folder in MackProjects">
-              Create
-            </Button>
-          </form>
-          <button
-            className="link small"
-            type="button"
-            onClick={async () => {
-              setProjectError("");
-              try {
-                const p = await api.openProject();
-                if (p) {
-                  await reloadProjects();
-                  setProjectId(p.id);
-                }
-              } catch (err) {
-                setProjectError(errorText(err));
-              }
-            }}
-          >
-            <FolderOpen size={13} /> Or use an existing folder…
-          </button>
-          {projectError && <div className="notice notice-bad small">{projectError}</div>}
-          {project && <code className="path small">{project.folder}</code>}
-        </div>
+        {project && (
+          <div className="chat-side-head">
+            <b>{project.name}</b>
+            <code className="path small">{project.folder}</code>
+          </div>
+        )}
         <Button icon={MessageSquarePlus} disabled={!projectId} onClick={() => void openSession(null)}>
           New chat
         </Button>
@@ -353,12 +306,13 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
               to chat.
             </div>
           )}
-          {projects.length === 0 && (
+          {!hasProjects && (
             <div className="how">
               <h3>Create your first project</h3>
               <p className="muted">
                 A project is a folder: the assistant reads and (with your approval) writes files there, runs commands, checks Lean, searches the web and reads
-                PDFs, starts proof runs and Ultramath once you approve, and keeps project memory for later chats.
+                PDFs, starts proof runs and Ultramath once you approve, and keeps project memory for later chats. Every screen works in the project chosen in
+                the sidebar: Lean files written here show on Prove, and its runs in History.
               </p>
               <form
                 className="row gap-sm"
@@ -397,7 +351,7 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
               </div>
             </div>
           )}
-          {session && <Conversation messages={session.messages} projectId={projectId} secretMarks={secretMarks} busy={busy} />}
+          {session && <Conversation messages={session.messages} projectId={projectId} secretMarks={secretMarks} busy={busy} onOpenInProve={onOpenInProve} />}
           {streaming && visible(streaming) && (
             <div className="msg assistant fade-in">
               <div className="avatar">
@@ -491,13 +445,13 @@ function items(messages: StoredMessage[]): Item[] {
   return out;
 }
 
-function Conversation({ messages, projectId, secretMarks, busy }: { messages: StoredMessage[]; projectId: string; secretMarks: Record<number, Finding[]>; busy: boolean }) {
+function Conversation({ messages, projectId, secretMarks, busy, onOpenInProve }: { messages: StoredMessage[]; projectId: string; secretMarks: Record<number, Finding[]>; busy: boolean; onOpenInProve: (path: string) => void }) {
   const list = items(messages);
   return (
     <>
       {list.map((it, k) => {
         const mark = secretMarks[it.index] && <SecretMark findings={secretMarks[it.index]} />;
-        if (it.kind === "activity") return <Activity key={k} results={it.results} running={busy && k === list.length - 1} />;
+        if (it.kind === "activity") return <Activity key={k} results={it.results} running={busy && k === list.length - 1} onOpenInProve={onOpenInProve} />;
         if (it.kind === "assistant")
           return (
             <div key={k} className="msg assistant fade-in">

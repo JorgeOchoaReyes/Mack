@@ -25,7 +25,7 @@ export type ExecutorContext = {
   /** Ask the person about one exact call; resolves true when approved. */
   ask: (call: ToolCall) => Promise<boolean>;
   /** Start a proof run on a frozen file; resolves with a description of its outcome. */
-  startProof?: (problem: string, mode: "single" | "search") => Promise<string>;
+  startProof?: (problem: string, mode: "single" | "search", path: string) => Promise<string>;
   /** What only a chat session has: its reminders, background jobs, sub-agents, and whether its model reads images. */
   session?: SessionHooks;
   /** Runs a registered extra tool (`registerTools`) or one of the session's own; undefined when the name is not one. */
@@ -107,8 +107,9 @@ async function run(call: ToolCall, c: ExecutorContext): Promise<string> {
       return fetchUrl(str(a.url, "url"), c.signal);
     case "start_proof": {
       if (!c.startProof) throw new Error("proof runs are not available here");
-      const problem = await readFile(await confine(c.root, str(a.path, "path")), "utf8");
-      return c.startProof(problem, a.mode === "single" ? "single" : "search");
+      const path = str(a.path, "path");
+      const problem = await readFile(await confine(c.root, path), "utf8");
+      return c.startProof(problem, a.mode === "single" ? "single" : "search", path.replace(/\\/g, "/").replace(/^\.\//, ""));
     }
     case "remove_file": {
       const file = await confine(c.root, str(a.path, "path"));

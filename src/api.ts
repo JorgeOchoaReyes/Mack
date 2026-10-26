@@ -17,7 +17,7 @@ import type { ChangedFile } from "../core/git";
 import type { GitHubTokenSource, PullRequest } from "../core/github";
 import type { UpdateState } from "../electron/updates";
 import type { UpstreamReport } from "../core/upstream";
-import type { Health, KeySource, LeanFolder, RunEvent, RunMode, RunRecord, RunSummary, Settings } from "../electron/main";
+import type { Health, KeySource, ProjectFiles, RunEvent, RunMode, RunOrigin, RunRecord, RunSummary, Settings } from "../electron/main";
 import type { MackApi } from "../electron/preload";
 
 declare global {
@@ -32,7 +32,7 @@ export type Upstream = (UpstreamReport & { dismissed?: boolean }) | { kind: "off
 export type { Issue, LedgerState, RunStatus, SearchNode, SwarmRecord };
 export type { ChangedFile, Finding, ProviderId, ReasoningEffort, UpdateState };
 export type { ChatEvent, ChatSession, ChatWire, PendingApproval, Project, SessionSummary, StoredMessage, ToolOutcome, ToolSpec };
-export type { Health, KeySource, LeanFolder, ProveEvent, RunEvent, RunMode, RunRecord, RunSummary, SetupEvent, Settings };
+export type { Health, KeySource, ProjectFiles, ProveEvent, RunEvent, RunMode, RunOrigin, RunRecord, RunSummary, SetupEvent, Settings };
 
 const m = () => window.mack;
 
@@ -50,7 +50,7 @@ export const api = {
   checkUpstream: () => m().checkUpstream() as Promise<Upstream>,
   openExternal: (url: string) => m().openExternal(url),
   listModels: (provider?: ProviderId) => m().listModels(provider),
-  startProve: (problem: string) => m().startProve(problem),
+  startProve: (problem: string, origin?: RunOrigin) => m().startProve(problem, origin),
   stopProve: () => m().stopProve(),
   onProveEvent: (cb: (e: RunEvent) => void) => m().onProveEvent((e) => cb(e as RunEvent)),
   listRuns: () => m().listRuns() as Promise<RunSummary[]>,
@@ -58,10 +58,11 @@ export const api = {
   deleteRun: (id: string) => m().deleteRun(id) as Promise<void>,
   saveLean: (name: string, text: string) => m().saveLean(name, text),
   openLean: () => m().openLean(),
-  openLeanFolder: () => m().openLeanFolder() as Promise<LeanFolder | null>,
-  leanFolder: () => m().leanFolder() as Promise<LeanFolder | null>,
-  closeLeanFolder: () => m().closeLeanFolder(),
-  readLeanIn: (path: string) => m().readLeanIn(path),
+  projectLeanFiles: (projectId: string) => m().projectLeanFiles(projectId) as Promise<ProjectFiles>,
+  readProjectLean: (projectId: string, path: string) => m().readProjectLean(projectId, path),
+  writeProjectLean: (projectId: string, path: string, text: string) => m().writeProjectLean(projectId, path, text),
+  watchProject: (projectId: string) => m().watchProject(projectId),
+  onProjectFiles: (cb: (projectId: string) => void) => m().onProjectFiles((e) => cb(e as string)),
   listProjects: () => m().listProjects() as Promise<Project[]>,
   createProject: (name: string) => m().createProject(name) as Promise<Project>,
   openProject: () => m().openProject() as Promise<Project | null>,
