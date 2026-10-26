@@ -17,7 +17,7 @@ import type { ChangedFile } from "../core/git";
 import type { GitHubTokenSource, PullRequest } from "../core/github";
 import type { UpdateState } from "../electron/updates";
 import type { UpstreamReport } from "../core/upstream";
-import type { Health, KeySource, RunEvent, RunMode, RunRecord, RunSummary, Settings } from "../electron/main";
+import type { Health, KeySource, LeanFolder, RunEvent, RunMode, RunRecord, RunSummary, Settings } from "../electron/main";
 import type { MackApi } from "../electron/preload";
 
 declare global {
@@ -32,7 +32,7 @@ export type Upstream = (UpstreamReport & { dismissed?: boolean }) | { kind: "off
 export type { Issue, LedgerState, RunStatus, SearchNode, SwarmRecord };
 export type { ChangedFile, Finding, ProviderId, ReasoningEffort, UpdateState };
 export type { ChatEvent, ChatSession, ChatWire, PendingApproval, Project, SessionSummary, StoredMessage, ToolOutcome, ToolSpec };
-export type { Health, KeySource, ProveEvent, RunEvent, RunMode, RunRecord, RunSummary, SetupEvent, Settings };
+export type { Health, KeySource, LeanFolder, ProveEvent, RunEvent, RunMode, RunRecord, RunSummary, SetupEvent, Settings };
 
 const m = () => window.mack;
 
@@ -58,6 +58,10 @@ export const api = {
   deleteRun: (id: string) => m().deleteRun(id) as Promise<void>,
   saveLean: (name: string, text: string) => m().saveLean(name, text),
   openLean: () => m().openLean(),
+  openLeanFolder: () => m().openLeanFolder() as Promise<LeanFolder | null>,
+  leanFolder: () => m().leanFolder() as Promise<LeanFolder | null>,
+  closeLeanFolder: () => m().closeLeanFolder(),
+  readLeanIn: (path: string) => m().readLeanIn(path),
   listProjects: () => m().listProjects() as Promise<Project[]>,
   createProject: (name: string) => m().createProject(name) as Promise<Project>,
   openProject: () => m().openProject() as Promise<Project | null>,
