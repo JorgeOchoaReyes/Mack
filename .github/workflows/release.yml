@@ -30,10 +30,21 @@ jobs:
           npm version "$base.${GITHUB_RUN_NUMBER}" --no-git-tag-version
       - run: npm run typecheck
       - run: npm test
-      - name: Build and publish
-        run: npm run release
+      - name: Build
+        run: npm run build && npx electron-builder --win --publish never
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # A code-signing certificate (.pfx, base64) and its password, when you have one.
           CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+      # One release made here, not by electron-builder: its parallel uploads
+      # each tried to create the release, and the loser failed the job. gh
+      # uploads every file to a draft and only then publishes it, so no one
+      # sees a release without its installer and latest.yml.
+      - name: Publish
+        shell: bash
+        run: |
+          v=$(node -p "require('./package.json').version")
+          gh release create "v$v" "release/Mack-Setup-$v.exe" "release/Mack-Setup-$v.exe.blockmap" release/latest.yml \
+            --target "$GITHUB_SHA" --title "Mack $v" --generate-notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
