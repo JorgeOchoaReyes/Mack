@@ -36,18 +36,64 @@ export function parseDuckDuckGo(html: string): { title: string; url: string; sni
   return out;
 }
 
-export async function webSearch(query: string, signal?: AbortSignal): Promise<string> {
-  if (!query.trim()) throw new Error("empty query");
+/** Results of Bing's RSS feed (`format=rss`): the fallback when DuckDuckGo refuses. */
+export function parseBingRss(xml: string): { title: string; url: string; snippet: string }[] {
+  const tag = (item: string, name: string) => decode(new RegExp(`<${name}>([\\s\\S]*?)</${name}>`).exec(item)?.[1] ?? "");
+  return xml
+    .split("<item>")
+    .slice(1)
+    .map((item) => ({ title: tag(item, "title"), url: tag(item, "link"), snippet: tag(item, "description") }))
+    .filter((r) => r.url.startsWith("http"))
+    .slice(0, 8);
+}
+
+const wait = (ms: number, signal?: AbortSignal) =>
+  new Promise<void>((resolve, reject) => {
+    const t = setTimeout(resolve, ms);
+    signal?.addEventListener("abort", () => (clearTimeout(t), reject(new Error("stopped"))), { once: true });
+  });
+
+async function duckDuckGo(query: string, signal?: AbortSignal) {
   const res = await fetch("https://html.duckduckgo.com/html/", {
     method: "POST",
     headers: { "User-Agent": UA, "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ q: query }).toString(),
     signal,
   });
-  if (!res.ok) throw new Error(`the search service returned ${res.status}`);
-  const results = parseDuckDuckGo(await res.text());
-  if (!results.length) return "no results (the search service may have refused automated access; try fetch_url on a known site)";
-  return results.map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.snippet}`).join("\n");
+  return res.ok ? parseDuckDuckGo(await res.text()) : [];
+}
+
+async function bing(query: string, signal?: AbortSignal) {
+  const res = await fetch(`https://www.bing.com/search?format=rss&q=${encodeURIComponent(query)}`, { headers: { "User-Agent": UA }, signal });
+  return res.ok ? parseBingRss(await res.text()) : [];
+}
+
+// DuckDuckGo refuses bursts, and the model often sends several searches at
+// once: searches run one at a time, a second apart; a refusal is tried again
+// once after a pause, then Bing answers instead.
+let queue: Promise<unknown> = Promise.resolve();
+let last = 0;
+
+export function webSearch(query: string, signal?: AbortSignal): Promise<string> {
+  if (!query.trim()) return Promise.reject(new Error("empty query"));
+  const run = async () => {
+    await wait(Math.max(0, last + 1000 - Date.now()), signal);
+    try {
+      let results = await duckDuckGo(query, signal);
+      if (!results.length) {
+        await wait(2500, signal);
+        results = await duckDuckGo(query, signal);
+      }
+      if (!results.length) results = await bing(query, signal);
+      if (!results.length) return "no results (both search services refused or found nothing; try other words, or fetch_url on a known site)";
+      return results.map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.snippet}`).join("\n");
+    } finally {
+      last = Date.now();
+    }
+  };
+  const p = queue.then(run, run);
+  queue = p.catch(() => {});
+  return p;
 }
 
 /** Visible text of an HTML page: scripts, styles and tags removed. */

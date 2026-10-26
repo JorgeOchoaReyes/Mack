@@ -12,6 +12,8 @@ export type LeanCheck = {
   status: "errors" | "sorries" | "complete" | "noVerdict";
   errors: LeanMessage[];
   sorries: OpenGoal[];
+  /** Lean's info and warning messages: what `#check`, `#print`, `#eval` and `exact?` answer. */
+  notes?: LeanMessage[];
   /** The raw output, for display. */
   output: string;
 };
@@ -20,36 +22,42 @@ export type LeanCheck = {
 export type LeanCheckRun = (source: string) => Promise<LeanCheck>;
 
 /** Parse `file:line:col: error: message` blocks of Lean's command-line output. */
-export function parseCliOutput(output: string): { errors: LeanMessage[]; sorryLines: number[] } {
+export function parseCliOutput(output: string): { errors: LeanMessage[]; sorryLines: number[]; notes: LeanMessage[] } {
   const errors: LeanMessage[] = [];
   const sorryLines: number[] = [];
+  const notes: LeanMessage[] = [];
   const re = /^.*?:(\d+):(\d+): (error|warning|info): ([\s\S]*?)(?=^.*?:\d+:\d+: (?:error|warning|info): |(?![\s\S]))/gm;
   for (const m of output.replace(/\r\n/g, "\n").matchAll(re)) {
     const msg = m[4].trim();
     if (m[3] === "error") errors.push({ line: Number(m[1]), col: Number(m[2]), message: msg });
     else if (msg.startsWith("declaration uses 'sorry'")) sorryLines.push(Number(m[1]));
+    else notes.push({ line: Number(m[1]), col: Number(m[2]), message: msg });
   }
-  return { errors, sorryLines };
+  return { errors, sorryLines, notes };
 }
 
 /** A check from a command-line run: positions of errors, and of declarations that use `sorry`, without goals. */
 export function checkFromRun(r: RunResult): LeanCheck {
   if (r.kind === "noVerdict") return { status: "noVerdict", errors: [], sorries: [], output: r.reason };
-  const { errors, sorryLines } = parseCliOutput(r.output);
+  const { errors, sorryLines, notes } = parseCliOutput(r.output);
   if (r.kind === "refused" && errors.length === 0) errors.push({ line: 0, col: 0, message: r.output.slice(0, 1500) });
   const sorries = sorryLines.map((line) => ({ line, col: 0, goal: "(goal not reported by this check)" }));
   const status = errors.length > 0 || r.kind === "refused" ? "errors" : sorries.length > 0 ? "sorries" : "complete";
-  return { status, errors, sorries, output: r.output };
+  return { status, errors, sorries, notes, output: r.output };
 }
 
 const cut = (s: string) => (s.length > 1500 ? `${s.slice(0, 1500)}…` : s);
 
-/** The check as the model reads it: at most 12 errors and 12 open goals, each cut at 1500 characters (upstream's bounds). */
+/** The check as the model reads it: at most 12 errors and 12 open goals, each cut at 1500 characters (upstream's bounds), and up to 30 info messages. */
 export function describeCheck(c: LeanCheck): string {
   if (c.status === "noVerdict") return `status: no verdict (${cut(c.output)})`;
   const lines = [`status: ${c.status}`, `errors: ${c.errors.length}`];
   for (const e of c.errors.slice(0, 12)) lines.push(`  - line ${e.line}, column ${e.col}: ${cut(e.message)}`);
   if (c.errors.length > 12) lines.push(`  - … and ${c.errors.length - 12} more`);
+  const notes = c.notes ?? [];
+  if (notes.length) lines.push(`messages (#check, #print, exact? and warnings): ${notes.length}`);
+  for (const n of notes.slice(0, 30)) lines.push(`  - line ${n.line}: ${cut(n.message)}`);
+  if (notes.length > 30) lines.push(`  - … and ${notes.length - 30} more`);
   lines.push(`remaining sorries: ${c.sorries.length}`);
   for (const s of c.sorries.slice(0, 12)) lines.push(`  - line ${s.line}, column ${s.col}; goal:\n${cut(s.goal).replace(/^/gm, "      ")}`);
   if (c.sorries.length > 12) lines.push(`  - … and ${c.sorries.length - 12} more`);

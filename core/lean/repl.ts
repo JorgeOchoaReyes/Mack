@@ -48,10 +48,12 @@ export function checkFromReply(reply: ReplReply): LeanCheck {
     return { status: "errors", errors: [{ line: 0, col: 0, message: reply.message }], sorries: [], output: reply.message };
   }
   const errors: LeanMessage[] = [];
+  const notes: LeanMessage[] = [];
   const out: string[] = [];
   for (const m of reply.messages ?? []) {
     out.push(`${m.pos.line}:${m.pos.column}: ${m.severity}: ${m.data}`);
     if (m.severity === "error") errors.push({ line: m.pos.line, col: m.pos.column, message: m.data });
+    else if (!m.data.startsWith("declaration uses 'sorry'")) notes.push({ line: m.pos.line, col: m.pos.column, message: m.data });
   }
   const sorries: OpenGoal[] = (reply.sorries ?? []).map((s) => ({ line: s.pos.line, col: s.pos.column, goal: s.goal }));
   for (const s of sorries) out.push(`${s.line}:${s.col}: sorry, goal:\n${s.goal}`);
@@ -59,6 +61,7 @@ export function checkFromReply(reply: ReplReply): LeanCheck {
     status: errors.length > 0 ? "errors" : sorries.length > 0 ? "sorries" : "complete",
     errors,
     sorries,
+    notes,
     output: out.join("\n"),
   };
 }

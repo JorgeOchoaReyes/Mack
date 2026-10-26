@@ -13,6 +13,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { TOOL_BLOCK } from "./tool-block";
 
 export type ToolSpec = {
   name: string;
@@ -237,9 +238,6 @@ export async function writeProjectFile(root: string, p: string, content: string)
   return `wrote ${relative(await realpath(root), file)} (${Buffer.byteLength(content, "utf8")} bytes)`;
 }
 
-/** A ```tool block, or the `<tool>…</tool>` some models write instead. */
-const TOOL_BLOCK = /```tool\s*\n([\s\S]*?)```|<tool>\s*([\s\S]*?)\s*<\/tool>/g;
-
 /** Parse the tool blocks of a reply: each holds one JSON object {"name", "args"}. */
 export function parseToolCalls(reply: string, allowed?: string[], own: ToolSpec[] = []): { calls: ToolCall[]; errors: string[] } {
   const text = reply.replace(/<think>[\s\S]*?<\/think>/g, "");
@@ -247,7 +245,7 @@ export function parseToolCalls(reply: string, allowed?: string[], own: ToolSpec[
   const errors: string[] = [];
   for (const m of text.matchAll(TOOL_BLOCK)) {
     try {
-      const v = JSON.parse(m[1] ?? m[2]) as { name?: unknown; args?: unknown };
+      const v = JSON.parse(m[1].trim()) as { name?: unknown; args?: unknown };
       if (typeof v.name !== "string") throw new Error("missing \"name\"");
       if (!toolSpecs(allowed, own).some((t) => t.name === v.name)) throw new Error(`\`${v.name}\` is not one of your tools`);
       const args = v.args && typeof v.args === "object" && !Array.isArray(v.args) ? (v.args as Record<string, unknown>) : {};
