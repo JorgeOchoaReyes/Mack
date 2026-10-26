@@ -1,6 +1,6 @@
 // Markdown as the assistant writes it, rendered as React elements (never as
 // HTML, so model text cannot inject markup): headings, paragraphs, lists,
-// quotes, rules, fenced code (Lean in the editor), inline code, bold,
+// quotes, rules, tables, fenced code (Lean in the editor), inline code, bold,
 // italics, links (https only, opened in the browser through the main
 // process) and images of project files.
 
@@ -53,7 +53,28 @@ function inline(text: string, projectId: string, key = ""): ReactNode[] {
   return out;
 }
 
-type Block = { kind: "p" | "h" | "ul" | "ol" | "quote" | "hr" | "code"; level?: number; lines: string[]; lang?: string; open?: boolean };
+type Align = "left" | "center" | "right" | undefined;
+type Block = { kind: "p" | "h" | "ul" | "ol" | "quote" | "hr" | "code" | "table"; level?: number; lines: string[]; lang?: string; open?: boolean; rows?: string[][]; align?: Align[] };
+
+/** The cells of a table row: `| a | b |` or `a | b`; `\|` and pipes inside `code` stay in the cell. */
+export function cells(line: string): string[] {
+  const out: string[] = [];
+  let cell = "";
+  let code = false;
+  const t = line.trim().replace(/^\|/, "").replace(/(?<!\\)\|$/, "");
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (c === "\\" && t[i + 1] === "|") cell += t[++i];
+    else if (c === "`") (code = !code), (cell += c);
+    else if (c === "|" && !code) out.push(cell.trim()), (cell = "");
+    else cell += c;
+  }
+  out.push(cell.trim());
+  return out;
+}
+
+const DELIMITER = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/;
+const alignOf = (c: string): Align => (c.startsWith(":") && c.endsWith(":") ? "center" : c.endsWith(":") ? "right" : c.startsWith(":") ? "left" : undefined);
 
 /** Split text into blocks; an unclosed fence (still streaming) is a code block too. */
 export function blocks(text: string): Block[] {
@@ -74,6 +95,17 @@ export function blocks(text: string): Block[] {
     const h = /^(#{1,4})\s+(.*)$/.exec(line);
     if (h) {
       out.push({ kind: "h", level: h[1].length, lines: [h[2]] });
+      continue;
+    }
+    // A table: a header row with a pipe, then a delimiter row like |---|:--:|.
+    if (line.includes("|") && DELIMITER.test(lines[i + 1] ?? "") && lines[i + 1].includes("-")) {
+      const header = cells(line);
+      const align = cells(lines[i + 1]).map(alignOf);
+      const rows: string[][] = [];
+      let j = i + 2;
+      while (j < lines.length && lines[j].trim() && lines[j].includes("|")) rows.push(cells(lines[j++]));
+      out.push({ kind: "table", lines: header, rows, align });
+      i = j - 1;
       continue;
     }
     if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(line)) {
@@ -126,6 +158,33 @@ export function Markdown({ text, projectId }: { text: string; projectId: string 
             return b.level === 1 ? <h3 key={k}>{inline(b.lines[0], projectId, k)}</h3> : <h4 key={k}>{inline(b.lines[0], projectId, k)}</h4>;
           case "hr":
             return <hr key={k} />;
+          case "table":
+            return (
+              <div key={k} className="md-table">
+                <table>
+                  <thead>
+                    <tr>
+                      {b.lines.map((c, j) => (
+                        <th key={j} style={{ textAlign: b.align?.[j] }}>
+                          {inline(c, projectId, `${k}h${j}`)}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {b.rows?.map((r, ri) => (
+                      <tr key={ri}>
+                        {b.lines.map((_, j) => (
+                          <td key={j} style={{ textAlign: b.align?.[j] }}>
+                            {inline(r[j] ?? "", projectId, `${k}r${ri}c${j}`)}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            );
           case "ul":
             return (
               <ul key={k}>
