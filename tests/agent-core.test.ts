@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { citations, CUT_OFF, NO_ANSWER, NUDGE, runSubAgent, runTurn, toModelMessages, type ChatSession, type StoredMessage } from "../core/chat/agent";
+import { citations, CUT_OFF, NO_ANSWER, NUDGE, RECOVER, runSubAgent, runTurn, toModelMessages, type ChatSession, type StoredMessage } from "../core/chat/agent";
 import { execute, type ExecutorContext, type SessionHooks } from "../core/chat/executor";
 import { JobManager, runCommand } from "../core/chat/shell";
 import { frontMatter, listSkills } from "../core/chat/skills";
@@ -101,13 +101,27 @@ describe("agent turn", () => {
     expect(provider.requests[2].messages.at(-1)?.content).toContain(NUDGE);
   });
 
-  it("does not nudge a reply cut off at the limit with no text, and says why", async () => {
-    let i = 0;
+  it("asks a reply cut off while thinking for just the next step, with low effort, and goes on", async () => {
+    const replies = [{ content: "", truncated: true }, { content: '```tool\n{"name": "list_files", "args": {}}\n```' }, { content: "Done." }];
     const provider: ModelProvider & { requests: ChatRequest[] } = {
       name: "fake",
       requests: [],
       listModels: async () => [],
-      chat: async (r) => (provider.requests.push(r), i++ === 0 ? { content: '```tool\n{"name": "list_files", "args": {}}\n```' } : { content: "", truncated: true }),
+      chat: async (r) => (provider.requests.push(r), replies[provider.requests.length - 1]),
+    };
+    const s = session([{ role: "user", content: "start next step then", at: 0 }]);
+    await runTurn(s, { provider, model: "m", projectName: "P", memory: "", effort: "medium", execute: (c) => execute(c, { root, policy: {}, ask: async () => false }), onEvent: () => {} });
+    expect(provider.requests.map((r) => r.reasoningEffort)).toEqual(["medium", "low", "low"]);
+    expect(provider.requests[1].messages.at(-1)?.content).toContain(RECOVER);
+    expect(s.messages.at(-1)).toMatchObject({ role: "assistant", content: "Done." });
+  });
+
+  it("stops and says why when the retry is cut off too", async () => {
+    const provider: ModelProvider & { requests: ChatRequest[] } = {
+      name: "fake",
+      requests: [],
+      listModels: async () => [],
+      chat: async (r) => (provider.requests.push(r), { content: "", truncated: true }),
     };
     const s = session([{ role: "user", content: "look", at: 0 }]);
     await runTurn(s, { provider, model: "m", projectName: "P", memory: "", execute: (c) => execute(c, { root, policy: {}, ask: async () => false }), onEvent: () => {} });
