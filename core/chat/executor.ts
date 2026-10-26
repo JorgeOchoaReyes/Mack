@@ -98,15 +98,9 @@ async function run(call: ToolCall, c: ExecutorContext): Promise<string> {
       const check = c.lean.check ? await c.lean.check(source) : checkFromRun(await c.lean.run(source));
       return describeCheck(check);
     }
-    case "verify_lean": {
+    case "verify_lean":
       if (!c.lean) throw new Error("Lean is not installed; set it up in Setup");
-      const frozen = await readFile(await confine(c.root, str(a.statement_path, "statement_path")), "utf8");
-      const candidate = await readFile(await confine(c.root, str(a.proof_path, "proof_path")), "utf8");
-      const pristine = await pristineType(frozen, c.lean.run);
-      if (!pristine.ok) return `The statement file is not usable: ${pristine.reason}`;
-      const v = await verifyText(frozen, pristine.type, candidate, c.lean.run);
-      return v.ok ? `accepted: the strict verifier accepts the proof (axioms: ${v.axioms.join(", ") || "none"})` : `rejected: ${describeRejection(v.rejection)}`;
-    }
+      return verifyFiles(c.root, str(a.statement_path, "statement_path"), str(a.proof_path, "proof_path"), c.lean.run);
     case "web_search":
       return webSearch(str(a.query, "query"), c.signal);
     case "fetch_url":
@@ -192,6 +186,16 @@ async function run(call: ToolCall, c: ExecutorContext): Promise<string> {
 
 /** Images `view_image` read for a call, handed to its outcome. */
 const viewImages = new WeakMap<ToolCall, string[]>();
+
+/** The strict verifier's verdict on a proof file against its frozen statement file, both in the project. */
+export async function verifyFiles(root: string, statementPath: string, proofPath: string, run: LeanRun): Promise<string> {
+  const frozen = await readFile(await confine(root, statementPath), "utf8");
+  const candidate = await readFile(await confine(root, proofPath), "utf8");
+  const pristine = await pristineType(frozen, run);
+  if (!pristine.ok) return `The statement file is not usable: ${pristine.reason}`;
+  const v = await verifyText(frozen, pristine.type, candidate, run);
+  return v.ok ? `accepted: the strict verifier accepts the proof (axioms: ${v.axioms.join(", ") || "none"})` : `rejected: ${describeRejection(v.rejection)}`;
+}
 
 /** Run one call, through the guard when it is protected. Never throws: a failure is an outcome. */
 export async function execute(call: ToolCall, c: ExecutorContext): Promise<ToolOutcome> {
