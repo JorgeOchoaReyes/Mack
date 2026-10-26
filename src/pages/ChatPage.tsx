@@ -1,6 +1,6 @@
 import { UltramathView } from "../components/UltramathView";
 import type { RunEvent, SwarmRecord } from "../api";
-import { AlarmClock, Brain, ChevronRight, Users, Download, GitCompare, KeyRound, FolderOpen, FolderPlus, MessageSquarePlus, ShieldAlert, Terminal, Trash2, Wrench, X } from "lucide-react";
+import { AlarmClock, Brain, ChevronRight, Users, Download, ExternalLink, GitCompare, GitPullRequest, KeyRound, FolderOpen, FolderPlus, MessageSquarePlus, ShieldAlert, Terminal, Trash2, Wrench, X } from "lucide-react";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import {
   api,
@@ -12,6 +12,7 @@ import {
   type Health,
   type PendingApproval,
   type Project,
+  type PullRequest,
   type ReasoningEffort,
   type SessionSummary,
   type Settings,
@@ -211,7 +212,7 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
     { name: "/new", hint: "Start a new chat", group: "Chat", run: () => void openSession(null) },
     { name: "/export", hint: "Save this chat as Markdown, secrets masked", group: "Chat", run: () => session && void api.exportSession(projectId, session.id) },
     { name: "/memory", hint: "What this project remembers", group: "Panels", run: () => setPanel("memory") },
-    { name: "/review", hint: "Uncommitted changes in the project", group: "Panels", run: () => setPanel("review") },
+    { name: "/review", hint: "Uncommitted changes; open a pull request", group: "Panels", run: () => setPanel("review") },
     { name: "/tools", hint: "What the assistant can do, and approvals", group: "Panels", run: () => setPanel("tools") },
     { name: "/swarms", hint: "This chat's Ultramath swarms", group: "Panels", run: () => setPanel("swarms") },
   ];
@@ -317,7 +318,7 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
 
       <section className="chat-main">
         {panel === "memory" && projectId && <MemoryPanel projectId={projectId} onClose={() => setPanel("none")} />}
-        {panel === "review" && projectId && <ReviewPanel projectId={projectId} onClose={() => setPanel("none")} />}
+        {panel === "review" && projectId && <ReviewPanel projectId={projectId} sessionId={session?.id ?? null} chatTitle={session?.title ?? ""} onClose={() => setPanel("none")} />}
         {panel === "swarms" &&
           (session ? (
             <SwarmsPanel projectId={projectId} sessionId={session.id} onClose={() => setPanel("none")} />
@@ -756,9 +757,12 @@ function SecretMark({ findings }: { findings: Finding[] }) {
   );
 }
 
-function ReviewPanel({ projectId, onClose }: { projectId: string; onClose: () => void }) {
+function ReviewPanel({ projectId, sessionId, chatTitle, onClose }: { projectId: string; sessionId: string | null; chatTitle: string; onClose: () => void }) {
   const [state, setState] = useState<{ repo: boolean; files: ChangedFile[] } | null>(null);
   const [error, setError] = useState("");
+  const [title, setTitle] = useState(chatTitle);
+  const [pr, setPr] = useState<PullRequest | null>(null);
+  const [opening, setOpening] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
   const [diff, setDiff] = useState("");
   const load = useCallback(() => {
@@ -778,8 +782,39 @@ function ReviewPanel({ projectId, onClose }: { projectId: string; onClose: () =>
           <X size={15} />
         </button>
       </div>
-      <p className="muted small">What changed in the project's repository since its last commit, whoever made it. Mack only reads the repository here.</p>
+      <p className="muted small">What changed in the project's repository since its last commit, whoever made it. Nothing is written until you open a pull request.</p>
       {error && <div className="notice notice-bad">{error}</div>}
+      {pr && (
+        <div className="notice notice-ok">
+          Opened a pull request{pr.createdRepo ? ` in the new private repository ${pr.repo}` : ` in ${pr.repo}`}.{" "}
+          <button className="link" onClick={() => void api.openExternal(pr.url)}>
+            Review it on GitHub <ExternalLink size={12} />
+          </button>
+        </div>
+      )}
+      {state?.repo && state.files.length > 0 && (
+        <form
+          className="row gap-sm"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            setError("");
+            setOpening(true);
+            try {
+              setPr(await api.openPr(projectId, sessionId, title));
+              load();
+            } catch (err) {
+              setError(errorText(err));
+            } finally {
+              setOpening(false);
+            }
+          }}
+        >
+          <input className="input grow" placeholder="What this change is" value={title} onChange={(e) => setTitle(e.target.value)} />
+          <Button type="submit" icon={GitPullRequest} loading={opening} disabled={!title.trim()} title="Commit these changes and open a GitHub pull request; proofs this chat verified are verified again first">
+            Open pull request
+          </Button>
+        </form>
+      )}
       {state && !state.repo && (
         <div className="row gap-sm">
           <span className="muted small">This project folder is not a git repository.</span>

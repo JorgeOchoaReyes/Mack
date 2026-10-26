@@ -14,6 +14,7 @@ import type { Issue } from "../core/feedback";
 import type { SwarmRecord } from "../core/ultramath/service";
 import type { SearchNode } from "../core/search/tree";
 import type { ChangedFile } from "../core/git";
+import type { GitHubTokenSource, PullRequest } from "../core/github";
 import type { UpdateState } from "../electron/updates";
 import type { UpstreamReport } from "../core/upstream";
 import type { Health, KeySource, RunEvent, RunMode, RunRecord, RunSummary, Settings } from "../electron/main";
@@ -25,6 +26,8 @@ declare global {
   }
 }
 
+export type GitHubStatus = { source: GitHubTokenSource; login?: string; error?: string };
+export type { PullRequest };
 export type Upstream = (UpstreamReport & { dismissed?: boolean }) | { kind: "off" };
 export type { Issue, LedgerState, RunStatus, SearchNode, SwarmRecord };
 export type { ChangedFile, Finding, ProviderId, ReasoningEffort, UpdateState };
@@ -73,6 +76,10 @@ export const api = {
   reviewChanges: (projectId: string) => m().reviewChanges(projectId) as Promise<{ repo: boolean; files: ChangedFile[] }>,
   reviewFile: (projectId: string, path: string) => m().reviewFile(projectId, path),
   reviewInit: (projectId: string) => m().reviewInit(projectId),
+  githubStatus: () => m().githubStatus() as Promise<GitHubStatus>,
+  githubSetToken: (token: string) => m().githubSetToken(token) as Promise<GitHubStatus>,
+  githubClearToken: () => m().githubClearToken() as Promise<GitHubStatus>,
+  openPr: (projectId: string, sessionId: string | null, title: string) => m().openPr(projectId, sessionId, title) as Promise<PullRequest>,
   listPlugins: (sessionId: string) => m().listPlugins(sessionId),
   swarmRecords: (projectId: string, sessionId: string) => m().swarmRecords(projectId, sessionId) as Promise<{ id: string; records: SwarmRecord[] }[]>,
   feedbackDiagnostics: () => m().feedbackDiagnostics(),

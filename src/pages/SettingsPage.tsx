@@ -1,9 +1,9 @@
 import { ArrowRight, ExternalLink } from "lucide-react";
 import { UPSTREAM } from "../../core/upstream";
-import { api, type Settings } from "../api";
+import { api, errorText, type Settings } from "../api";
 import { Button, Field, Toggle } from "../components/ui";
 import { useEffect, useState } from "react";
-import type { LedgerState, UpdateState } from "../api";
+import type { GitHubStatus, LedgerState, UpdateState } from "../api";
 import { formatUsd } from "../../core/model/metered";
 import type { Limits } from "../../core/search/tree";
 import type { UltramathLimits } from "../../core/ultramath/swarm";
@@ -192,6 +192,8 @@ export function SettingsPage({ settings, saveSettings, onGo }: Props) {
         </div>
       </section>
 
+      <GitHubSection />
+
       <UpdatesSection settings={settings} saveSettings={saveSettings} />
 
       <section className="settings-group">
@@ -207,6 +209,70 @@ export function SettingsPage({ settings, saveSettings, onGo }: Props) {
         </div>
       </section>
     </div>
+  );
+}
+
+const GITHUB_SOURCE: Record<GitHubStatus["source"], string> = {
+  env: "from GITHUB_TOKEN in the environment",
+  saved: "with the token saved in Mack",
+  gh: "with the GitHub CLI's login",
+  none: "",
+};
+
+function GitHubSection() {
+  const [status, setStatus] = useState<GitHubStatus | null>(null);
+  const [token, setToken] = useState("");
+  const [error, setError] = useState("");
+  useEffect(() => void api.githubStatus().then(setStatus), []);
+  return (
+    <section className="settings-group">
+      <h2>GitHub</h2>
+      <p className="muted">
+        A chat's work can go to GitHub as a pull request: each project gets its own private repository, so you can review proofs and documents, and pull them, from
+        any computer. Open one from a chat's Review panel, or let the chat open one (it asks first).
+      </p>
+      {status?.login ? (
+        <div className="row gap-sm">
+          <span className="badge badge-ok">Connected as {status.login}</span>
+          <span className="muted small">{GITHUB_SOURCE[status.source]}</span>
+          {status.source === "saved" && (
+            <button className="link small" onClick={() => void api.githubClearToken().then(setStatus)}>
+              Remove token
+            </button>
+          )}
+        </div>
+      ) : (
+        <>
+          {status?.error && <div className="notice notice-bad">GitHub refused the token {GITHUB_SOURCE[status.source]}: {status.error}</div>}
+          <p className="muted small">
+            Log in with the GitHub CLI (<code>gh auth login</code>), or paste a token with access to create repositories and pull requests (a classic token with the{" "}
+            <code>repo</code> scope).{" "}
+            <button className="link small" onClick={() => void api.openExternal("https://github.com/settings/tokens/new?scopes=repo&description=Mack")}>
+              Create one <ExternalLink size={11} />
+            </button>
+          </p>
+          <form
+            className="row gap-sm"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              setError("");
+              try {
+                setStatus(await api.githubSetToken(token));
+                setToken("");
+              } catch (err) {
+                setError(errorText(err));
+              }
+            }}
+          >
+            <input className="input grow mono" type="password" placeholder="ghp_…" value={token} onChange={(e) => setToken(e.target.value)} />
+            <Button type="submit" disabled={!token.trim()}>
+              Save token
+            </Button>
+          </form>
+          {error && <div className="notice notice-bad">{error}</div>}
+        </>
+      )}
+    </section>
   );
 }
 

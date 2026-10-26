@@ -14,9 +14,14 @@ export type ChangedFile = { path: string; status: "added" | "modified" | "delete
 
 const MAX_OUTPUT = 4_000_000;
 
-function git(root: string, args: string[]): Promise<{ code: number | null; out: string; err: string }> {
+/** One git command in `root`; never throws, never prompts for credentials. */
+export function git(root: string, args: string[]): Promise<{ code: number | null; out: string; err: string }> {
   return new Promise((resolve) => {
-    const child = spawn("git", ["-C", root, "-c", "core.quotepath=false", ...args], { windowsHide: true, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" } });
+    const child = spawn("git", ["-C", root, "-c", "core.quotepath=false", ...args], {
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"],
+      env: { ...process.env, GIT_OPTIONAL_LOCKS: "0", GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "never" },
+    });
     let out = "";
     let err = "";
     child.stdout.on("data", (d: Buffer) => {

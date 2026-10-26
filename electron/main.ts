@@ -13,6 +13,7 @@ import { DEFAULT_WORKSPACE, hasMathlib, hasProject, runSetup, verifyWorkspace, t
 import { lakeVersion } from "../core/lean/toolchain";
 import { OpenAICompatibleProvider } from "../core/model/openai-compatible";
 import { PROVIDERS, providerInfo, type ProviderId } from "../core/model/providers";
+import { ghCliToken, githubLogin, type GitHubTokenSource } from "../core/github";
 import { prove, type ProveEvent } from "../core/prove";
 import { search, type SearchEvent } from "../core/search/search";
 import { DEFAULT_LIMITS, type Limits } from "../core/search/tree";
@@ -339,6 +340,43 @@ ipcMain.handle("key:clear", (_e, id: ProviderId) => {
   return keySource(id);
 });
 
+/** The GitHub token for project PRs: GITHUB_TOKEN or GH_TOKEN, then the one saved in Mack (encrypted), then the GitHub CLI's login. */
+async function githubAuth(): Promise<{ token: string; source: GitHubTokenSource }> {
+  const env = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+  if (env) return { token: env, source: "env" };
+  if (existsSync(userData("github.key"))) {
+    try {
+      return { token: safeStorage.decryptString(readFileSync(userData("github.key"))), source: "saved" };
+    } catch {
+      // An unreadable saved token falls through to the CLI.
+    }
+  }
+  const gh = await ghCliToken();
+  return gh ? { token: gh, source: "gh" } : { token: "", source: "none" };
+}
+
+async function githubStatus(): Promise<{ source: GitHubTokenSource; login?: string; error?: string }> {
+  const a = await githubAuth();
+  if (!a.token) return { source: "none" };
+  try {
+    return { source: a.source, login: await githubLogin(a.token) };
+  } catch (e) {
+    return { source: a.source, error: (e as Error).message };
+  }
+}
+
+ipcMain.handle("github:status", () => githubStatus());
+ipcMain.handle("github:setToken", async (_e, token: string) => {
+  if (!safeStorage.isEncryptionAvailable()) throw new Error("OS encryption is unavailable; set GITHUB_TOKEN in .env instead");
+  await githubLogin(String(token).trim());
+  writeFileSync(userData("github.key"), safeStorage.encryptString(String(token).trim()));
+  return githubStatus();
+});
+ipcMain.handle("github:clearToken", async () => {
+  rmSync(userData("github.key"), { force: true });
+  return githubStatus();
+});
+
 ipcMain.handle("health:get", async (): Promise<Health> => {
   const s = readSettings();
   return {
@@ -636,6 +674,7 @@ const chat = registerChat({
     return { run, check: quickCheck(s, 1) };
   },
   runProof,
+  githubToken: async () => (await githubAuth()).token,
   extraTools: ({ projectId, root, sessionId }) => (call) => runTool(call, { projectId, root, sessionId }) ?? swarmTool(call, { projectId, root, sessionId }),
 });
 

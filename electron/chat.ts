@@ -8,13 +8,15 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync,
 import { homedir } from "node:os";
 import { basename, extname, join } from "node:path";
 import { runSubAgent, runTurn, type Attachment, type ChatEvent, type ChatSession, type StoredMessage, type ToolOutcome } from "../core/chat/agent";
-import { execute, type SessionHooks } from "../core/chat/executor";
+import { execute, verifyFiles, type SessionHooks } from "../core/chat/executor";
+import { prBody, verifiedPairs, type Verdict } from "../core/chat/pr";
 import { consolidate, extractSession, forgetMemory, readMemory, recordCitations } from "../core/chat/memory";
 import { JobManager, type Job } from "../core/chat/shell";
 import { listSkills, loadSkill, SKILL_DIR } from "../core/chat/skills";
 import { suggestNext, suggestTitle, type Transcript } from "../core/chat/suggestions";
-import { confine, imageDataUrl, imageType, MAX_IMAGE_BYTES, pdfText, SUB_AGENT_TOOLS, toolSpecs, truncate, type ToolCall } from "../core/chat/tools";
+import { confine, imageDataUrl, imageType, MAX_IMAGE_BYTES, pdfText, registerTools, SUB_AGENT_TOOLS, toolSpecs, truncate, type ToolCall } from "../core/chat/tools";
 import { changes, fileDiff, initRepo, isRepo } from "../core/git";
+import { openProjectPr, type PullRequest } from "../core/github";
 import type { LeanCheckRun } from "../core/lean/check";
 import { findings, maskSecrets, type Finding } from "../core/secrets";
 import { PluginRegistry } from "../core/mcp/plugins";
@@ -43,6 +45,8 @@ type Deps = {
   newMeter: (s: Settings, model: string, spent?: number, capped?: boolean) => { meter: Meter; price: Price | undefined };
   lean: (s: Settings) => { run: LeanRun; check?: LeanCheckRun } | undefined;
   runProof: (problem: string, mode: RunMode, forward: (ev: RunEvent) => void) => Promise<RunRecord>;
+  /** The GitHub token for project pull requests, or "" when none is set up. */
+  githubToken: () => Promise<string>;
   /** Runs the tools other features register (Ultramath, proof search, MCP) for one session. */
   extraTools?: (ctx: { projectId: string; root: string; sessionId: string; signal: AbortSignal }) => (call: ToolCall) => Promise<string> | undefined;
 };
@@ -59,6 +63,15 @@ export type ChatControl = {
 };
 
 export function registerChat(d: Deps): ChatControl {
+  registerTools([
+    {
+      name: "open_pr",
+      description:
+        "Commit the project's changes and open a GitHub pull request with them, so the person can review the work from anywhere (the first one creates a private repository). The description lists the files and re-runs the strict verifier on every proof you verified. Use it when a piece of work is finished. Needs the person's approval.",
+      args: { title: "a short title for the change", "summary?": "what the PR contains and what is and is not verified, in a few sentences" },
+      protected: true,
+    },
+  ]);
   const registryPath = () => d.userData("projects.json");
   const projectData = (id: string, ...p: string[]) => d.userData("projects", id, ...p);
   const sessionsDir = (id: string) => {
@@ -233,7 +246,14 @@ export function registerChat(d: Deps): ChatControl {
     const exec = async (call: ToolCall, sub = false): Promise<ToolOutcome> =>
       execute(call, {
         root: p.folder,
-        extra: sub ? undefined : (c) => plugins.call(session.id, c.name, c.args, ctl.signal) ?? extra?.(c),
+        extra: sub
+          ? undefined
+          : (c) =>
+              c.name === "open_pr"
+                ? openPr(p.id, session.id, String(c.args.title ?? "").trim() || session.title, typeof c.args.summary === "string" ? c.args.summary : undefined).then(
+                    (r) => `Opened ${r.url}${r.createdRepo ? ` (in the new private repository ${r.repo})` : ""}.`,
+                  )
+                : (plugins.call(session.id, c.name, c.args, ctl.signal) ?? extra?.(c)),
         ownTools: sub ? undefined : ownTools,
         plugins: sub
           ? undefined
@@ -576,6 +596,27 @@ export function registerChat(d: Deps): ChatControl {
   });
   ipcMain.handle("review:file", async (_e, projectId: string, path: string) => fileDiff(project(projectId).folder, String(path)));
   ipcMain.handle("review:init", async (_e, projectId: string) => initRepo(project(projectId).folder));
+
+  /** Commit the project's changes and open a PR, its description stating what the strict verifier accepts now. */
+  async function openPr(projectId: string, sessionId: string | undefined, title: string, summary?: string): Promise<PullRequest> {
+    const p = project(projectId);
+    const token = await d.githubToken();
+    if (!token) throw new Error("Connect GitHub first: Settings → GitHub, or log in with the GitHub CLI (gh auth login).");
+    if (!(await initRepo(p.folder))) throw new Error("Git is not installed: install it from https://git-scm.com");
+    const files = await changes(p.folder);
+    if (!files.length) throw new Error("No changes since the last commit: nothing to put in a pull request.");
+    const sess = sessionId ? (live.get(sessionId)?.session ?? loadSession(p.id, sessionId)) : null;
+    const lean = d.lean(d.readSettings());
+    const verdicts: Verdict[] = [];
+    if (lean && sess) {
+      for (const pair of verifiedPairs(sess.messages)) {
+        const result = await verifyFiles(p.folder, pair.statement, pair.proof, lean.run).catch((e: Error) => `not checked: ${e.message}`);
+        verdicts.push({ ...pair, result });
+      }
+    }
+    return openProjectPr(p.folder, token, { title, body: prBody({ chat: sess?.title, summary, files, verdicts, lean: !!lean }) });
+  }
+  ipcMain.handle("github:pr", async (_e, projectId: string, sessionId: string | null, title: string) => openPr(projectId, sessionId ?? undefined, String(title).trim() || "Work from Mack"));
   ipcMain.handle("skills:list", async (_e, projectId: string) => listSkills(project(projectId).folder));
 
   // Reminders survive a restart: schedule what is still pending.
