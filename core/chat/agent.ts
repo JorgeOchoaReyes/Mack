@@ -5,7 +5,9 @@
 // without a tool call, the person stops it, or its step budget runs out.
 //
 // As upstream's: a reply with no text at all after tool work is answered once
-// with a nudge, and the next reply ends the turn whatever it holds; messages
+// with a nudge, and the next reply ends the turn whatever it holds. A reply
+// cut off at the token limit with no text is not nudged (asking again at full
+// price spent dollars for nothing): the turn ends and says why. Messages
 // the person marks "send now" reach the model between steps, once the step's
 // tool calls have returned; a due reminder starts a turn inside a frame that
 // marks it as the agent's own note, never as the person's words.
@@ -88,6 +90,10 @@ export type TurnOptions = {
 };
 
 export const NUDGE = "Your last reply had no text. Answer the person now, in words, from what your tools returned.";
+/** The most a chat reply may use, thinking included. */
+export const REPLY_TOKENS = 16384;
+export const CUT_OFF = `(My reply used all ${REPLY_TOKENS.toLocaleString("en-US")} tokens on thinking and was cut off before any answer. Lower the reasoning effort, or ask for a smaller step.)`;
+export const NO_ANSWER = "(The model gave no answer. Ask again, or lower the reasoning effort.)";
 
 export function systemPrompt(o: { projectName: string; memory: string; skills?: { name: string; description: string }[]; tools?: string[]; own?: ToolSpec[]; intro?: string }): string {
   const specs = toolSpecs(o.tools, o.own);
@@ -208,11 +214,12 @@ export async function runTurn(session: ChatSession, o: TurnOptions): Promise<voi
     if (session.id !== "sub") await maybeCheckpoint(session, system, o);
     let reply: string;
     let tokens = 0;
+    let truncated = false;
     try {
       const r = await o.provider.chat({
         model: o.model,
         messages: trimContext(toModelMessages(system, session.messages, o.vision, session.checkpoint)),
-        maxTokens: 8192,
+        maxTokens: REPLY_TOKENS,
         temperature: 0.4,
         reasoningEffort: o.effort,
         signal: o.signal,
@@ -220,6 +227,7 @@ export async function runTurn(session: ChatSession, o: TurnOptions): Promise<voi
       });
       reply = r.content;
       tokens = r.usage?.completionTokens ?? 0;
+      truncated = !!r.truncated;
     } catch (e) {
       return o.onEvent({ type: "error", message: o.signal?.aborted ? "Stopped." : `Model call failed: ${(e as Error).message}` });
     }
@@ -229,11 +237,16 @@ export async function runTurn(session: ChatSession, o: TurnOptions): Promise<voi
     o.onEvent({ type: "assistant", content: reply, tokens });
     const { calls, errors } = parseToolCalls(reply, o.tools, o.ownTools?.());
     if (!calls.length && !errors.length) {
-      // An empty answer after tool work gets one nudge; the next reply ends the turn whatever it holds.
-      if (!visibleText(reply) && workedWithTools && !nudged) {
-        nudged = true;
-        session.messages.push({ role: "user", content: NUDGE, at: Date.now(), source: "reminder" });
-        continue;
+      if (!visibleText(reply)) {
+        // An empty answer after tool work gets one nudge, unless the limit cut it off; otherwise the turn ends and says why.
+        if (!truncated && workedWithTools && !nudged) {
+          nudged = true;
+          session.messages.push({ role: "user", content: NUDGE, at: Date.now(), source: "reminder" });
+          continue;
+        }
+        const note = truncated ? CUT_OFF : NO_ANSWER;
+        session.messages.push({ role: "assistant", content: note, at: Date.now() });
+        o.onEvent({ type: "assistant", content: note, tokens: 0 });
       }
       return o.onEvent({ type: "done" });
     }

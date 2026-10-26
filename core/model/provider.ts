@@ -26,6 +26,8 @@ export type ChatRequest = {
 export type ChatResponse = {
   content: string;
   usage?: { promptTokens: number; completionTokens: number };
+  /** The reply stopped at `maxTokens` (finish reason "length"), not where the model chose to end it. */
+  truncated?: boolean;
 };
 
 export interface ModelProvider {
