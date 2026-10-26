@@ -101,8 +101,8 @@ upstream module each comes from.
   `program-files/memory`, `program-files/approvals`.
 - [x] **5. More model providers.** OpenRouter and other OpenAI-compatible
   endpoints next to Fireworks, chosen per run.
-- [x] **6. Distribution.** GitHub Releases built by a tag-triggered
-  workflow, auto-update in the app, and the upstream check comparing against
+- [x] **6. Distribution.** a GitHub Release built on every merge to
+  `main`, auto-update in the app, and the upstream check comparing against
   the installed version. See [docs/RELEASING.md](docs/RELEASING.md).
   - [ ] A code-signed installer (no SmartScreen warning): the release
     workflow signs once a certificate is added as a repository secret, which
@@ -122,7 +122,11 @@ with it), about 10 GB of free disk, and **your own model provider key**
 (Fireworks or OpenRouter), or a local OpenAI-compatible server. No key or
 credential ships with Mack.
 
-From source:
+Download `Mack-Setup-<version>.exe` from the
+[latest release](https://github.com/JorgeOchoaReyes/Mack/releases/latest).
+It updates itself after every merge to `main`.
+
+Or from source:
 
 ```powershell
 git clone https://github.com/JorgeOchoaReyes/Mack.git

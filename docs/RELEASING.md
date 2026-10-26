@@ -5,21 +5,23 @@ Installed copies of Mack update themselves from GitHub Releases
 version in the background, and install it when Mack quits or when the person
 clicks **Restart and update**. Settings → Updates turns this off.
 
-## Cutting a release
+## Releases
 
-1. Bump `version` in `package.json` (for example `0.2.0`) on a branch, open
-   a PR and merge it.
-2. Tag the merge commit and push the tag:
+Every merge to `main` is a release: `.github/workflows/release.yml` sets the
+version to `<major>.<minor>.<run number>` (major and minor from
+`package.json`, so each release is newer than the last with no bump commit),
+runs the type check and tests, builds the installer, and publishes
+`Mack-Setup-<version>.exe` with `latest.yml` (what the updater reads) as the
+GitHub Release `v<version>`. It can also be run by hand from the Actions tab.
 
-   ```powershell
-   git tag v0.2.0
-   git push origin v0.2.0
-   ```
+To start a new minor or major series, change `version` in `package.json`
+(for example to `0.3.0`) in a PR; the patch number keeps counting runs.
 
-3. `.github/workflows/release.yml` checks that the tag matches
-   `package.json`, runs the type check and tests, builds the installer, and
-   publishes `Mack-Setup-<version>.exe` with `latest.yml` (what the updater
-   reads) as a GitHub Release.
+## Installing on another computer
+
+Download `Mack-Setup-<version>.exe` from the latest release
+(https://github.com/JorgeOchoaReyes/Mack/releases/latest), run it, and add a
+model key in Setup. From then on the copy updates itself after each merge.
 
 Mack's upstream check also reads the latest release's `upstream.json`: when a
 newer release is aligned with a later Open Math Harness commit than the
