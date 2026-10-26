@@ -15,10 +15,27 @@ function stubFetch(body: unknown, status = 200) {
 }
 
 describe("model providers", () => {
-  it("lists Fireworks, OpenRouter and a custom endpoint, each with its own key variable", () => {
-    expect(PROVIDERS.map((p) => p.id)).toEqual(["fireworks", "openrouter", "custom"]);
-    expect(new Set(PROVIDERS.map((p) => p.keyEnv)).size).toBe(3);
+  it("lists Fireworks, OpenRouter, LiteLLM and a custom endpoint, each with its own key variable", () => {
+    expect(PROVIDERS.map((p) => p.id)).toEqual(["fireworks", "openrouter", "litellm", "custom"]);
+    expect(new Set(PROVIDERS.map((p) => p.keyEnv)).size).toBe(4);
     expect(providerInfo("custom").keyRequired).toBe(false);
+    expect(providerInfo("litellm")).toMatchObject({ keyRequired: false, endpointSetting: "litellmBaseUrl", prices: "litellm" });
+  });
+
+  it("reads a LiteLLM proxy's prices from /model/info, per million tokens", async () => {
+    const calls = stubFetch({
+      data: [
+        { model_name: "deepseek-flash", model_info: { input_cost_per_token: 2.2e-7, output_cost_per_token: 6.6e-7 } },
+        { model_name: "deepseek-flash", model_info: { input_cost_per_token: 9e-6, output_cost_per_token: 9e-6 } },
+        { model_name: "local-llama", model_info: { input_cost_per_token: null, output_cost_per_token: null } },
+      ],
+    });
+    const p = new OpenAICompatibleProvider("LiteLLM", "http://localhost:4000/v1", "sk-master", { prices: "litellm" });
+    const prices = await p.listPrices();
+    expect(calls[0].url).toBe("http://localhost:4000/v1/model/info");
+    expect(Object.keys(prices)).toEqual(["deepseek-flash"]);
+    expect(prices["deepseek-flash"].input).toBeCloseTo(0.22);
+    expect(prices["deepseek-flash"].output).toBeCloseTo(0.66);
   });
 
   it("calls the chat endpoint with the key and extra headers, and reads usage", async () => {

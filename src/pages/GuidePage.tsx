@@ -21,7 +21,7 @@ export function GuidePage({ onGo }: Props) {
         <div>
           <h2>1. Set up once</h2>
           <p>
-            In <strong>Setup</strong>, install Lean and Mathlib (one click, about 5 GB), choose a model provider (Fireworks, OpenRouter or any OpenAI-compatible server), paste your key, and pick a model. The first time Lean
+            In <strong>Setup</strong>, install Lean and Mathlib (one click, about 5 GB), choose a model provider (Fireworks, OpenRouter, a LiteLLM proxy or any OpenAI-compatible server), paste your key, and pick a model. The first time Lean
             loads Mathlib it can take several minutes; after that a check takes seconds.
           </p>
           <Button size="sm" icon={ArrowRight} onClick={() => onGo("setup")}>

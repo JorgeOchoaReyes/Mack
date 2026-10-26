@@ -196,8 +196,11 @@ function LeanStep({ health, settings, ready, onChanged, saveSettings }: { health
 function ProviderStep({ health, settings, ready, saveSettings, onChanged }: { health: Health | null; settings: Settings; ready: boolean; saveSettings: (s: Partial<Settings>) => Promise<void>; onChanged: () => void }) {
   const [key, setKey] = useState("");
   const [error, setError] = useState("");
-  const [baseUrl, setBaseUrl] = useState(settings.customBaseUrl);
   const info = providerInfo(settings.provider);
+  const endpoint = info.endpointSetting;
+  const saved = endpoint ? settings[endpoint] : "";
+  const [baseUrl, setBaseUrl] = useState(saved);
+  useEffect(() => setBaseUrl(saved), [saved]);
   const source = health?.providers.find((p) => p.id === info.id)?.keySource ?? "none";
 
   const pick = async (id: ProviderId) => {
@@ -225,17 +228,22 @@ function ProviderStep({ health, settings, ready, saveSettings, onChanged }: { he
         })}
       </div>
       <p className="muted small">{info.blurb}</p>
-      {info.id === "custom" && (
+      {endpoint && (
         <form
           className="row gap-sm"
           onSubmit={async (e) => {
             e.preventDefault();
-            await saveSettings({ customBaseUrl: baseUrl.trim() });
+            await saveSettings({ [endpoint]: baseUrl.trim() });
             onChanged();
           }}
         >
-          <input className="input grow mono" placeholder="http://localhost:11434/v1" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} />
-          <Button type="submit" disabled={!/^https?:\/\//.test(baseUrl.trim()) || baseUrl.trim() === settings.customBaseUrl}>
+          <input
+            className="input grow mono"
+            placeholder={endpoint === "litellmBaseUrl" ? "http://localhost:4000/v1" : "http://localhost:11434/v1"}
+            value={baseUrl}
+            onChange={(e) => setBaseUrl(e.target.value)}
+          />
+          <Button type="submit" disabled={!/^https?:\/\//.test(baseUrl.trim()) || baseUrl.trim() === saved}>
             Save endpoint
           </Button>
         </form>
@@ -321,7 +329,7 @@ function ModelStep({ settings, ready, keyReady, saveSettings, onChanged }: { set
     if (keyReady) void load();
     // Reload when the provider changes or its key appears.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [keyReady, provider, settings.customBaseUrl]);
+  }, [keyReady, provider, settings.customBaseUrl, settings.litellmBaseUrl]);
 
   const choose = async (m: string) => {
     await saveSettings({ models: { ...settings.models, [provider]: m } });

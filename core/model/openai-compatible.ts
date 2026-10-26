@@ -1,6 +1,6 @@
 // Any OpenAI-compatible chat endpoint (`POST {base}/chat/completions`,
-// `GET {base}/models`): Fireworks, OpenRouter, and local servers such as
-// Ollama, LM Studio or vLLM. Model ids are settings, never hard-coded here.
+// `GET {base}/models`): Fireworks, OpenRouter, a LiteLLM proxy, and local
+// servers such as Ollama, LM Studio or vLLM. Model ids are settings, never hard-coded here.
 //
 // Streams when the caller asks for pieces (`onDelta`), sends images as
 // content parts, passes the reasoning effort in the dialect the provider
@@ -19,6 +19,8 @@ export type ProviderOptions = {
   retries?: number;
   /** Milliseconds before the first retry; doubled each time. */
   backoffMs?: number;
+  /** Where `listPrices` reads: `pricing` on `/models` (OpenRouter), or LiteLLM's `/model/info`. */
+  prices?: "models" | "litellm";
 };
 
 class HttpError extends Error {
@@ -50,7 +52,7 @@ export class OpenAICompatibleProvider implements ModelProvider {
     o: ProviderOptions = {},
   ) {
     if (!/^https?:\/\//.test(baseUrl)) throw new Error(`${name}: the endpoint must be an http(s) URL`);
-    this.opts = { extraHeaders: o.extraHeaders ?? {}, reasoning: o.reasoning ?? "openai", retries: o.retries ?? 2, backoffMs: o.backoffMs ?? 1500 };
+    this.opts = { extraHeaders: o.extraHeaders ?? {}, reasoning: o.reasoning ?? "openai", retries: o.retries ?? 2, backoffMs: o.backoffMs ?? 1500, prices: o.prices ?? "models" };
   }
 
   private headers(): Record<string, string> {
@@ -160,8 +162,9 @@ export class OpenAICompatibleProvider implements ModelProvider {
     return { content, usage, ...(truncated ? { truncated } : {}) };
   }
 
-  /** Prices the catalogue publishes, USD per million tokens (OpenRouter gives them per token); empty when it gives none. */
+  /** Prices the catalogue publishes, USD per million tokens (OpenRouter and LiteLLM give them per token); empty when it gives none. */
   async listPrices(): Promise<Record<string, { input: number; output: number }>> {
+    if (this.opts.prices === "litellm") return this.litellmPrices();
     const res = await fetch(this.url("/models"), { headers: this.headers() });
     if (!res.ok) return {};
     const json = (await res.json()) as { data?: { id?: string; pricing?: { prompt?: string | number; completion?: string | number } }[] };
@@ -170,6 +173,22 @@ export class OpenAICompatibleProvider implements ModelProvider {
       const input = Number(m.pricing?.prompt);
       const output = Number(m.pricing?.completion);
       if (m.id && Number.isFinite(input) && Number.isFinite(output) && input >= 0 && output >= 0) out[m.id] = { input: input * 1_000_000, output: output * 1_000_000 };
+    }
+    return out;
+  }
+
+  /** LiteLLM's `/model/info`: each deployment's cost per token; the first priced deployment of a model name wins. */
+  private async litellmPrices(): Promise<Record<string, { input: number; output: number }>> {
+    const res = await fetch(this.url("/model/info"), { headers: this.headers() });
+    if (!res.ok) return {};
+    const json = (await res.json()) as { data?: { model_name?: string; model_info?: { input_cost_per_token?: number | null; output_cost_per_token?: number | null } }[] };
+    const out: Record<string, { input: number; output: number }> = {};
+    for (const d of json.data ?? []) {
+      const input = d.model_info?.input_cost_per_token;
+      const output = d.model_info?.output_cost_per_token;
+      if (d.model_name && !out[d.model_name] && typeof input === "number" && typeof output === "number" && input >= 0 && output >= 0) {
+        out[d.model_name] = { input: input * 1_000_000, output: output * 1_000_000 };
+      }
     }
     return out;
   }
