@@ -5,6 +5,7 @@
 // process) and images of project files.
 
 import { Fragment, useEffect, useState, type ReactNode } from "react";
+import { TOOL_BLOCK } from "../../../core/chat/tool-block";
 import { api } from "../../api";
 import { CodeEditor } from "../CodeEditor";
 import { CopyButton } from "../ui";
@@ -98,7 +99,7 @@ export function visible(text: string): string {
   return text
     .replace(/<think>[\s\S]*?<\/think>/g, "")
     .replace(/<think>[\s\S]*$/, "")
-    .replace(/```tool\s*\n[\s\S]*?(```|$)/g, "")
+    .replace(TOOL_BLOCK, "")
     .replace(/<citation_entries>[\s\S]*?(<\/citation_entries>|$)/g, "")
     .trim();
 }

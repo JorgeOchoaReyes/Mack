@@ -89,6 +89,20 @@ describe("quick checks", () => {
     expect(checkFromReply({ env: 2, messages: [{ severity: "error", pos: { line: 1, column: 0 }, data: "bad" }] }).status).toBe("errors");
     expect(checkFromReply({ message: "Unknown environment." }).status).toBe("errors");
   });
+
+  it("shows the model what #check answers, from the REPL and the command line", () => {
+    const repl = checkFromReply({
+      env: 1,
+      messages: [
+        { severity: "info", pos: { line: 3, column: 0 }, data: "Nat.Perfect (n : ℕ) : Prop" },
+        { severity: "error", pos: { line: 4, column: 7 }, data: "Unknown constant `Nat.Perfect.pos`" },
+      ],
+    });
+    expect(describeCheck(repl)).toContain("line 3: Nat.Perfect (n : ℕ) : Prop");
+    const cli = checkFromRun({ kind: "ok", output: "/tmp/P.lean:3:0: info: Nat.Perfect (n : ℕ) : Prop\n" });
+    expect(cli.status).toBe("complete");
+    expect(describeCheck(cli)).toContain("Nat.Perfect (n : ℕ) : Prop");
+  });
 });
 
 /** A Lean that knows two proofs: `simp` checks and verifies, anything else leaves a sorry. */

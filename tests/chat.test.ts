@@ -1,12 +1,12 @@
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { runTurn, trimContext, type ChatSession } from "../core/chat/agent";
 import { execute, type ExecutorContext } from "../core/chat/executor";
 import { consolidate, extractSession, framedMemory, readMemory } from "../core/chat/memory";
 import { confine, parseToolCalls, readProjectFile, searchFiles, visibleText } from "../core/chat/tools";
-import { htmlText, parseDuckDuckGo } from "../core/chat/web";
+import { htmlText, parseBingRss, parseDuckDuckGo, webSearch } from "../core/chat/web";
 import type { ChatRequest, ModelProvider } from "../core/model/provider";
 
 let root = "";
@@ -68,6 +68,14 @@ describe("tool protocol", () => {
     expect(calls).toEqual([{ name: "read_file", args: { path: "a.md" } }]);
     expect(errors.length).toBe(2);
     expect(visibleText('Let me look.\n```tool\n{"name":"x"}\n```')).toBe("Let me look.");
+  });
+
+  it("reads <tool> tags, mixed openers and closers, and an unclosed block", () => {
+    const call = '{"name": "read_file", "args": {"path": "a.md"}}';
+    for (const reply of [`\n\n<tool>\n${call}\n</tool>`, `\n\n<tool>\n${call}\n\`\`\``, `\`\`\`tool\n${call}\n</tool>`, `Checking.\n<tool>\n${call}\n`]) {
+      expect(parseToolCalls(reply)).toEqual({ calls: [{ name: "read_file", args: { path: "a.md" } }], errors: [] });
+      expect(visibleText(reply)).toBe(reply.startsWith("Checking") ? "Checking." : "");
+    }
   });
 });
 
@@ -173,5 +181,29 @@ describe("web helpers", () => {
     const html = '<div class="result results_links"><a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fen.wikipedia.org%2Fwiki%2FPrime&amp;rut=x">Prime <b>number</b></a><a class="result__snippet">A prime is &amp; more</a></div>';
     expect(parseDuckDuckGo(html)).toEqual([{ title: "Prime number", url: "https://en.wikipedia.org/wiki/Prime", snippet: "A prime is & more" }]);
     expect(htmlText("<html><script>x()</script><p>Hello&nbsp;<b>world</b></p><p>Two</p></html>")).toBe("Hello world\nTwo");
+  });
+
+  it("reads Bing's RSS results", () => {
+    const xml = "<rss><channel><title>Bing: q</title><item><title>Odd perfect number</title><link>https://en.wikipedia.org/wiki/Perfect_number</link><description>An &amp; b</description></item></channel></rss>";
+    expect(parseBingRss(xml)).toEqual([{ title: "Odd perfect number", url: "https://en.wikipedia.org/wiki/Perfect_number", snippet: "An & b" }]);
+  });
+
+  it("falls back to Bing when DuckDuckGo refuses, and runs searches one at a time", async () => {
+    vi.useFakeTimers();
+    const hits: string[] = [];
+    vi.stubGlobal("fetch", async (url: string) => {
+      hits.push(new URL(url).host);
+      return url.includes("bing")
+        ? new Response("<item><title>T</title><link>https://x.test/</link><description>d</description></item>")
+        : new Response("", { status: 202 });
+    });
+    const both = Promise.all([webSearch("a"), webSearch("b")]);
+    await vi.runAllTimersAsync();
+    const [a, b] = await both;
+    expect(a).toContain("https://x.test/");
+    expect(b).toContain("https://x.test/");
+    expect(hits).toEqual(["html.duckduckgo.com", "html.duckduckgo.com", "www.bing.com", "html.duckduckgo.com", "html.duckduckgo.com", "www.bing.com"]);
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
   });
 });
