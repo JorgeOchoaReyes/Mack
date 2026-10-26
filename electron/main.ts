@@ -83,6 +83,8 @@ export type Settings = {
   upstreamCheck: boolean;
   /** An upstream head the user chose to stay behind; no banner until upstream moves past it. */
   upstreamDismissed: string;
+  /** The folder the Prove page lists .lean files from; empty when none is open. */
+  proveFolder: string;
 };
 
 export type RunMode = "single" | "search" | "ultramath";
@@ -157,6 +159,7 @@ const DEFAULTS: Settings = {
   runConcurrency: 1,
   upstreamCheck: true,
   upstreamDismissed: "",
+  proveFolder: "",
 };
 
 const userData = (...p: string[]) => join(app.getPath("userData"), ...p);
@@ -587,6 +590,51 @@ ipcMain.handle("file:openLean", async (e) => {
   const win = BrowserWindow.fromWebContents(e.sender);
   const r = await dialog.showOpenDialog(win!, { properties: ["openFile"], filters: [{ name: "Lean", extensions: ["lean"] }] });
   return r.canceled ? null : readFileSync(r.filePaths[0], "utf8");
+});
+
+/** A folder of problems on the Prove page, with its .lean files relative to it. */
+export type LeanFolder = { folder: string; files: string[] };
+
+const SKIP_DIRS = new Set([".lake", ".git", ".github", ".mack", "node_modules", "build"]);
+const MAX_LEAN_FILES = 5000;
+
+function leanFiles(root: string, dir = "", out: string[] = []): string[] {
+  let entries;
+  try {
+    entries = readdirSync(join(root, dir), { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  for (const e of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+    if (out.length >= MAX_LEAN_FILES) break;
+    const rel = dir ? `${dir}/${e.name}` : e.name;
+    if (e.isDirectory() && !SKIP_DIRS.has(e.name)) leanFiles(root, rel, out);
+    else if (e.isFile() && e.name.endsWith(".lean")) out.push(rel);
+  }
+  return out;
+}
+
+const leanFolder = (folder: string): LeanFolder | null => (folder && existsSync(folder) ? { folder, files: leanFiles(folder) } : null);
+
+ipcMain.handle("file:openLeanFolder", async (e) => {
+  const win = BrowserWindow.fromWebContents(e.sender);
+  const r = await dialog.showOpenDialog(win!, { properties: ["openDirectory"], title: "Open a folder of Lean problems" });
+  if (r.canceled || !r.filePaths.length) return null;
+  writeSettings({ proveFolder: r.filePaths[0] });
+  return leanFolder(r.filePaths[0]);
+});
+
+ipcMain.handle("file:leanFolder", () => leanFolder(readSettings().proveFolder));
+
+ipcMain.handle("file:closeLeanFolder", () => {
+  writeSettings({ proveFolder: "" });
+});
+
+ipcMain.handle("file:readLeanIn", async (_e, rel: string) => {
+  const folder = readSettings().proveFolder;
+  if (!folder) throw new Error("no folder is open");
+  if (typeof rel !== "string" || !rel.endsWith(".lean")) throw new Error("not a .lean file");
+  return readFileSync(await confine(folder, rel), "utf8");
 });
 
 registerUpdates(() => readSettings().autoUpdate);

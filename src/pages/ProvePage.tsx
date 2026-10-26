@@ -1,6 +1,6 @@
-import { BookOpen, ChevronDown, FolderOpen, GitBranch, Play, Square, Sparkles, CircleCheck, CircleAlert, Cpu, Repeat, Users } from "lucide-react";
+import { BookOpen, ChevronDown, FileCode, FolderOpen, FolderTree, GitBranch, RefreshCw, X, Play, Square, Sparkles, CircleCheck, CircleAlert, Cpu, Repeat, Users } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { api, errorText, theoremName, type Health, type RunEvent, type Settings } from "../api";
+import { api, errorText, theoremName, type Health, type LeanFolder, type RunEvent, type Settings } from "../api";
 import { providerInfo } from "../../core/model/providers";
 import { formatUsd } from "../../core/model/metered";
 import { CodeEditor } from "../components/CodeEditor";
@@ -38,6 +38,8 @@ export function ProvePage({ problem, setProblem, health, settings, saveSettings,
   const [solved, setSolved] = useState<Solved | null>(null);
   const [failure, setFailure] = useState("");
   const [examplesOpen, setExamplesOpen] = useState(false);
+  const [folder, setFolder] = useState<LeanFolder | null>(null);
+  const [openFile, setOpenFile] = useState<string | null>(null);
   const [started, setStarted] = useState(0);
   const [, tick] = useState(0);
   const menu = useRef<HTMLDivElement>(null);
@@ -56,6 +58,19 @@ export function ProvePage({ problem, setProblem, health, settings, saveSettings,
       }),
     [],
   );
+
+  useEffect(() => {
+    void api.leanFolder().then(setFolder);
+  }, []);
+
+  const loadFile = async (path: string) => {
+    try {
+      setProblem(await api.readLeanIn(path));
+      setOpenFile(path);
+    } catch (e) {
+      setFailure(errorText(e));
+    }
+  };
 
   useEffect(() => {
     if (!running) return;
@@ -145,10 +160,26 @@ export function ProvePage({ problem, setProblem, health, settings, saveSettings,
             icon={FolderOpen}
             onClick={async () => {
               const text = await api.openLean();
-              if (text !== null) setProblem(text);
+              if (text !== null) {
+                setProblem(text);
+                setOpenFile(null);
+              }
             }}
           >
             Open
+          </Button>
+          <Button
+            icon={FolderTree}
+            title="Open a folder and list every .lean file in it"
+            onClick={async () => {
+              const f = await api.openLeanFolder();
+              if (f) {
+                setFolder(f);
+                setOpenFile(null);
+              }
+            }}
+          >
+            Folder
           </Button>
           {running ? (
             <Button variant="danger" icon={Square} onClick={() => void api.stopProve()}>
@@ -162,7 +193,21 @@ export function ProvePage({ problem, setProblem, health, settings, saveSettings,
         </div>
       </div>
 
-      <div className="split">
+      <div className={folder ? "split with-files" : "split"}>
+        {folder && (
+          <FilesPane
+            folder={folder}
+            current={openFile}
+            disabled={running}
+            onPick={(p) => void loadFile(p)}
+            onRefresh={() => void api.leanFolder().then(setFolder)}
+            onClose={() => {
+              void api.closeLeanFolder();
+              setFolder(null);
+              setOpenFile(null);
+            }}
+          />
+        )}
         <section className="pane editor-pane">
           <div className="pane-head">
             <span>Frozen statement</span>
@@ -320,6 +365,42 @@ function HowItWorks({ mode }: { mode: Settings["mode"] }) {
       </ol>
       <p className="muted small">Pick a problem from Examples or write your own, then press Prove.</p>
     </div>
+  );
+}
+
+function FilesPane({ folder, current, disabled, onPick, onRefresh, onClose }: { folder: LeanFolder; current: string | null; disabled: boolean; onPick: (path: string) => void; onRefresh: () => void; onClose: () => void }) {
+  const [filter, setFilter] = useState("");
+  const q = filter.trim().toLowerCase();
+  const shown = q ? folder.files.filter((f) => f.toLowerCase().includes(q)) : folder.files;
+  const name = folder.folder.split(/[\\/]/).filter(Boolean).pop() ?? folder.folder;
+  return (
+    <section className="pane files-pane">
+      <div className="pane-head">
+        <span title={folder.folder}>{name}</span>
+        <span className="files-actions">
+          <button className="icon-btn" title="Rescan the folder" onClick={onRefresh}>
+            <RefreshCw size={13} />
+          </button>
+          <button className="icon-btn" title="Close the folder" onClick={onClose}>
+            <X size={13} />
+          </button>
+        </span>
+      </div>
+      <input className="files-filter" placeholder={`Filter ${folder.files.length} files`} value={filter} onChange={(e) => setFilter(e.target.value)} />
+      <div className="files-list">
+        {shown.length === 0 && <div className="muted small files-empty">{folder.files.length ? "No file matches." : "No .lean files in this folder."}</div>}
+        {shown.map((f) => {
+          const slash = f.lastIndexOf("/");
+          return (
+            <button key={f} className={f === current ? "file active" : "file"} disabled={disabled} title={f} onClick={() => onPick(f)}>
+              <FileCode size={13} />
+              <span className="file-name">{f.slice(slash + 1)}</span>
+              {slash > 0 && <span className="file-dir">{f.slice(0, slash)}</span>}
+            </button>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
