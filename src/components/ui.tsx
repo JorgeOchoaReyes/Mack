@@ -116,3 +116,17 @@ export function timeAgo(ts: number): string {
   if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
   return new Date(ts).toLocaleDateString();
 }
+
+/** Whether a list shows the active project's items or everything. */
+export function ScopeSwitch({ projectName, all, onChange }: { projectName: string; all: boolean; onChange: (all: boolean) => void }) {
+  return (
+    <div className="mode-switch">
+      <button className={all ? "" : "active"} disabled={!projectName} onClick={() => onChange(false)}>
+        {projectName || "No project"}
+      </button>
+      <button className={all ? "active" : ""} onClick={() => onChange(true)}>
+        All projects
+      </button>
+    </div>
+  );
+}

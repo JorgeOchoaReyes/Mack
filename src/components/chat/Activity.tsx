@@ -2,7 +2,7 @@
 // opens to every call: what it was, its arguments, whether the person
 // approved it, and what came back.
 
-import { AlarmClock, Bot, Check, ChevronRight, CircleAlert, FileText, Globe, Hammer, Lock, Search, Sigma, Terminal, Users, X } from "lucide-react";
+import { AlarmClock, Bot, Check, ChevronRight, CircleAlert, FileCode, FileText, FlaskConical, Globe, Hammer, Lock, Search, Sigma, Terminal, Users, X } from "lucide-react";
 import { useState, type ComponentType } from "react";
 import type { ToolOutcome } from "../../api";
 
@@ -73,8 +73,15 @@ function Call({ r }: { r: ToolOutcome }) {
   );
 }
 
-export function Activity({ results, running }: { results: ToolOutcome[]; running?: boolean }) {
+/** The project .lean files these calls wrote, each once, in the order written. */
+function leanWritten(results: ToolOutcome[]): string[] {
+  const paths = results.filter((r) => r.ok && r.name === "write_file" && typeof r.args.path === "string" && r.args.path.endsWith(".lean")).map((r) => (r.args.path as string).replace(/\\/g, "/").replace(/^\.\//, ""));
+  return [...new Set(paths)];
+}
+
+export function Activity({ results, running, onOpenInProve }: { results: ToolOutcome[]; running?: boolean; onOpenInProve?: (path: string) => void }) {
   const [open, setOpen] = useState(false);
+  const written = onOpenInProve ? leanWritten(results) : [];
   const failed = results.filter((r) => !r.ok).length;
   const names = [...new Set(results.map((r) => LABELS[r.name] ?? r.name.replace(/_/g, " ")))];
   return (
@@ -91,6 +98,18 @@ export function Activity({ results, running }: { results: ToolOutcome[]; running
           </span>
         )}
       </button>
+      {written.length > 0 && (
+        <div className="activity-files">
+          {written.map((p) => (
+            <button key={p} type="button" className="file-chip prove-chip" title={`Open ${p} on the Prove screen`} onClick={() => onOpenInProve?.(p)}>
+              <FileCode size={12} /> {p.split("/").pop()}
+              <span className="prove-chip-go">
+                <FlaskConical size={11} /> Open in Prove
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
       {open && (
         <div className="activity-body">
           {results.map((r, i) => (

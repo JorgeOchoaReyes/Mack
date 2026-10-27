@@ -2,13 +2,15 @@ import { ArrowLeft, Pause, Play, Plus, RefreshCw, Rows3 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { api, errorText, type RunStatus, type SearchNode } from "../api";
 import { TreeView, type NodeEvent } from "../components/TreeView";
-import { Badge, Button, timeAgo } from "../components/ui";
+import { Badge, Button, ScopeSwitch, timeAgo } from "../components/ui";
 
 const TONE: Record<string, "ok" | "bad" | "warn" | "neutral"> = { solved: "ok", running: "warn", queued: "neutral", exhausted: "bad", stopped: "neutral", failed: "bad" };
 
 /** Proof-search runs over problem sets: started here or from a chat, shown from their journals. */
-export function RunsPage() {
-  const [runs, setRuns] = useState<RunStatus[]>([]);
+export function RunsPage({ projectId, projectName }: { projectId: string; projectName: string }) {
+  const [allRuns, setRuns] = useState<RunStatus[]>([]);
+  const [all, setAll] = useState(!projectId);
+  const runs = all || !projectId ? allRuns : allRuns.filter((r) => r.project === projectId);
   const [open, setOpen] = useState<RunStatus | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [nodes, setNodes] = useState<SearchNode[]>([]);
@@ -110,13 +112,14 @@ export function RunsPage() {
           <Button icon={RefreshCw} onClick={() => void reload()}>
             Refresh
           </Button>
+          <ScopeSwitch projectName={projectName} all={all || !projectId} onChange={setAll} />
         </div>
       </div>
       {error && <div className="notice notice-bad">{error}</div>}
       {runs.length === 0 ? (
         <div className="empty">
           <Rows3 size={28} />
-          <p>No runs yet.</p>
+          <p>{allRuns.length && !all ? `No runs in ${projectName} yet.` : "No runs yet."}</p>
         </div>
       ) : (
         <div className="run-list">
