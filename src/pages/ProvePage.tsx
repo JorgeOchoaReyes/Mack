@@ -15,14 +15,17 @@ import { EXAMPLES } from "../examples";
 type Attempt = Extract<RunEvent, { type: "attempt" }>;
 type Solved = Extract<RunEvent, { type: "solved" }>;
 
+/** Open a project file, or put a statement in the editor unattached to any file. */
+export type ProveRequest = ({ path: string } | { text: string }) & { n: number };
+
 type Props = {
   problem: string;
   setProblem: (p: string) => void;
   /** The active project, whose .lean files the files pane lists. */
   project: Project | null;
   files: ProjectFilesState;
-  /** A project file another screen asked to open here. */
-  openRequest: { path: string; n: number } | null;
+  /** A project file or statement another screen asked to open here. */
+  openRequest: ProveRequest | null;
   /** Hand a message to Chat and go there. */
   onAskChat: (text: string) => void;
   health: Health | null;
@@ -111,7 +114,11 @@ export function ProvePage({ problem, setProblem, project, files, openRequest, on
   }, [projectId]);
 
   useEffect(() => {
-    if (openRequest && !running) void loadFile(openRequest.path);
+    if (!openRequest) return;
+    if ("path" in openRequest) return void (running || loadFile(openRequest.path));
+    setProblem(openRequest.text);
+    setOpenFile(null);
+    setOnDisk(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openRequest?.n]);
 

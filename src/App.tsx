@@ -12,7 +12,7 @@ import { FeedbackPage } from "./pages/FeedbackPage";
 import { RunsPage } from "./pages/RunsPage";
 import { GuidePage } from "./pages/GuidePage";
 import { HistoryPage } from "./pages/HistoryPage";
-import { ProvePage } from "./pages/ProvePage";
+import { ProvePage, type ProveRequest } from "./pages/ProvePage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { SetupPage } from "./pages/SetupPage";
 import { UpstreamPage } from "./pages/UpstreamPage";
@@ -54,8 +54,8 @@ export function App() {
   const [update, setUpdate] = useState<UpdateState | null>(null);
   const [spend, setSpend] = useState<LedgerState | null>(null);
   const [projects, setProjects] = useState<Project[] | null>(null);
-  /** A project file Chat asked Prove to open, and a message Prove handed to Chat; `n` makes a repeat count. */
-  const [proveOpen, setProveOpen] = useState<{ path: string; n: number } | null>(null);
+  /** A project file (or, from History, a bare statement) another screen asked Prove to open, and a message Prove handed to Chat; `n` makes a repeat count. */
+  const [proveOpen, setProveOpen] = useState<ProveRequest | null>(null);
   const [chatDraft, setChatDraft] = useState<{ text: string; n: number } | null>(null);
 
   const reloadProjects = useCallback(async () => setProjects(await api.listProjects()), []);
@@ -289,7 +289,7 @@ export function App() {
               projectId={projectId}
               projectName={project?.name ?? ""}
               onRerun={(p) => {
-                setProblem(p);
+                setProveOpen({ text: p, n: Date.now() });
                 setPage("prove");
               }}
             />
