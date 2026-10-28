@@ -1,6 +1,6 @@
 import { UltramathView } from "../components/UltramathView";
 import type { RunEvent, SwarmRecord } from "../api";
-import { AlarmClock, Brain, ChevronRight, Users, Download, ExternalLink, GitCompare, GitPullRequest, KeyRound, FolderPlus, MessageSquarePlus, ShieldAlert, Terminal, Trash2, Wrench, X } from "lucide-react";
+import { AlarmClock, Brain, ChevronRight, Users, Download, ExternalLink, GitCompare, GitPullRequest, KeyRound, FolderPlus, Maximize2, MessageSquarePlus, MessagesSquare, ShieldAlert, Terminal, Trash2, Wrench, X } from "lucide-react";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import {
   api,
@@ -27,6 +27,8 @@ import { Markdown, visible } from "../components/chat/Markdown";
 import { Logo } from "../components/Logo";
 import { formatUsd } from "../../core/model/metered";
 import { Badge, Button, Spinner, timeAgo, Toggle } from "../components/ui";
+import type { ProveContext } from "./ProvePage";
+import { firstQuestion } from "./StartPage";
 
 type Props = {
   /** The active project, chosen in the sidebar for every screen. */
@@ -38,6 +40,8 @@ type Props = {
   incomingDraft: { text: string; n: number } | null;
   /** Open a project .lean file on the Prove screen. */
   onOpenInProve: (path: string) => void;
+  /** Set when the chat is a panel beside Prove: what Prove shows, and the panel's controls. */
+  docked?: { context: ProveContext | null; onClose: () => void; onExpand: () => void } | null;
   health: Health | null;
   settings: Settings;
   saveSettings: (s: Partial<Settings>) => Promise<void>;
@@ -45,7 +49,7 @@ type Props = {
 };
 const EFFORTS: ReasoningEffort[] = ["off", "on", "low", "medium", "high", "xhigh"];
 
-export function ChatPage({ project, hasProjects, onCreateProject, incomingDraft, onOpenInProve, health, settings, saveSettings, onGoSetup }: Props) {
+export function ChatPage({ project, hasProjects, onCreateProject, incomingDraft, onOpenInProve, docked, health, settings, saveSettings, onGoSetup }: Props) {
   const projectId = project?.id ?? "";
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [session, setSession] = useState<ChatSession | null>(null);
@@ -211,7 +215,7 @@ export function ChatPage({ project, hasProjects, onCreateProject, incomingDraft,
   const effort = session?.effort ?? settings.chatEffort;
 
   return (
-    <div className="chat">
+    <div className={docked ? "chat docked" : "chat"}>
       <aside className="chat-side">
         {project && (
           <div className="chat-side-head">
@@ -270,6 +274,22 @@ export function ChatPage({ project, hasProjects, onCreateProject, incomingDraft,
       </aside>
 
       <section className="chat-main">
+        {docked && (
+          <div className="dock-head">
+            <MessagesSquare size={15} />
+            <b>Assistant</b>
+            <span className="muted small dock-title">{session ? session.title : "New chat"}</span>
+            <button className="icon-btn" title="New chat" disabled={!projectId} onClick={() => void openSession(null)}>
+              <MessageSquarePlus size={15} />
+            </button>
+            <button className="icon-btn" title="Open in the full Chat screen, with every chat of this project" onClick={docked.onExpand}>
+              <Maximize2 size={15} />
+            </button>
+            <button className="icon-btn" title="Close the assistant" onClick={docked.onClose}>
+              <X size={15} />
+            </button>
+          </div>
+        )}
         {panel === "memory" && projectId && <MemoryPanel projectId={projectId} onClose={() => setPanel("none")} />}
         {panel === "review" && projectId && <ReviewPanel projectId={projectId} sessionId={session?.id ?? null} chatTitle={session?.title ?? ""} onClose={() => setPanel("none")} />}
         {panel === "swarms" &&
@@ -334,18 +354,17 @@ export function ChatPage({ project, hasProjects, onCreateProject, incomingDraft,
               <div className="welcome-logo">
                 <Logo />
               </div>
-              <h2>{project.name}</h2>
-              <p className="muted">Ask about a problem, a paper or a proof. Type <kbd>/</kbd> for commands and skills; attach PDFs, images and .lean files with the clip.</p>
+              <h2>{docked ? "Ask about this statement" : project.name}</h2>
+              <p className="muted">
+                {docked
+                  ? "The assistant works in this project: it can explain the statement, sketch a proof, check pieces with Lean, and write lemmas as new files that show up on Prove."
+                  : <>Ask about a problem, a paper or a proof. Type <kbd>/</kbd> for commands and skills; attach PDFs, images and .lean files with the clip.</>}
+              </p>
               <div className="starters">
-                {[
-                  ["Formalize & prove", "Write the Lean 4 statement that every prime power is not a perfect number, check it compiles, then start a proof search."],
-                  ["Survey the literature", "Find the key papers on odd perfect numbers, save them here, and summarize what each proves."],
-                  ["Plan an attack", "Plan how to formalize Euler's theorem on the form of odd perfect numbers as a chain of Lean lemmas."],
-                  ["Explore with Ultramath", "Start Ultramath with 4 members on: find a new necessary condition on odd perfect numbers."],
-                ].map(([t, q]) => (
+                {(docked ? proveStarters(docked.context) : projectStarters(project)).map(([t, q]) => (
                   <button key={t} className="starter" onClick={() => setDraft(q)}>
                     <b>{t}</b>
-                    <span>{q}</span>
+                    <span>{q.split("\n\n```")[0]}</span>
                   </button>
                 ))}
               </div>
@@ -854,4 +873,31 @@ function SwarmsPanel({ projectId, sessionId, onClose }: { projectId: string; ses
       })}
     </div>
   );
+}
+
+/** Starting points for a project chat, about the project's topic (its name, as words). */
+function projectStarters(p: Project): [string, string][] {
+  const topic = p.name.replace(/[-_]+/g, " ").trim();
+  return [
+    ["New here? Find a first statement", firstQuestion(p)],
+    ["Survey what is known", `Find the key papers and results on ${topic}, save them here, and summarize what each proves and what is still open.`],
+    ["Formalize & prove", `Pick one basic known fact about ${topic}, write it as a Lean 4 statement in its own .lean file, check that it compiles, then start a proof run.`],
+    ["Plan an attack", `Plan how to formalize the main known result on ${topic} as a chain of small Lean lemmas, easiest first.`],
+  ];
+}
+
+/** Starting points beside Prove, about what it shows: the open file, or the statement in the editor. */
+function proveStarters(c: ProveContext | null): [string, string][] {
+  if (!c) return [];
+  const about = c.path ? `\`${c.path}\`` : "the statement below";
+  const code = c.path ? "" : `\n\n\`\`\`lean\n${c.statement.trim()}\n\`\`\``;
+  const out: [string, string][] = [
+    ["Explain it", `Explain in plain words what ${about} says, and whether it looks true as written.${code}`],
+    ["Sketch a proof", `Sketch a proof of ${about} in words first, then name the Mathlib lemmas and tactics to try. Check each step with Lean before you suggest it.${code}`],
+    ["Split into lemmas", `Split ${about} into small lemmas, each in its own .lean file in this project, easiest first, so I can prove them one at a time on Prove.${code}`],
+  ];
+  if (c.lastRun === "failed")
+    out.unshift(["Why did it fail?", `A proof run on ${about} did not verify. Check the statement with Lean: is it true as written, is a hypothesis missing, or is it too big for one proof? Tell me what to change or prove first.${code}`]);
+  else out.push(["What next?", `I'm working on ${about} on the Prove screen and I'm new to this. What should I do next, and why?${code}`]);
+  return out;
 }

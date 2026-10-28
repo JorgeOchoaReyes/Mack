@@ -1,7 +1,7 @@
-import { ArrowRight, BookOpen, CircleCheck, CircleDollarSign, GitCompare, Lock, ShieldCheck, Wrench } from "lucide-react";
+import { ArrowRight, BookOpen, CircleCheck, CircleDollarSign, Compass, GitCompare, Lock, Route, ShieldCheck, Wrench } from "lucide-react";
 import { Badge, Button, OutcomeBadge } from "../components/ui";
 
-type Props = { onGo: (page: "setup" | "prove" | "upstream") => void };
+type Props = { onGo: (page: "start" | "setup" | "prove" | "upstream") => void };
 
 export function GuidePage({ onGo }: Props) {
   return (
@@ -13,6 +13,59 @@ export function GuidePage({ onGo }: Props) {
           decides.
         </p>
       </div>
+
+      <section className="guide-card">
+        <div className="guide-icon">
+          <Compass size={18} />
+        </div>
+        <div>
+          <h2>The research loop</h2>
+          <ol className="guide-loop">
+            <li>
+              <b>Ask.</b> In a project, tell the assistant in <strong>Chat</strong> what you want to understand. It reads papers, searches the web and explains.
+            </li>
+            <li>
+              <b>Formalize.</b> Have it write one small, true claim as a Lean statement in a <code>.lean</code> file. It shows up on <strong>Prove</strong>.
+            </li>
+            <li>
+              <b>Prove.</b> Open the file on Prove and press Prove. The <strong>Assistant</strong> button keeps the chat beside the editor for questions.
+            </li>
+            <li>
+              <b>Learn from failures.</b> If it does not verify, the statement may be false, miss a hypothesis, or be too big: fix it or split it into lemmas, and
+              go again.
+            </li>
+          </ol>
+          <Button size="sm" icon={ArrowRight} onClick={() => onGo("start")}>
+            Start here, step by step
+          </Button>
+        </div>
+      </section>
+
+      <section className="guide-card">
+        <div className="guide-icon">
+          <Route size={18} />
+        </div>
+        <div>
+          <h2>Which tool when</h2>
+          <ul>
+            <li>
+              <b>Prove, Single</b>: one statement, one agent revising its proof from Lean's errors. Start here.
+            </li>
+            <li>
+              <b>Prove, Search tree</b>: a harder statement. Parallel workers keep partial proofs and extend the most promising ones.
+            </li>
+            <li>
+              <b>Runs</b>: many statements at once, each with its own search, that you can stop and resume.
+            </li>
+            <li>
+              <b>Ultramath</b>: an open-ended question. Several agents take different directions and share what they find.
+            </li>
+            <li>
+              <b>History</b>: every attempt and what Lean said, for any run.
+            </li>
+          </ul>
+        </div>
+      </section>
 
       <section className="guide-card">
         <div className="guide-icon">
