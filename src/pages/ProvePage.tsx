@@ -26,8 +26,13 @@ type Props = {
   files: ProjectFilesState;
   /** A project file or statement another screen asked to open here. */
   openRequest: ProveRequest | null;
-  /** Hand a message to Chat and go there. */
+  /** Hand a message to the assistant, opening its panel beside the editor. */
   onAskChat: (text: string) => void;
+  /** Whether the assistant's panel is open beside Prove, and its toggle. */
+  assistantOpen: boolean;
+  onToggleAssistant: () => void;
+  /** What the assistant is told is on this screen, so it can offer help with it. */
+  onContext: (c: ProveContext) => void;
   health: Health | null;
   settings: Settings;
   saveSettings: (s: Partial<Settings>) => Promise<void>;
@@ -36,7 +41,10 @@ type Props = {
   onRunFinished: () => void;
 };
 
-export function ProvePage({ problem, setProblem, project, files, openRequest, onAskChat, health, settings, saveSettings, onGoSetup, onHealthChange, onRunFinished }: Props) {
+/** What Prove shows: the open project file (when saved as shown), the statement, and how the last run went. */
+export type ProveContext = { path: string | null; statement: string; lastRun: "verified" | "failed" | null };
+
+export function ProvePage({ problem, setProblem, project, files, openRequest, onAskChat, assistantOpen, onToggleAssistant, onContext, health, settings, saveSettings, onGoSetup, onHealthChange, onRunFinished }: Props) {
   const maxAttempts = settings.maxAttempts;
   const [running, setRunning] = useState(false);
   const [status, setStatus] = useState("");
@@ -155,6 +163,10 @@ export function ProvePage({ problem, setProblem, project, files, openRequest, on
 
   const leanReady = !!health && !!health.lake && health.hasMathlib;
   const needsLean = settings.mode !== "ultramath" || problemKind(problem) === "lean";
+  const lastRun: ProveContext["lastRun"] = solved ? "verified" : !running && (attempts.length > 0 || nodes.length > 0 || swarm.length > 0 || !!failure) ? "failed" : null;
+  const contextPath = openFile && !dirty ? openFile.path : null;
+  useEffect(() => onContext({ path: contextPath, statement: problem, lastRun }), [contextPath, problem, lastRun]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const ready = !!health && (leanReady || !needsLean) && health.keySource !== "none" && !!health.model;
   const accepted = swarm.find((e): e is Extract<RunEvent, { type: "accepted" }> => e.type === "accepted");
 
@@ -262,6 +274,15 @@ export function ProvePage({ problem, setProblem, project, files, openRequest, on
               Prove
             </Button>
           )}
+          <Button
+            variant={assistantOpen ? "secondary" : "ghost"}
+            className={assistantOpen ? "toggle-on" : ""}
+            icon={MessagesSquare}
+            onClick={onToggleAssistant}
+            title={assistantOpen ? "Close the assistant" : "Open the assistant beside the editor: ask about this statement, a failed attempt, or what to try next"}
+          >
+            Assistant
+          </Button>
         </div>
       </div>
 
@@ -275,10 +296,10 @@ export function ProvePage({ problem, setProblem, project, files, openRequest, on
               {project && (
                 <button
                   className="link small"
-                  title="Go to Chat with this statement as the subject"
+                  title="Ask the assistant beside the editor about this statement"
                   onClick={() => onAskChat(openFile ? `About \`${openFile.path}\`: ` : `About this Lean statement:\n\n\`\`\`lean\n${problem.trim()}\n\`\`\`\n\n`)}
                 >
-                  <MessagesSquare size={13} /> Ask in Chat
+                  <MessagesSquare size={13} /> Ask the assistant
                 </button>
               )}
             </span>
@@ -494,7 +515,7 @@ function FilesPane({ project, files, current, disabled, onPick }: { project: Pro
           <input className="files-filter" placeholder={`Filter ${files.files.length} files`} value={filter} onChange={(e) => setFilter(e.target.value)} />
           <div className="files-list">
             {shown.length === 0 && (
-              <div className="muted small files-empty">{files.files.length ? "No file matches." : "No .lean files yet. Ask in Chat to formalize a statement, or write one in the editor and press Save to project."}</div>
+              <div className="muted small files-empty">{files.files.length ? "No file matches." : "No .lean files yet. Ask the assistant to formalize a statement, or write one in the editor and press Save to project."}</div>
             )}
             {fresh.length > 0 && (
               <div className="files-group">

@@ -13,6 +13,12 @@ and how Mack keeps up with upstream.
 
 ## What it does today
 
+- **Start here.** A first-launch path for beginners: set up, create a
+  project, watch a warm-up proof, have the assistant turn your question into
+  a Lean statement, and prove it. Each step checks itself off.
+- **An assistant beside Prove.** The *Assistant* button opens the project's
+  chat next to the editor, with prompts about the open statement: explain
+  it, sketch a proof, split it into lemmas, or find why a run failed.
 - **One project for every screen.** Choose the project (a folder, such as
   `odd-perfect`) once in the sidebar. Prove lists its `.lean` files and
   follows them as they change, marking the ones the chat's agent (or anything
