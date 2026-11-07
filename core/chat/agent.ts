@@ -96,7 +96,7 @@ export type TurnOptions = {
   onEvent: (e: ChatEvent) => void;
 };
 
-export const NUDGE = "Your last reply had no text. Answer the person now, in words, from what your tools returned.";
+export const NUDGE = "Your last reply was empty, so nothing reached the person. Reply now: make the tool call their message asks for, or answer in words.";
 /** The most a chat reply may use, thinking included. */
 export const REPLY_TOKENS = 32768;
 export const CUT_OFF = [
@@ -242,7 +242,6 @@ export async function runTurn(session: ChatSession, o: TurnOptions): Promise<voi
   let nudged = false;
   let recovered = false;
   let effort = o.effort;
-  let workedWithTools = false;
   for (let step = 1; step <= maxSteps; step++) {
     if (o.signal?.aborted) return o.onEvent({ type: "error", message: "Stopped." });
     system = systemPrompt({ ...o, own: o.ownTools?.() });
@@ -281,8 +280,8 @@ export async function runTurn(session: ChatSession, o: TurnOptions): Promise<voi
           session.messages.push({ role: "user", content: RECOVER, at: Date.now(), source: "reminder" });
           continue;
         }
-        // An empty answer after tool work gets one nudge; otherwise the turn ends and says why.
-        if (!truncated && workedWithTools && !nudged) {
+        // An empty answer gets one nudge; a second one ends the turn and says why.
+        if (!truncated && !nudged) {
           nudged = true;
           session.messages.push({ role: "user", content: NUDGE, at: Date.now(), source: "reminder" });
           continue;
@@ -293,7 +292,6 @@ export async function runTurn(session: ChatSession, o: TurnOptions): Promise<voi
       }
       return o.onEvent({ type: "done" });
     }
-    workedWithTools = true;
     const results: ToolOutcome[] = errors.map((e) => ({ name: "invalid", args: {}, ok: false, output: e, protected: false }));
     for (const call of calls) {
       if (o.signal?.aborted) break;
