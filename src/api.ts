@@ -5,7 +5,12 @@ import type { ProveEvent } from "../core/prove";
 import type { ProviderId } from "../core/model/providers";
 import type { ChatEvent, ChatSession, StoredMessage, ToolOutcome } from "../core/chat/agent";
 import type { ToolSpec } from "../core/chat/tools";
-import type { Plan, PlanStep, StepKind, StepStatus, StepVia } from "../core/chat/plan";
+import type { Plan, PlanStep, Proved, StepKind, StepStatus, StepVia } from "../core/chat/plan";
+import type { PathStep, ProofPath } from "../core/chat/path";
+import type { MapNode, ProblemOutline, StoredWalkthrough, Visual, WalkStep, Walkthrough, WalkthroughSummary } from "../core/showme";
+export type { MapNode, ProblemOutline, StoredWalkthrough, Visual, WalkStep, Walkthrough };
+/** A kept walkthrough, as listed for review; `current` when it still explains the proof as it is now. */
+export type SavedWalkthrough = WalkthroughSummary & { current: boolean };
 import type { ChatWire, PendingApproval, Project, SendOptions, SessionSummary } from "../electron/chat";
 import type { ReasoningEffort } from "../core/model/provider";
 import type { Finding } from "../core/secrets";
@@ -30,11 +35,14 @@ declare global {
 export type GitHubStatus = { source: GitHubTokenSource; login?: string; error?: string };
 export type { PullRequest };
 export type Upstream = (UpstreamReport & { dismissed?: boolean }) | { kind: "off" };
-export type { Plan, PlanStep, StepKind, StepStatus, StepVia };
+export type { Plan, PlanStep, Proved, StepKind, StepStatus, StepVia, PathStep, ProofPath };
 export type { Issue, LedgerState, RunStatus, SearchNode, SwarmRecord };
 export type { ChangedFile, Finding, ProviderId, ReasoningEffort, UpdateState };
 export type { ChatEvent, ChatSession, ChatWire, PendingApproval, Project, SessionSummary, StoredMessage, ToolOutcome, ToolSpec };
 export type { Health, KeySource, ProjectFiles, ProveEvent, RunEvent, RunMode, RunOrigin, RunRecord, RunSummary, SetupEvent, Settings };
+
+/** What sharing a proof with the community would publish, shown before anything is sent. */
+export type CommunityPreview = { slug: string; theorem: string; summary?: string; statement: string; proof: string; repo: string; dir: string };
 
 const m = () => window.mack;
 
@@ -71,6 +79,13 @@ export const api = {
   removeProject: (id: string) => m().removeProject(id) as Promise<void>,
   renameProject: (id: string, name: string) => m().renameProject(id, name) as Promise<Project>,
   getPlan: (projectId: string) => m().getPlan(projectId) as Promise<Plan>,
+  getProofPath: (projectId: string, file: string) => m().getProofPath(projectId, file) as Promise<ProofPath>,
+  communityPreview: (projectId: string, file: string) => m().communityPreview(projectId, file) as Promise<CommunityPreview>,
+  communityShare: (projectId: string, file: string) => m().communityShare(projectId, file) as Promise<{ url: string; slug: string }>,
+  showmeGet: (projectId: string, file: string) => m().showmeGet(projectId, file) as Promise<{ proof: string; theorem?: string; summary?: string; saved: StoredWalkthrough | null }>,
+  showmeMake: (projectId: string, file: string) => m().showmeMake(projectId, file) as Promise<StoredWalkthrough>,
+  showmeList: (projectId: string) => m().showmeList(projectId) as Promise<SavedWalkthrough[]>,
+  showmeOpen: (projectId: string, id: string) => m().showmeOpen(projectId, id) as Promise<StoredWalkthrough>,
   listSessions: (projectId: string) => m().listSessions(projectId) as Promise<SessionSummary[]>,
   getSession: (projectId: string, id: string) => m().getSession(projectId, id) as Promise<ChatSession | null>,
   deleteSession: (projectId: string, id: string) => m().deleteSession(projectId, id) as Promise<void>,

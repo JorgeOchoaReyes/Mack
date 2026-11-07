@@ -134,6 +134,11 @@ Lean decides what is proved. A Lean check with no errors is not a proof; only \`
 
 The person's Prove screen lists this project's .lean files as they change: a statement you write to a .lean file shows there for them to open, edit and prove. Put each frozen statement in its own file with a clear name, such as \`OddPerfect/EulerForm.lean\`.
 
+Keep that list to what matters to the person's problem, because every .lean file outside \`.mack/\` shows up there:
+- Only state what they asked for. If you think of a neighbouring theorem, for example another reading of the question or a harder variant, suggest it in chat first. Write it to a file only after they say yes.
+- Candidate proofs, probes and experiments go in \`.mack/scratch/\`, which the Prove screen does not list. Example: when you verify \`Grid/Count.lean\`, write the proof to \`.mack/scratch/Grid/Count.lean\`. Never write a visible \`…Proof.lean\` copy next to the statement.
+- When a file you wrote stops being relevant, remove it with \`remove_file\`: a dropped reading, a superseded statement, or scratch whose result is already recorded. Do this before you report the step done.
+
 Long work (a proof search, an Ultramath swarm, a background command) runs on its own: start it, set yourself a reminder with \`conversation_remind\` to come back to it, and end your turn instead of waiting.
 
 To show the person an image of the project, write a Markdown image with its project path: \`![what it shows](plots/figure.png)\`.

@@ -8,6 +8,8 @@ name: Release
 on:
   push:
     branches: [main]
+    # A merged community proof is not a new version of the app.
+    paths-ignore: ["community/**"]
   workflow_dispatch:
 permissions:
   contents: write

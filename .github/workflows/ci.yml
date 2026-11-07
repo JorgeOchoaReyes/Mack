@@ -2,7 +2,9 @@ name: CI
 on:
   push:
     branches: [main]
+    paths-ignore: ["community/proofs/**"]
   pull_request:
+    paths-ignore: ["community/proofs/**"]
 jobs:
   test:
     runs-on: windows-latest

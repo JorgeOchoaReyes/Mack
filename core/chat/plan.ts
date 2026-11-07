@@ -38,16 +38,78 @@ export type Plan = {
   /** Where we stand, honestly: what is known, how hard it is, what we aim for. */
   outlook: string;
   steps: PlanStep[];
+  /** What Lean accepted, newest last. Only Mack writes this; `plan_update` cannot. */
+  proved?: Proved[];
   updatedAt: number;
 };
 
+/**
+ * A statement a Lean verifier accepted in this problem. Mack records it from the verifier's own
+ * verdict (`verify_lean` or a proof run), never from the model, so the list is what Lean decided.
+ */
+export type Proved = {
+  /** The frozen statement file, relative to the problem folder. */
+  file: string;
+  /** The theorem's name in that file. */
+  theorem?: string;
+  /** The statement's doc comment, in the words it was written in. */
+  summary?: string;
+  how: "verify_lean" | "proof_run";
+  /** The accepted proof file (verify_lean) or the proof run's id (proof_run). */
+  proof?: string;
+  at: number;
+};
+
 export const EMPTY_PLAN: Plan = { goal: "", outlook: "", steps: [], updatedAt: 0 };
+
+/** The theorem a frozen statement states, and its doc comment as plain text. */
+export function describeStatement(source: string): { theorem?: string; summary?: string } {
+  const m = /(\/--([\s\S]*?)-\/\s*)?(?:@\[[^\]]*\]\s*)?(?:theorem|lemma)\s+([^\s:({[]+)/.exec(source);
+  if (!m) return {};
+  const summary = m[2]
+    ?.replace(/\*\*|`/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return { theorem: m[3], summary: summary ? summary.slice(0, 400) : undefined };
+}
+
+/** The plan with `p` recorded as proved: a newer verdict on the same statement file replaces the older one. */
+export function recordProved(plan: Plan, p: Proved): Plan {
+  return { ...plan, proved: [...(plan.proved ?? []).filter((x) => x.file !== p.file), p], updatedAt: Date.now() };
+}
+
+/** What a verifier's tool outcome proved, if anything: `verify_lean` accepted, or a proof run verified. */
+export function provedBy(o: { name: string; ok: boolean; args: Record<string, unknown>; output: string }): Pick<Proved, "file" | "how" | "proof"> | undefined {
+  if (!o.ok) return undefined;
+  const clean = (v: unknown) => (typeof v === "string" && v ? v.replace(/\\/g, "/").replace(/^\.\//, "") : undefined);
+  if (o.name === "verify_lean" && o.output.startsWith("accepted")) {
+    const file = clean(o.args.statement_path);
+    return file ? { file, how: "verify_lean", proof: clean(o.args.proof_path) } : undefined;
+  }
+  if (o.name === "start_proof" && o.output.startsWith("verified")) {
+    const file = clean(o.args.path);
+    return file ? { file, how: "proof_run", proof: /run (\d+)/.exec(o.output)?.[1] } : undefined;
+  }
+  return undefined;
+}
+
+function storedProved(raw: unknown): Proved[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  return raw.flatMap((x): Proved[] => {
+    const o = (x && typeof x === "object" ? x : {}) as Record<string, unknown>;
+    if (typeof o.file !== "string" || (o.how !== "verify_lean" && o.how !== "proof_run")) return [];
+    return [{ file: o.file, how: o.how, theorem: text(o.theorem, 200), summary: text(o.summary, 400), proof: text(o.proof, 300), at: typeof o.at === "number" ? o.at : 0 }];
+  });
+}
 
 const planPath = (root: string) => join(root, ".mack", "plan.json");
 
 export async function readPlan(root: string): Promise<Plan> {
   try {
-    return normalizePlan(JSON.parse(await readFile(planPath(root), "utf8")), EMPTY_PLAN);
+    const raw = JSON.parse(await readFile(planPath(root), "utf8")) as Record<string, unknown>;
+    const plan = normalizePlan(raw, EMPTY_PLAN);
+    const proved = storedProved(raw.proved);
+    return { ...plan, ...(proved ? { proved } : {}), updatedAt: typeof raw.updatedAt === "number" ? raw.updatedAt : plan.updatedAt };
   } catch {
     return EMPTY_PLAN;
   }
@@ -103,6 +165,8 @@ export function normalizePlan(raw: unknown, current: Plan): Plan {
     goal: text(o.goal, 800) ?? current.goal,
     outlook: text(o.outlook, 1500) ?? current.outlook,
     steps,
+    // Kept from the current plan whatever the call says: only a verifier's verdict adds to it.
+    ...(current.proved ? { proved: current.proved } : {}),
     updatedAt: Date.now(),
   };
 }
@@ -125,7 +189,11 @@ Plan with everything Mack can do, and give each step a \`via\` naming the featur
 - "pull_request": \`open_pr\` to publish finished, verified work for review.
 - "chat": explaining, deciding and writing up in the conversation itself.
 A good plan mixes these: understand and read first, compute to build intuition, state precisely in Lean, prove the known pieces with proof runs or one proof search, put a swarm on the genuinely hard part, and write up honestly what was and was not proved.`;
-  if (!plan.goal && !plan.steps.length) return `${how}\n\nThere is no plan yet.`;
+  const tell = `When a verifier accepts a proof, Mack adds it to the plan's "Proved" list, which the person sees at the top of the plan, and marks the step verified. Then tell the person, in plain words and in a few sentences: what the theorem says, using a small example such as n = 3; how it answers or relates to their question; which file holds it; and what is still not proved. Name the theorem and file in your message so they can find them.`;
+  const proved = plan.proved?.length
+    ? `\n\nProved (recorded by Mack from the verifier, newest last):\n${plan.proved.map((p) => `- ${p.theorem ?? "(theorem)"} in ${p.file}, by ${p.how === "proof_run" ? `proof run ${p.proof ?? ""}`.trim() : `verify_lean${p.proof ? ` of ${p.proof}` : ""}`}`).join("\n")}`
+    : "";
+  if (!plan.goal && !plan.steps.length) return `${how}\n\n${tell}\n\nThere is no plan yet.${proved}`;
   const steps = plan.steps.map((s) => `- [${s.status}${s.verified ? ", verified" : ""}] (${s.kind}${s.via ? ` via ${s.via}` : ""}) ${s.id}: ${s.title}${s.result ? ` — ${s.result}` : ""}`).join("\n");
-  return `${how}\n\nThe current plan:\nGoal: ${plan.goal || "(not set)"}\nOutlook: ${plan.outlook || "(not set)"}\nSteps:\n${steps || "(none)"}`;
+  return `${how}\n\n${tell}\n\nThe current plan:\nGoal: ${plan.goal || "(not set)"}\nOutlook: ${plan.outlook || "(not set)"}\nSteps:\n${steps || "(none)"}${proved}`;
 }

@@ -12,12 +12,15 @@ import { execute, verifyFiles, type SessionHooks } from "../core/chat/executor";
 import { prBody, verifiedPairs, type Verdict } from "../core/chat/pr";
 import { consolidate, extractSession, forgetMemory, readMemory, recordCitations } from "../core/chat/memory";
 import { JobManager, type Job } from "../core/chat/shell";
-import { normalizePlan, planPrompt, readPlan, writePlan, type Plan } from "../core/chat/plan";
+import { describeStatement, normalizePlan, planPrompt, provedBy, readPlan, recordProved, writePlan, type Plan } from "../core/chat/plan";
+import { proofPath, type ProofPath } from "../core/chat/path";
+import { listWalkthroughs, parseWalkthrough, proofHash, proofsHash, readWalkthrough, readWalkthroughById, saveWalkthrough, SHOWME_ALL_PROMPT, SHOWME_PROMPT, showmeAllRequest, showmeRequest, type StoredWalkthrough, type Walkthrough } from "../core/showme";
 import { listSkills, loadSkill, SKILL_DIR } from "../core/chat/skills";
 import { suggestNext, suggestTitle, type Transcript } from "../core/chat/suggestions";
 import { confine, imageDataUrl, imageType, MAX_IMAGE_BYTES, pdfText, registerTools, SUB_AGENT_TOOLS, toolSpecs, truncate, type ToolCall } from "../core/chat/tools";
 import { changes, fileDiff, initRepo, isRepo } from "../core/git";
-import { openProjectPr, type PullRequest } from "../core/github";
+import { openCommunityPr, openProjectPr, type PullRequest } from "../core/github";
+import { buildEntry, COMMUNITY_DIR, COMMUNITY_REPO, communityPrBody, entrySlug, type EntryMeta } from "../core/community";
 import type { LeanCheckRun } from "../core/lean/check";
 import { findings, maskSecrets, type Finding } from "../core/secrets";
 import { PluginRegistry } from "../core/mcp/plugins";
@@ -143,9 +146,54 @@ export function registerChat(d: Deps): ChatControl {
   const plans = new Map<string, Plan>();
   const planOf = async (p: Project): Promise<Plan> => {
     let plan = plans.get(p.id);
-    if (!plan) plans.set(p.id, (plan = await readPlan(p.folder)));
+    if (!plan) {
+      plan = await readPlan(p.folder);
+      // A plan from before Mack kept the Proved list: rebuild it once from the chats' verifier verdicts.
+      if (!plan.proved) {
+        plan = backfillProved(p, plan);
+        if (plan.proved?.length) await writePlan(p.folder, plan);
+      }
+      plans.set(p.id, plan);
+    }
     return plan;
   };
+
+  /** The Proved entry for a verdict on `file`, with the theorem and its description read from the file as it is now. */
+  const provedEntry = (p: Project, found: NonNullable<ReturnType<typeof provedBy>>, at: number) => {
+    let source = "";
+    try {
+      source = readFileSync(join(p.folder, found.file), "utf8");
+    } catch {
+      // The statement file is gone; the entry is still a record of the verdict.
+    }
+    return { ...found, ...describeStatement(source), at };
+  };
+
+  const backfillProved = (p: Project, plan: Plan): Plan => {
+    let next: Plan = { ...plan, proved: [] };
+    let files: string[] = [];
+    try {
+      files = readdirSync(sessionsDir(p.id)).filter((f) => f.endsWith(".json"));
+    } catch {
+      return next;
+    }
+    const verdicts: { found: NonNullable<ReturnType<typeof provedBy>>; at: number }[] = [];
+    for (const f of files) {
+      const s = loadSession(p.id, f.slice(0, -5));
+      for (const m of s?.messages ?? []) {
+        if (m.role !== "tool") continue;
+        for (const r of m.results) {
+          const found = provedBy(r);
+          if (found) verdicts.push({ found, at: m.at ?? 0 });
+        }
+      }
+    }
+    for (const v of verdicts.sort((a, b) => a.at - b.at)) next = recordProved(next, provedEntry(p, v.found, v.at));
+    return { ...next, updatedAt: plan.updatedAt };
+  };
+
+  /** The plan as the person sees it: Proved lists only statements whose file is still in the project. */
+  const shown = (p: Project, plan: Plan): Plan => (plan.proved ? { ...plan, proved: plan.proved.filter((x) => existsSync(join(p.folder, x.file))) } : plan);
 
   const send = (w: ChatWire) => {
     for (const win of BrowserWindow.getAllWindows()) if (!win.webContents.isDestroyed()) win.webContents.send("chat:event", w);
@@ -278,7 +326,19 @@ export function registerChat(d: Deps): ChatControl {
     const extra = d.extraTools?.({ projectId: p.id, root: p.folder, sessionId: session.id, signal: ctl.signal });
 
     const ownTools = () => plugins.specs(session.id);
-    const exec = async (call: ToolCall, sub = false): Promise<ToolOutcome> =>
+    /** A verifier's acceptance goes on the plan's Proved list, straight from the outcome, and the person sees it at once. */
+    const noteProved = async (o: ToolOutcome): Promise<ToolOutcome> => {
+      const found = provedBy(o);
+      if (found) {
+        const next = recordProved(await planOf(p), provedEntry(p, found, Date.now()));
+        await writePlan(p.folder, next);
+        plans.set(p.id, next);
+        send({ sessionId: session.id, plan: shown(p, next), projectId: p.id });
+      }
+      return o;
+    };
+    const exec = async (call: ToolCall, sub = false): Promise<ToolOutcome> => noteProved(await execRaw(call, sub));
+    const execRaw = async (call: ToolCall, sub = false): Promise<ToolOutcome> =>
       execute(call, {
         root: p.folder,
         extra: sub
@@ -289,7 +349,7 @@ export function registerChat(d: Deps): ChatControl {
                     const next = normalizePlan(c.args, await planOf(p));
                     await writePlan(p.folder, next);
                     plans.set(p.id, next);
-                    send({ sessionId: session.id, plan: next, projectId: p.id });
+                    send({ sessionId: session.id, plan: shown(p, next), projectId: p.id });
                     return `The plan now has ${next.steps.length} step${next.steps.length === 1 ? "" : "s"}; the person sees it beside the chat.`;
                   })()
                 : c.name === "open_pr"
@@ -490,7 +550,163 @@ export function registerChat(d: Deps): ChatControl {
     return addProject(basename(r.filePaths[0]), r.filePaths[0]);
   });
 
-  ipcMain.handle("plan:get", async (_e, projectId: string) => planOf(project(projectId)));
+  /** How this problem's chats reached the proof of one statement file. */
+  ipcMain.handle("plan:path", (_e, projectId: string, file: string): ProofPath => {
+    const p = project(projectId);
+    if (typeof file !== "string" || !file) throw new Error("no file");
+    const sessions = readdirSync(sessionsDir(p.id))
+      .filter((f) => f.endsWith(".json"))
+      .map((f) => loadSession(p.id, f.slice(0, -5))?.messages ?? []);
+    return proofPath(sessions, file.replace(/\\/g, "/"));
+  });
+
+  /** A statement Lean accepted in this problem, with the proof it accepted, found in the proof run or the chats. */
+  const acceptedProof = async (projectId: string, file: string) => {
+    const p = project(projectId);
+    const rel = String(file).replace(/\\/g, "/");
+    const proved = (await planOf(p)).proved?.find((x) => x.file === rel);
+    if (!proved) throw new Error("Lean has not accepted a proof of that file in this problem.");
+    const statement = readFileSync(await confine(p.folder, rel), "utf8");
+    let proof: string | undefined;
+    const sessions = readdirSync(sessionsDir(p.id))
+      .filter((f) => f.endsWith(".json"))
+      .map((f) => loadSession(p.id, f.slice(0, -5))?.messages ?? []);
+    const path = proofPath(sessions, rel);
+    if (proved.how === "proof_run" && proved.proof && /^\d+$/.test(proved.proof)) {
+      try {
+        const run = JSON.parse(readFileSync(d.userData("runs", `${proved.proof}.json`), "utf8")) as RunRecord;
+        proof = run.events.find((x): x is Extract<RunEvent, { type: "solved" }> => x.type === "solved")?.proof;
+      } catch {
+        // The run was deleted from History.
+      }
+    }
+    proof ??= path.proof;
+    if (!proof) throw new Error("The accepted proof is no longer in this problem's chats or proof runs. Prove it again first.");
+    return { p, rel, proved, statement, proof, path };
+  };
+
+  /** What sharing one proved statement with the community would publish, built locally; nothing is sent. */
+  const communityDraft = async (projectId: string, file: string) => {
+    const { p, rel, proved, statement, proof, path } = await acceptedProof(projectId, file);
+    const meta: EntryMeta = {
+      theorem: proved.theorem ?? basename(rel, ".lean"),
+      summary: proved.summary,
+      problem: p.name,
+      contributor: "",
+      verifiedBy: proved.how,
+      ...(path.steps.length ? { attempts: path.steps.filter((s) => s.kind === "draft").length, rejected: path.steps.filter((s) => s.kind === "verify" && s.ok === false).length } : {}),
+      sharedAt: new Date().toISOString(),
+    };
+    return { statement, proof, meta, slug: entrySlug(meta.theorem) };
+  };
+
+  ipcMain.handle("community:preview", async (_e, projectId: string, file: string) => {
+    const c = await communityDraft(projectId, file);
+    return { slug: c.slug, theorem: c.meta.theorem, summary: c.meta.summary, statement: c.statement, proof: c.proof, repo: `${COMMUNITY_REPO.owner}/${COMMUNITY_REPO.repo}`, dir: COMMUNITY_DIR };
+  });
+
+  ipcMain.handle("community:share", async (_e, projectId: string, file: string) => {
+    const c = await communityDraft(projectId, file);
+    const token = await d.githubToken();
+    if (!token) throw new Error("Connect GitHub first: Settings → GitHub, or log in with the GitHub CLI (gh auth login).");
+    return openCommunityPr(token, { ...COMMUNITY_REPO, dir: COMMUNITY_DIR }, c.slug, (slug, login) => {
+      const meta = { ...c.meta, contributor: login };
+      const entry = buildEntry({ slug, statement: c.statement, proof: c.proof, meta });
+      return { files: entry.files, title: `Community proof: ${meta.theorem}`, body: communityPrBody(entry, meta) };
+    });
+  });
+
+  /** Every result this problem has proved that still has its file and its accepted proof, oldest first. */
+  const allAccepted = async (projectId: string) => {
+    const p = project(projectId);
+    const proved = shown(p, await planOf(p)).proved ?? [];
+    const items: { file: string; theorem?: string; summary?: string; proof: string }[] = [];
+    for (const x of proved) {
+      const a = await acceptedProof(projectId, x.file).catch(() => null);
+      if (a) items.push({ file: a.rel, theorem: a.proved.theorem, summary: a.proved.summary, proof: a.proof });
+    }
+    if (!items.length) throw new Error("Nothing in this problem has a proof Lean accepted yet.");
+    return { p, items, proofs: Object.fromEntries(items.map((i) => [i.file, i.proof])) as Record<string, string> };
+  };
+
+  /** The saved walkthrough of one proved statement, or of the whole problem (`*`), when it matches the proofs as they are now. */
+  ipcMain.handle("showme:get", async (_e, projectId: string, file: string) => {
+    if (file === "*") {
+      const { p, items, proofs } = await allAccepted(projectId);
+      const saved = await readWalkthrough(p.folder, "*");
+      return { proof: "", theorem: undefined, summary: `${items.length} proved results, together`, saved: saved && saved.proofHash === proofsHash(proofs) ? saved : null };
+    }
+    const a = await acceptedProof(projectId, file);
+    const saved = await readWalkthrough(a.p.folder, a.rel);
+    return { proof: a.proof, theorem: a.proved.theorem, summary: a.proved.summary, saved: saved && saved.proofHash === proofHash(a.proof) ? saved : null };
+  });
+
+  /** Every walkthrough kept for this problem, latest and older, newest first; `current` when it still matches the proof as it is now. */
+  ipcMain.handle("showme:list", async (_e, projectId: string) => {
+    const p = project(projectId);
+    const list = await listWalkthroughs(p.folder);
+    const now = new Map<string, string | null>();
+    for (const f of new Set(list.map((w) => w.file))) {
+      if (f === "*") now.set(f, await allAccepted(projectId).then((a) => proofsHash(a.proofs), () => null));
+      else now.set(f, await acceptedProof(projectId, f).then((a) => proofHash(a.proof), () => null));
+    }
+    return list.map((w) => ({ ...w, current: now.get(w.file) === w.proofHash }));
+  });
+
+  /** One kept walkthrough by its id, to review again; it may explain an older version of the proof. */
+  ipcMain.handle("showme:open", async (_e, projectId: string, id: string) => {
+    const w = await readWalkthroughById(project(projectId).folder, id);
+    if (!w) throw new Error("That walkthrough is no longer in this problem's folder.");
+    return w;
+  });
+
+  /** Write a walkthrough with the chat's model, of one proved statement or of the whole problem (`*`), and keep it in the problem folder. */
+  ipcMain.handle("showme:make", async (_e, projectId: string, file: string) => {
+    const { s, model } = settingsFor();
+    const { meter, price } = d.newMeter(s, model, 0, false);
+    const provider = metered(d.makeProvider(s), price, meter);
+    const ask = async (system: string, request: string, lines: number | Record<string, number>, maxTokens: number): Promise<Walkthrough> => {
+      let last = "";
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const r = await provider.chat({
+          model,
+          messages: [
+            { role: "system", content: system },
+            { role: "user", content: attempt ? `${request}\n\nYour last reply was not a valid JSON walkthrough (${last}). Reply with the JSON object only.` : request },
+          ],
+          maxTokens,
+          temperature: 0.3,
+          reasoningEffort: "low",
+        });
+        try {
+          return parseWalkthrough(r.content, lines);
+        } catch (e) {
+          last = (e as Error).message;
+        }
+      }
+      throw new Error(`The model could not write a walkthrough: ${last}`);
+    };
+    if (file === "*") {
+      const { p, items, proofs } = await allAccepted(projectId);
+      const plan = await planOf(p);
+      const lines = Object.fromEntries(items.map((i) => [i.file, i.proof.split(/\r?\n/).length]));
+      const walkthrough = await ask(SHOWME_ALL_PROMPT, showmeAllRequest({ question: p.name, goal: plan.goal, items }), lines, 20000);
+      const stored: StoredWalkthrough = { file: "*", proofHash: proofsHash(proofs), proof: "", proofs, model, createdAt: Date.now(), walkthrough };
+      await saveWalkthrough(p.folder, stored);
+      return stored;
+    }
+    const a = await acceptedProof(projectId, file);
+    const request = showmeRequest({ theorem: a.proved.theorem, summary: a.proved.summary, problem: a.p.name, proof: a.proof });
+    const walkthrough = await ask(SHOWME_PROMPT, request, a.proof.split(/\r?\n/).length, 12000);
+    const stored: StoredWalkthrough = { file: a.rel, theorem: a.proved.theorem, proofHash: proofHash(a.proof), proof: a.proof, model, createdAt: Date.now(), walkthrough };
+    await saveWalkthrough(a.p.folder, stored);
+    return stored;
+  });
+
+  ipcMain.handle("plan:get", async (_e, projectId: string) => {
+    const p = project(projectId);
+    return shown(p, await planOf(p));
+  });
 
   ipcMain.handle("projects:rename", (_e, id: string, name: string): Project => {
     const p = { ...project(id), name: cleanName(name, "problem") };

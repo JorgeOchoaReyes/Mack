@@ -136,3 +136,64 @@ export async function openProjectPr(root: string, token: string, o: { title: str
   const pr = await api<{ html_url: string }>(token, "POST", `/repos/${target.owner}/${target.repo}/pulls`, { title: o.title, head: branch, base, body: o.body });
   return { url: pr.html_url, repo: `${target.owner}/${target.repo}`, repoUrl: repo.html_url, createdRepo, branch };
 }
+
+/**
+ * Share one community proof as a pull request on the Mack repo, through GitHub's API only: no local
+ * clone. Someone who is not the repo's owner gets a fork (created once, then synced); the entry is one
+ * commit on a new branch of it, and the PR asks to merge that branch. `make` names the entry once the
+ * free folder name and the account are known.
+ */
+export async function openCommunityPr(
+  token: string,
+  target: { owner: string; repo: string; dir: string },
+  baseSlug: string,
+  make: (slug: string, login: string) => { files: Record<string, string>; title: string; body: string },
+): Promise<{ url: string; slug: string }> {
+  const me = await api<{ login: string }>(token, "GET", "/user");
+  const upstream = await api<{ default_branch: string }>(token, "GET", `/repos/${target.owner}/${target.repo}`);
+  const base = upstream.default_branch || "main";
+  let head = { owner: target.owner, repo: target.repo };
+  if (me.login.toLowerCase() !== target.owner.toLowerCase()) {
+    const fork = await api<{ name: string; owner: { login: string } }>(token, "POST", `/repos/${target.owner}/${target.repo}/forks`, { default_branch_only: true });
+    head = { owner: fork.owner.login, repo: fork.name };
+    // A new fork takes a few seconds to appear.
+    for (let i = 0; ; i++) {
+      try {
+        await api(token, "GET", `/repos/${head.owner}/${head.repo}/git/ref/heads/${base}`);
+        break;
+      } catch (e) {
+        if (i >= 20 || !(e instanceof GitHubError) || (e.status !== 404 && e.status !== 409)) throw e;
+        await new Promise((r) => setTimeout(r, 1500));
+      }
+    }
+    // An older fork may lag behind: bring its default branch up to date so the new commit's parent is there.
+    await api(token, "POST", `/repos/${head.owner}/${head.repo}/merge-upstream`, { branch: base }).catch(() => undefined);
+  }
+  const baseSha = (await api<{ object: { sha: string } }>(token, "GET", `/repos/${target.owner}/${target.repo}/git/ref/heads/${base}`)).object.sha;
+  let taken = new Set<string>();
+  try {
+    const list = await api<{ name: string; type: string }[]>(token, "GET", `/repos/${target.owner}/${target.repo}/contents/${target.dir}?ref=${base}`);
+    taken = new Set(list.filter((x) => x.type === "dir").map((x) => x.name));
+  } catch (e) {
+    if (!(e instanceof GitHubError) || e.status !== 404) throw e;
+  }
+  let slug = baseSlug;
+  for (let i = 2; taken.has(slug); i++) slug = `${baseSlug}-${i}`;
+  const o = make(slug, me.login);
+  const baseTree = (await api<{ tree: { sha: string } }>(token, "GET", `/repos/${head.owner}/${head.repo}/git/commits/${baseSha}`)).tree.sha;
+  const tree = await api<{ sha: string }>(token, "POST", `/repos/${head.owner}/${head.repo}/git/trees`, {
+    base_tree: baseTree,
+    tree: Object.entries(o.files).map(([name, content]) => ({ path: `${target.dir}/${slug}/${name}`, mode: "100644", type: "blob", content })),
+  });
+  const commit = await api<{ sha: string }>(token, "POST", `/repos/${head.owner}/${head.repo}/git/commits`, { message: o.title, tree: tree.sha, parents: [baseSha] });
+  const branch = `community/${slug}-${Date.now().toString(36)}`;
+  await api(token, "POST", `/repos/${head.owner}/${head.repo}/git/refs`, { ref: `refs/heads/${branch}`, sha: commit.sha });
+  const pr = await api<{ html_url: string }>(token, "POST", `/repos/${target.owner}/${target.repo}/pulls`, {
+    title: o.title,
+    head: head.owner === target.owner ? branch : `${head.owner}:${branch}`,
+    base,
+    body: o.body,
+    maintainer_can_modify: true,
+  });
+  return { url: pr.html_url, slug };
+}

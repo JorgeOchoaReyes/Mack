@@ -1,6 +1,8 @@
-import { AlarmClock, BookOpen, Bot, Calculator, ChevronRight, FileCheck2, GitPullRequest, Globe, MessagesSquare, Network, Rows3, Terminal, Users, CircleCheck, CircleDashed, CircleDot, CircleSlash, Lightbulb, OctagonAlert, PenLine, ShieldCheck, Sparkles, X, type LucideIcon } from "lucide-react";
+import { History, AlarmClock, BookOpen, BookOpenCheck, Bot, Calculator, ChevronRight, FileCheck2, FileCode, GitPullRequest, Globe, MessagesSquare, Network, Route, Rows3, Terminal, Users, CircleCheck, CircleDashed, CircleDot, CircleSlash, Lightbulb, OctagonAlert, PenLine, ShieldCheck, Sparkles, X, type LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
-import { api, type ChatWire, type Plan, type PlanStep, type StepKind, type StepStatus, type StepVia } from "../api";
+import { api, type ChatWire, type SavedWalkthrough, type Plan, type PlanStep, type Proved, type StepKind, type StepStatus, type StepVia } from "../api";
+import { ProofPathView } from "./ProofPathView";
+import { ShareProofDialog } from "./ShareProofDialog";
 import { timeAgo } from "./ui";
 
 /** Each kind of step, said the way a newcomer would say it. */
@@ -44,11 +46,23 @@ function firstSentence(text: string): string {
  * The problem's plan beside the chat, short by default: the goal, a one-line outlook and one line per step.
  * Everything else (the full outlook, why a step matters, what came of it) opens on a click.
  */
-export function PlanView({ projectId, onAsk, onClose }: { projectId: string; onAsk: (text: string) => void; onClose: () => void }) {
+export function PlanView({ projectId, onAsk, onClose, onOpenInProve, onOpenRun, onShowMe, savedKey }: { projectId: string; onAsk: (text: string) => void; onClose: () => void; onOpenInProve?: (path: string) => void; onOpenRun?: (id: string) => void; onShowMe?: (file: string, savedId?: string) => void; savedKey?: number }) {
   const [plan, setPlan] = useState<Plan | null>(null);
   const [goalOpen, setGoalOpen] = useState(false);
   const [openSteps, setOpenSteps] = useState<Set<string>>(new Set());
   const [showFinished, setShowFinished] = useState(false);
+  const [pathOf, setPathOf] = useState<Proved | null>(null);
+  const [shareOf, setShareOf] = useState<Proved | null>(null);
+  // Walkthroughs kept in the problem folder, to review again.
+  const [saved, setSaved] = useState<SavedWalkthrough[]>([]);
+  const [showSaved, setShowSaved] = useState(false);
+  useEffect(() => {
+    let live = true;
+    void api.showmeList(projectId).then((l) => live && setSaved(l)).catch(() => live && setSaved([]));
+    return () => {
+      live = false;
+    };
+  }, [projectId, savedKey, plan?.updatedAt]);
 
   useEffect(() => {
     let live = true;
@@ -76,10 +90,13 @@ export function PlanView({ projectId, onAsk, onClose }: { projectId: string; onA
   const verified = steps.filter((s) => s.verified).length;
   const finished = steps.filter((s) => s.status === "done" || s.status === "dropped");
   const ahead = steps.filter((s) => s.status !== "done" && s.status !== "dropped");
-  const empty = !plan || (!plan.goal && !steps.length);
+  const proved = [...(plan?.proved ?? [])].reverse();
+  const empty = !plan || (!plan.goal && !steps.length && !proved.length && !saved.length);
 
   return (
     <aside className="plan">
+      {pathOf && <ProofPathView projectId={projectId} proved={pathOf} onClose={() => setPathOf(null)} onOpenInProve={onOpenInProve} onOpenRun={onOpenRun} />}
+      {shareOf && <ShareProofDialog projectId={projectId} proved={shareOf} onClose={() => setShareOf(null)} />}
       <div className="plan-head">
         <span className="plan-head-title">Plan</span>
         {counted.length > 0 && (
@@ -124,6 +141,76 @@ export function PlanView({ projectId, onAsk, onClose }: { projectId: string; onA
               </summary>
               {plan.outlook !== firstSentence(plan.outlook) && <p>{plan.outlook.slice(firstSentence(plan.outlook).length).trim()}</p>}
             </details>
+          )}
+
+          {proved.length > 0 && (
+            <section className="plan-proved" aria-label="Proved by Lean">
+              <div className="plan-proved-head" title="A Lean verifier checked each of these proofs line by line. Mack records them from the verifier itself, not from the assistant's words.">
+                <ShieldCheck size={13} /> Proved by Lean ({proved.length})
+              </div>
+              {onShowMe && proved.length > 1 && (
+                <button className="plan-showme-all" title="One guided walkthrough that connects every result here into the full answer, with a map of how they depend on each other" onClick={() => onShowMe("*")}>
+                  <BookOpenCheck size={13} /> Show me the whole proof
+                </button>
+              )}
+              <ul>
+                {proved.map((x) => (
+                  <li key={x.file}>
+                    <div className="plan-proved-what">{x.summary ?? x.theorem ?? x.file}</div>
+                    <div className="plan-proved-meta">
+                      <code>{x.theorem ?? "theorem"}</code>
+                      <span className="muted">· {x.how === "proof_run" ? `proof run ${x.proof ?? ""}` : "checked in the chat"} · {timeAgo(x.at)}</span>
+                    </div>
+                    <div className="plan-proved-actions">
+                      {onShowMe && (
+                        <button className="link small plan-showme" title="A guided walk through the whole proof, step by step, with pictures" onClick={() => onShowMe(x.file)}>
+                          <BookOpenCheck size={11} /> Show me
+                        </button>
+                      )}
+                      {onOpenInProve && (
+                        <button className="link small" title={`Open ${x.file} on the Prove screen`} onClick={() => onOpenInProve(x.file)}>
+                          <FileCode size={11} /> Open {x.file.split("/").pop()}
+                        </button>
+                      )}
+                      <button className="link small" title="See every attempt, Lean check and verdict on the way to this proof" onClick={() => setPathOf(x)}>
+                        <Route size={11} /> How it got there
+                      </button>
+                      <button className="link small" title="Open a pull request that adds this proof to the community proofs in the Mack repo" onClick={() => setShareOf(x)}>
+                        <Users size={11} /> Share
+                      </button>
+                      <button className="link small" onClick={() => onAsk(`Explain in plain words what ${x.theorem ?? x.file} (in ${x.file}) proves: what it says with a small example, how it answers my question, how the proof works, and what is still not proved.`)}>
+                        <MessagesSquare size={11} /> Explain this
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {onShowMe && saved.length > 0 && (
+            <section className="plan-saved" aria-label="Saved walkthroughs">
+              <button className="plan-group" onClick={() => setShowSaved(!showSaved)} title="Every Show me walkthrough written for this problem is kept in its folder (.mack/showme/), including earlier versions">
+                <ChevronRight size={12} style={{ transform: showSaved ? "rotate(90deg)" : undefined }} />
+                <History size={12} /> Saved walkthroughs ({saved.length})
+              </button>
+              {showSaved && (
+                <ul className="plan-saved-list">
+                  {saved.map((w) => (
+                    <li key={w.id}>
+                      <button className="plan-saved-row" title={w.idea} onClick={() => onShowMe(w.file, w.id)}>
+                        <BookOpenCheck size={12} className="accent" />
+                        <span className="plan-saved-name">{w.file === "*" ? "The whole proof" : <code>{w.theorem ?? w.file.split("/").pop()}</code>}</span>
+                        <span className="muted small">
+                          {w.steps} steps · {timeAgo(w.createdAt)}
+                          {w.current ? "" : " · earlier proof"}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
           )}
 
           <ol className="plan-steps">
