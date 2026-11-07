@@ -7,9 +7,9 @@ import { TreeSummary, TreeView, type NodeEvent } from "../components/TreeView";
 import { AcceptedCard, UltramathView } from "../components/UltramathView";
 import { Button, formatMs, ScopeSwitch, timeAgo } from "../components/ui";
 
-type Props = { refreshKey: number; projectId: string; projectName: string; onRerun: (problem: string) => void };
+type Props = { refreshKey: number; projectId: string; projectName: string; onRerun: (problem: string) => void; openRequest?: { id: string; n: number } | null };
 
-export function HistoryPage({ refreshKey, projectId, projectName, onRerun }: Props) {
+export function HistoryPage({ refreshKey, projectId, projectName, onRerun, openRequest }: Props) {
   const [allRuns, setRuns] = useState<RunSummary[]>([]);
   const [all, setAll] = useState(!projectId);
   const runs = all || !projectId ? allRuns : allRuns.filter((r) => r.projectId === projectId);
@@ -17,6 +17,10 @@ export function HistoryPage({ refreshKey, projectId, projectName, onRerun }: Pro
 
   const reload = () => void api.listRuns().then(setRuns);
   useEffect(reload, [refreshKey]);
+  // Another screen asked for one run: open it.
+  useEffect(() => {
+    if (openRequest) void api.getRun(openRequest.id).then((r) => r && setOpen(r));
+  }, [openRequest?.n]);
 
   if (open) {
     const attempts = open.events.filter((e): e is Extract<RunEvent, { type: "attempt" }> => e.type === "attempt");

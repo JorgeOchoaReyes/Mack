@@ -1,0 +1,14 @@
+# The Lean workspace CI checks community proofs in. Its Mathlib is pinned
+# (lake-manifest.json) so a merged proof keeps checking; bump it on purpose.
+name = "community"
+version = "0.1.0"
+
+[leanOptions]
+pp.unicode.fun = true
+relaxedAutoImplicit = false
+maxSynthPendingDepth = 3
+
+[[require]]
+name = "mathlib"
+scope = "leanprover-community"
+rev = "v4.36.0-rc1"

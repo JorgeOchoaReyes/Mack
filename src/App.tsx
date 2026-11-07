@@ -85,6 +85,7 @@ export function App() {
   const [projects, setProjects] = useState<Project[] | null>(null);
   /** A project file (or, from History, a bare statement) another screen asked Prove to open, and a message Prove handed to Chat; `n` makes a repeat count. */
   const [proveOpen, setProveOpen] = useState<ProveRequest | null>(null);
+  const [runOpen, setRunOpen] = useState<{ id: string; n: number } | null>(null);
   const [chatDraft, setChatDraft] = useState<{ text: string; n: number } | null>(null);
 
   const reloadProjects = useCallback(async () => setProjects(await api.listProjects()), []);
@@ -338,6 +339,10 @@ export function App() {
                 setProveOpen({ path, n: Date.now() });
                 setPage("prove");
               }}
+              onOpenRun={(id) => {
+                setRunOpen({ id, n: Date.now() });
+                setPage("history");
+              }}
               health={health}
               settings={settings}
               saveSettings={saveSettings}
@@ -351,6 +356,7 @@ export function App() {
           {!welcome && page === "history" && (
             <HistoryPage
               refreshKey={runsVersion}
+              openRequest={runOpen}
               projectId={projectId}
               projectName={project?.name ?? ""}
               onRerun={(p) => {

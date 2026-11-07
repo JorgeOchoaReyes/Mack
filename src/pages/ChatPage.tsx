@@ -1,5 +1,5 @@
 import { UltramathView } from "../components/UltramathView";
-import type { RunEvent, SwarmRecord } from "../api";
+import type { Proved, RunEvent, SwarmRecord } from "../api";
 import { AlarmClock, Brain, Check, ChevronRight, Rocket, Users, Download, ExternalLink, GitCompare, GitPullRequest, KeyRound, FolderPlus, ListChecks, MessageSquarePlus, ShieldAlert, ShieldCheck, Terminal, Trash2, Wrench, X } from "lucide-react";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -26,6 +26,7 @@ import { Composer, type SlashCommand } from "../components/chat/Composer";
 import { Markdown, splitChoices, visible } from "../components/chat/Markdown";
 import { Logo } from "../components/Logo";
 import { PlanView } from "../components/PlanView";
+import { ShowMe } from "../components/ShowMe";
 import { Resizer, usePanelWidth } from "../components/Resizer";
 import { formatUsd } from "../../core/model/metered";
 import { Badge, Button, Spinner, timeAgo, Toggle } from "../components/ui";
@@ -40,6 +41,8 @@ type Props = {
   incomingDraft: { text: string; n: number } | null;
   /** Open a project .lean file on the Prove screen. */
   onOpenInProve: (path: string) => void;
+  /** Open one proof run on the Proof attempts screen. */
+  onOpenRun?: (id: string) => void;
   health: Health | null;
   settings: Settings;
   saveSettings: (s: Partial<Settings>) => Promise<void>;
@@ -61,7 +64,7 @@ function planOpenAtStart(): boolean {
 
 const EFFORTS: ReasoningEffort[] = ["off", "on", "low", "medium", "high", "xhigh"];
 
-export function ChatPage({ project, hasProjects, onCreateProject, incomingDraft, onOpenInProve, health, settings, saveSettings, onGoSetup, firstMessage, onFirstMessageUsed }: Props) {
+export function ChatPage({ project, hasProjects, onCreateProject, incomingDraft, onOpenInProve, onOpenRun, health, settings, saveSettings, onGoSetup, firstMessage, onFirstMessageUsed }: Props) {
   const projectId = project?.id ?? "";
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [session, setSession] = useState<ChatSession | null>(null);
@@ -262,7 +265,27 @@ I am new to this. Explain the problem in plain words, tell me honestly how hard 
     if (projectId) void api.listSkills(projectId).then(setSkills).catch(() => setSkills([]));
   }, [projectId, session?.messages.length]);
 
+  // What Lean has proved in this problem, for `/showme`.
+  const [proved, setProved] = useState<Proved[]>([]);
+  const [showMe, setShowMe] = useState<string | null>(null);
+  useEffect(() => {
+    if (!projectId) return;
+    let live = true;
+    void api.getPlan(projectId).then((p) => live && setProved(p.proved ?? [])).catch(() => live && setProved([]));
+    const off = api.onChatEvent((w: ChatWire) => {
+      if ("plan" in w && w.projectId === projectId) setProved(w.plan.proved ?? []);
+    });
+    return () => {
+      live = false;
+      off();
+    };
+  }, [projectId]);
+
   const commands: SlashCommand[] = [
+    ...(proved.length > 1 ? [{ name: "/showme all", hint: "Walk through the whole proof: every proved result, connected, step by step", group: "Start" as const, run: () => setShowMe("*") }] : []),
+    ...(proved.length
+      ? [...proved].reverse().map((x): SlashCommand => ({ name: `/showme ${x.theorem ?? x.file}`, hint: `Walk through the whole proof of ${x.file.split("/").pop()}, step by step`, group: "Start", run: () => setShowMe(x.file) }))
+      : [{ name: "/showme", hint: "Walk through a proof step by step (nothing proved yet)", group: "Start" as const, insert: "" }]),
     { name: "/plan", hint: "Make or update the plan for this problem", group: "Start", insert: "Update the plan: " },
     { name: "/skill", hint: "List this problem's skills", group: "Skills", send: true },
     ...skills.map((k) => ({ name: `/skill ${k.name}`, hint: k.description || "Load this skill", group: "Skills" as const, send: true })),
@@ -529,7 +552,8 @@ I am new to this. Explain the problem in plain words, tell me honestly how hard 
         />
       </section>
       {planOpen && <Resizer width={planShown} onWidth={setPlanWidth} side="right" defaultWidth={320} label="Resize the plan" />}
-      {planOpen && <PlanView projectId={projectId} onAsk={(q) => void sendMessage(false, q)} onClose={() => setPlanOpen(false)} />}
+      {planOpen && <PlanView projectId={projectId} onAsk={(q) => void sendMessage(false, q)} onClose={() => setPlanOpen(false)} onOpenInProve={onOpenInProve} onOpenRun={onOpenRun} onShowMe={setShowMe} />}
+      {showMe && projectId && <ShowMe projectId={projectId} file={showMe} onClose={() => setShowMe(null)} onAsk={setDraft} />}
     </div>
   );
 }
