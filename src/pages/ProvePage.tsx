@@ -10,6 +10,7 @@ import { TreeSummary, TreeView, type NodeEvent } from "../components/TreeView";
 import { AcceptedCard, UltramathView } from "../components/UltramathView";
 import { problemKind } from "../../core/lean/rules";
 import { Button, Spinner } from "../components/ui";
+import { Resizer, usePanelWidth } from "../components/Resizer";
 import { EXAMPLES } from "../examples";
 
 type Attempt = Extract<RunEvent, { type: "attempt" }>;
@@ -50,6 +51,30 @@ export function ProvePage({ problem, setProblem, project, files, openRequest, on
   const [failure, setFailure] = useState("");
   const [examplesOpen, setExamplesOpen] = useState(false);
   /** The project file in the editor, and its text as last read or saved: the editor differs from it when edited. */
+  // Panel widths the person drags; they give way when the window is narrow, so the run pane keeps room.
+  const [filesWidth, setFilesWidth] = usePanelWidth("mack.leanFilesWidth", 240, 160, 480);
+  const [editorWidth, setEditorWidth] = usePanelWidth("mack.leanEditorWidth", 560, 300, 1400);
+  const splitBox = useRef<HTMLDivElement>(null);
+  const [splitWidth, setSplitWidth] = useState(0);
+  useEffect(() => {
+    const el = splitBox.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => setSplitWidth(e.contentRect.width));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const RUN_MIN = 340;
+  let filesShown = filesWidth;
+  let editorShown = editorWidth;
+  if (splitWidth > 0) {
+    let over = filesShown + editorShown + RUN_MIN - splitWidth;
+    if (over > 0) {
+      const cut = Math.min(over, Math.max(0, editorShown - 300));
+      editorShown -= cut;
+      over -= cut;
+    }
+    if (over > 0) filesShown = Math.max(160, filesShown - over);
+  }
   const [openFile, setOpenFile] = useState<{ path: string; text: string; mtime: number } | null>(null);
   const [onDisk, setOnDisk] = useState<string | null>(null);
   const [started, setStarted] = useState(0);
@@ -265,8 +290,9 @@ export function ProvePage({ problem, setProblem, project, files, openRequest, on
         </div>
       </div>
 
-      <div className="split with-files">
+      <div className="split" ref={splitBox} style={{ gridTemplateColumns: `${filesShown}px 0 ${editorShown}px 0 minmax(0, 1fr)` }}>
         <FilesPane project={project} files={files} current={openFile?.path ?? null} disabled={running} onPick={(p) => void loadFile(p)} />
+        <Resizer width={filesShown} onWidth={setFilesWidth} side="left" defaultWidth={240} label="Resize the file list" />
         <section className="pane editor-pane">
           <div className="pane-head">
             <span>Frozen statement</span>
@@ -311,6 +337,7 @@ export function ProvePage({ problem, setProblem, project, files, openRequest, on
           </div>
         </section>
 
+        <Resizer width={editorShown} onWidth={setEditorWidth} side="left" defaultWidth={560} label="Resize the editor" />
         <section className="pane run-pane">
           <div className="pane-head">
             <span>Run</span>

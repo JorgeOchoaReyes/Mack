@@ -25,7 +25,7 @@ export function UpstreamPage({ settings, saveSettings, upstream, recheckUpstream
   return (
     <div className="page">
       <div className="page-head">
-        <h1>Upstream methodology</h1>
+        <h1>Harness updates</h1>
         <p className="muted">
           Mack follows Open Math Harness, the runtime of Open Math OS. This screen shows whether upstream has changed how it checks, searches or
           prompts since the version Mack implements. Mack itself does not change until a change is ported.

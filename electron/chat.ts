@@ -12,6 +12,7 @@ import { execute, verifyFiles, type SessionHooks } from "../core/chat/executor";
 import { prBody, verifiedPairs, type Verdict } from "../core/chat/pr";
 import { consolidate, extractSession, forgetMemory, readMemory, recordCitations } from "../core/chat/memory";
 import { JobManager, type Job } from "../core/chat/shell";
+import { normalizePlan, planPrompt, readPlan, writePlan, type Plan } from "../core/chat/plan";
 import { listSkills, loadSkill, SKILL_DIR } from "../core/chat/skills";
 import { suggestNext, suggestTitle, type Transcript } from "../core/chat/suggestions";
 import { confine, imageDataUrl, imageType, MAX_IMAGE_BYTES, pdfText, registerTools, SUB_AGENT_TOOLS, toolSpecs, truncate, type ToolCall } from "../core/chat/tools";
@@ -34,8 +35,10 @@ export type ChatWire =
   | { sessionId: string; approval: PendingApproval }
   | { sessionId: string; approvalDone: string }
   | { sessionId: string; suggestion: string | null }
-  | { sessionId: string; changed: true };
-export type SendOptions = { sendNow?: boolean; attachments?: string[] };
+  | { sessionId: string; changed: true }
+  | { sessionId: string; plan: Plan; projectId: string }
+  | { sessionId: string; autoStopped: string };
+export type SendOptions = { sendNow?: boolean; attachments?: string[]; /** Start a new chat in auto mode. */ auto?: boolean };
 
 type Deps = {
   userData: (...p: string[]) => string;
@@ -53,6 +56,10 @@ type Deps = {
 
 export const PROJECTS_ROOT = join(homedir(), "MackProjects");
 export const UPLOADS = "uploads";
+/** Auto mode starts at most this many turns in a row before it waits for the person. */
+const MAX_AUTO_TURNS = 30;
+/** Every protected tool allowed: auto mode's approval policy. */
+const ALLOW_ALL = new Proxy({}, { get: () => "allow" }) as Partial<Record<string, "allow">>;
 
 /** The chat's live state and operations, for other features that wake a session (Ultramath reports, finished runs). */
 export type ChatControl = {
@@ -72,6 +79,18 @@ export function registerChat(d: Deps): ChatControl {
         "Commit the project's changes and open a GitHub pull request with them, so the person can review the work from anywhere (the first one creates a private repository). The description lists the files and re-runs the strict verifier on every proof you verified. Use it when a piece of work is finished. Needs the person's approval.",
       args: { title: "a short title for the change", "summary?": "what the PR contains and what is and is not verified, in a few sentences" },
       protected: true,
+    },
+    {
+      name: "plan_update",
+      description:
+        "Update the problem's plan, which the person reads beside the chat: the goal in plain words, an honest outlook, and the steps. Fields you leave out stay as they are; `steps`, when given, replaces the whole list, so send every step.",
+      args: {
+        "goal?": "the problem in one or two plain sentences",
+        "outlook?": "where we honestly stand: what is known, how hard it is, what we can realistically aim for",
+        "steps?":
+          "array of {id, title, kind, via?, status, why?, result?, verified?}: kind is lean, read, compute, think or write; via is the Mack feature that does it (web, python, lean_check, proof_run, proof_search, ultramath, agents, reminder, pull_request or chat); status is todo, doing, done, stuck or dropped; verified is true only when a Lean verifier accepted the step's proof",
+      },
+      protected: false,
     },
   ]);
   const registryPath = () => d.userData("projects.json");
@@ -107,6 +126,12 @@ export function registerChat(d: Deps): ChatControl {
     return p;
   };
 
+  const cleanName = (name: unknown, what: string): string => {
+    const clean = String(name).trim().replace(/[<>:"/\\|?*\u0000-\u001f]/g, "").slice(0, 60);
+    if (!clean) throw new Error(`give the ${what} a name`);
+    return clean;
+  };
+
   const loadSession = (projectId: string, id: string): ChatSession | null => {
     const f = join(sessionsDir(projectId), `${safeId(id)}.json`);
     return existsSync(f) ? (JSON.parse(readFileSync(f, "utf8")) as ChatSession) : null;
@@ -114,6 +139,14 @@ export function registerChat(d: Deps): ChatControl {
   const saveSession = (s: ChatSession) => writeFileSync(join(sessionsDir(s.projectId), `${s.id}.json`), JSON.stringify(s));
 
   /** Every window hears every chat: a reminder or a finished job can start a turn when no window asked. */
+  /** Each problem's plan, kept in memory so the assistant's instructions can read it synchronously. */
+  const plans = new Map<string, Plan>();
+  const planOf = async (p: Project): Promise<Plan> => {
+    let plan = plans.get(p.id);
+    if (!plan) plans.set(p.id, (plan = await readPlan(p.folder)));
+    return plan;
+  };
+
   const send = (w: ChatWire) => {
     for (const win of BrowserWindow.getAllWindows()) if (!win.webContents.isDestroyed()) win.webContents.send("chat:event", w);
   };
@@ -251,7 +284,15 @@ export function registerChat(d: Deps): ChatControl {
         extra: sub
           ? undefined
           : (c) =>
-              c.name === "open_pr"
+              c.name === "plan_update"
+                ? (async () => {
+                    const next = normalizePlan(c.args, await planOf(p));
+                    await writePlan(p.folder, next);
+                    plans.set(p.id, next);
+                    send({ sessionId: session.id, plan: next, projectId: p.id });
+                    return `The plan now has ${next.steps.length} step${next.steps.length === 1 ? "" : "s"}; the person sees it beside the chat.`;
+                  })()
+                : c.name === "open_pr"
                 ? openPr(p.id, session.id, String(c.args.title ?? "").trim() || session.title, typeof c.args.summary === "string" ? c.args.summary : undefined).then(
                     (r) => `Opened ${r.url}${r.createdRepo ? ` (in the new private repository ${r.repo})` : ""}.`,
                   )
@@ -266,7 +307,8 @@ export function registerChat(d: Deps): ChatControl {
               list: () => plugins.list(session.id),
             },
         lean,
-        policy: sub ? {} : s.approvals,
+        // Auto mode, read at each call: switching it on lets protected calls through without asking.
+        policy: sub ? {} : session.auto ? ALLOW_ALL : s.approvals,
         signal: ctl.signal,
         session: hooks,
         ask: (recorded) =>
@@ -299,6 +341,7 @@ export function registerChat(d: Deps): ChatControl {
         },
       });
 
+    let failed = false;
     void (async () => {
       try {
         await runTurn(session, {
@@ -306,6 +349,8 @@ export function registerChat(d: Deps): ChatControl {
           model,
           projectName: p.name,
           memory: (await readMemory(memory)).index,
+          plan: ((loaded: Plan) => () => planPrompt(plans.get(p.id) ?? loaded))(await planOf(p)),
+          auto: () => session.auto === true,
           skills: await listSkills(p.folder),
           tools: toolSpecs().map((t) => t.name),
           ownTools,
@@ -323,6 +368,7 @@ export function registerChat(d: Deps): ChatControl {
           execute: (call) => exec(call),
         });
       } catch (err) {
+        failed = true;
         send({ sessionId: session.id, event: { type: "error", message: (err as Error).message } });
       } finally {
         live.delete(session.id);
@@ -333,9 +379,47 @@ export function registerChat(d: Deps): ChatControl {
         saveSession(session);
         send({ sessionId: session.id, event: { type: "done" } });
         if (next.length && !ctl.signal.aborted) startTurn(projectId, session);
+        else if (!failed && !ctl.signal.aborted && session.auto) void continueAuto(p, session);
         else void afterTurn(p.id, session);
       }
     })();
+  }
+
+  /** How many turns auto mode has started in a row for each chat; the person's own message resets it. */
+  const autoTurns = new Map<string, number>();
+
+  /** Auto mode: after a turn, start the next one while the plan has open steps, within a bound. */
+  async function continueAuto(p: Project, session: ChatSession): Promise<void> {
+    const stop = (why: string) => {
+      autoTurns.delete(session.id);
+      send({ sessionId: session.id, autoStopped: why });
+      void afterTurn(p.id, session);
+    };
+    const n = (autoTurns.get(session.id) ?? 0) + 1;
+    if (n > MAX_AUTO_TURNS) return stop(`Auto mode paused after ${MAX_AUTO_TURNS} turns in a row. Send a message to keep going.`);
+    const plan = await planOf(p);
+    const open = plan.steps.filter((x) => x.status === "todo" || x.status === "doing");
+    // Without a plan yet, the first auto turn makes one; afterwards an empty list of open steps means the work is done.
+    if (plan.steps.length > 0 && open.length === 0) return stop("Auto mode: every plan step is done, stuck or dropped.");
+    const fresh = loadSession(p.id, session.id);
+    if (!fresh?.auto || live.has(session.id)) return;
+    autoTurns.set(session.id, n);
+    await new Promise((r) => setTimeout(r, 1500));
+    if (live.has(session.id) || !loadSession(p.id, session.id)?.auto) return;
+    fresh.messages.push({
+      role: "user",
+      at: Date.now(),
+      source: "auto",
+      content: plan.steps.length
+        ? `Continue with the plan: take the next open step (${open[0].id}: ${open[0].title}), or the most useful one, and report briefly.`
+        : "Make a plan for this problem with plan_update, then start on its first step.",
+    });
+    saveSession(fresh);
+    try {
+      startTurn(p.id, fresh);
+    } catch (err) {
+      send({ sessionId: session.id, event: { type: "error", message: `Auto mode stopped: ${(err as Error).message}` } });
+    }
   }
 
   /** A title for an untitled chat and the person's likely next message: both untrusted suggestions. */
@@ -391,8 +475,7 @@ export function registerChat(d: Deps): ChatControl {
   ipcMain.handle("projects:list", () => projects());
 
   ipcMain.handle("projects:create", async (_e, name: string) => {
-    const clean = String(name).trim().replace(/[<>:"/\\|?*\u0000-\u001f]/g, "").slice(0, 60);
-    if (!clean) throw new Error("give the project a name");
+    const clean = cleanName(name, "problem");
     const folder = join(PROJECTS_ROOT, clean);
     mkdirSync(folder, { recursive: true });
     // Upstream projects are git repositories; without git a project simply has no Review.
@@ -405,6 +488,14 @@ export function registerChat(d: Deps): ChatControl {
     const r = await dialog.showOpenDialog(win!, { properties: ["openDirectory", "createDirectory"], title: "Choose a project folder" });
     if (r.canceled || !r.filePaths[0]) return null;
     return addProject(basename(r.filePaths[0]), r.filePaths[0]);
+  });
+
+  ipcMain.handle("plan:get", async (_e, projectId: string) => planOf(project(projectId)));
+
+  ipcMain.handle("projects:rename", (_e, id: string, name: string): Project => {
+    const p = { ...project(id), name: cleanName(name, "problem") };
+    saveProjects(projects().map((x) => (x.id === p.id ? p : x)));
+    return p;
   });
 
   /** Forget a project: its sessions and memory go; its folder and files stay. */
@@ -435,6 +526,20 @@ export function registerChat(d: Deps): ChatControl {
     live.get(id)?.ctl.abort();
     plugins.stopSession(id);
     rmSync(join(sessionsDir(safeId(projectId)), `${safeId(id)}.json`), { force: true });
+  });
+
+  /** Switch auto mode for one chat. Switching it on approves what the chat is already waiting on; an idle chat starts working. */
+  ipcMain.handle("sessions:auto", (_e, projectId: string, id: string, on: boolean) => {
+    const l = live.get(safeId(id));
+    const sess = l?.session ?? loadSession(safeId(projectId), id);
+    if (!sess) throw new Error("no such chat");
+    sess.auto = on === true;
+    saveSession(sess);
+    autoTurns.delete(sess.id);
+    if (sess.auto) {
+      for (const w of [...pending.values()]) if (w.approval.sessionId === sess.id) w.resolve(true);
+      if (!l) void continueAuto(project(sess.projectId), sess);
+    }
   });
 
   ipcMain.handle("sessions:effort", (_e, projectId: string, id: string, effort: ReasoningEffort) => {
@@ -468,6 +573,7 @@ export function registerChat(d: Deps): ChatControl {
     d.newMeter(st, md, pre?.costUsd ?? 0, false);
     const attachments = await Promise.all((opts.attachments ?? []).map((a) => attachment(p.folder, a)));
     const message: StoredMessage = { role: "user", content: text, at: Date.now(), source: "person", ...(attachments.length ? { attachments } : {}) };
+    if (sessionId) autoTurns.delete(sessionId);
     const l = sessionId ? live.get(sessionId) : undefined;
     if (l) {
       // While the agent works: "send now" reaches it between steps; otherwise it waits for the turn's end.
@@ -482,6 +588,7 @@ export function registerChat(d: Deps): ChatControl {
       startedAt: Date.now(),
       updatedAt: Date.now(),
       effort: d.readSettings().chatEffort,
+      ...(opts.auto ? { auto: true } : {}),
       messages: [],
     };
     session.messages.push(message);

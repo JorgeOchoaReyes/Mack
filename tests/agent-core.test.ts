@@ -129,6 +129,15 @@ describe("agent turn", () => {
     expect(s.messages.at(-1)).toMatchObject({ role: "assistant", content: CUT_OFF });
   });
 
+  it("nudges an empty reply even when no tool ran", async () => {
+    const provider = scripted(["", "Here it is."]);
+    const s = session([{ role: "user", content: "open the PR", at: 0 }]);
+    await runTurn(s, { provider, model: "m", projectName: "P", memory: "", execute: (c) => execute(c, { root, policy: {}, ask: async () => false }), onEvent: () => {} });
+    expect(provider.requests.length).toBe(2);
+    expect(provider.requests[1].messages.at(-1)?.content).toContain(NUDGE);
+    expect(s.messages.at(-1)).toMatchObject({ role: "assistant", content: "Here it is." });
+  });
+
   it("says so when the reply after the nudge is empty too", async () => {
     const provider = scripted(['```tool\n{"name": "list_files", "args": {}}\n```', "", ""]);
     const s = session([{ role: "user", content: "look", at: 0 }]);

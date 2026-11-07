@@ -4,7 +4,7 @@
 // (`/skill …`, which Mack runs before the model's first step) or act in the
 // window (`/new`, `/memory`, …); the menu says which.
 
-import { ArrowUp, Brain, ChevronDown, Lightbulb, Paperclip, Slash, Square, X, Zap } from "lucide-react";
+import { ArrowUp, Brain, ChevronDown, Lightbulb, Paperclip, Rocket, Slash, Square, X, Zap } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import type { ReasoningEffort } from "../../api";
 
@@ -38,6 +38,9 @@ type Props = {
   suggestion: string | null;
   effort: ReasoningEffort;
   onEffort: (e: ReasoningEffort) => void;
+  /** Auto mode: the assistant works through the plan on its own, without asking. */
+  auto: boolean;
+  onAuto: (on: boolean) => void;
   spend?: string;
 };
 
@@ -164,6 +167,19 @@ export function Composer(p: Props) {
               </div>
             )}
           </div>
+          <button
+            type="button"
+            className={`composer-tool wide auto-toggle ${p.auto ? "on" : ""}`}
+            aria-pressed={p.auto}
+            title={
+              p.auto
+                ? "Auto mode is on: the assistant works through the plan by itself, picks options itself, and its actions run without asking you. Click to turn it off."
+                : "Auto mode: let the assistant work through the plan by itself, without stopping to ask. File writes, proof runs and commands then run without your approval. It stops at your spending limit."
+            }
+            onClick={() => p.onAuto(!p.auto)}
+          >
+            <Rocket size={14} /> Auto{p.auto ? " on" : ""}
+          </button>
           {p.spend && <span className="spend-chip" title="What this chat's model calls have cost, sub-agents and suggestions included">{p.spend}</span>}
           <span className="composer-hint">{p.busy ? "Enter sends now · it reaches the assistant between steps" : "Enter to send · Shift+Enter for a new line · / for commands"}</span>
           <div className="composer-actions">

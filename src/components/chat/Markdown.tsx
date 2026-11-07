@@ -136,6 +136,20 @@ export function visible(text: string): string {
     .trim();
 }
 
+const CHOICES = /```choices[^\n]*\n([\s\S]*?)(```|$)/;
+
+/** A message's text without its choices block, and the options in it: the assistant's way of offering buttons. */
+export function splitChoices(text: string): { body: string; choices: string[] } {
+  const m = CHOICES.exec(text);
+  if (!m) return { body: text, choices: [] };
+  const choices = m[1]
+    .split("\n")
+    .map((l) => l.replace(/^\s*(?:[-*•]|\d+[.)])\s+/, "").trim())
+    .filter(Boolean)
+    .slice(0, 6);
+  return { body: text.replace(m[0], "").trim(), choices };
+}
+
 export function Markdown({ text, projectId }: { text: string; projectId: string }) {
   return (
     <div className="md">
