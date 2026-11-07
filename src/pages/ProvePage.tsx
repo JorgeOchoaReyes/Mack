@@ -1,6 +1,7 @@
-import { BookOpen, ChevronDown, FileCode, FolderOpen, GitBranch, RefreshCw, Play, Save, Square, Sparkles, CircleCheck, CircleAlert, Cpu, Repeat, Users } from "lucide-react";
+import { BookOpen, ChevronDown, FileCode, FolderOpen, GitBranch, MessagesSquare, RefreshCw, Save, Play, Square, Sparkles, CircleCheck, CircleAlert, Cpu, Repeat, Users } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { api, errorText, theoremName, type Health, type LeanFolder, type Project, type RunEvent, type Settings } from "../api";
+import { api, errorText, theoremName, type Health, type Project, type RunEvent, type Settings } from "../api";
+import type { LeanFile, ProjectFilesState } from "../project";
 import { providerInfo } from "../../core/model/providers";
 import { formatUsd } from "../../core/model/metered";
 import { CodeEditor } from "../components/CodeEditor";
@@ -15,10 +16,19 @@ import { EXAMPLES } from "../examples";
 type Attempt = Extract<RunEvent, { type: "attempt" }>;
 type Solved = Extract<RunEvent, { type: "solved" }>;
 
+/** Open a project file, or put a statement in the editor unattached to any file. */
+export type ProveRequest = ({ path: string } | { text: string }) & { n: number };
+
 type Props = {
-  project: Project;
   problem: string;
   setProblem: (p: string) => void;
+  /** The active project, whose .lean files the files pane lists. */
+  project: Project | null;
+  files: ProjectFilesState;
+  /** A project file or statement another screen asked to open here. */
+  openRequest: ProveRequest | null;
+  /** Hand a message to Chat and go there. */
+  onAskChat: (text: string) => void;
   health: Health | null;
   settings: Settings;
   saveSettings: (s: Partial<Settings>) => Promise<void>;
@@ -27,7 +37,7 @@ type Props = {
   onRunFinished: () => void;
 };
 
-export function ProvePage({ project, problem, setProblem, health, settings, saveSettings, onGoSetup, onHealthChange, onRunFinished }: Props) {
+export function ProvePage({ problem, setProblem, project, files, openRequest, onAskChat, health, settings, saveSettings, onGoSetup, onHealthChange, onRunFinished }: Props) {
   const maxAttempts = settings.maxAttempts;
   const [running, setRunning] = useState(false);
   const [status, setStatus] = useState("");
@@ -40,7 +50,7 @@ export function ProvePage({ project, problem, setProblem, health, settings, save
   const [solved, setSolved] = useState<Solved | null>(null);
   const [failure, setFailure] = useState("");
   const [examplesOpen, setExamplesOpen] = useState(false);
-  const [folder, setFolder] = useState<LeanFolder | null>(null);
+  /** The project file in the editor, and its text as last read or saved: the editor differs from it when edited. */
   // Panel widths the person drags; they give way when the window is narrow, so the run pane keeps room.
   const [filesWidth, setFilesWidth] = usePanelWidth("mack.leanFilesWidth", 240, 160, 480);
   const [editorWidth, setEditorWidth] = usePanelWidth("mack.leanEditorWidth", 560, 300, 1400);
@@ -54,7 +64,7 @@ export function ProvePage({ project, problem, setProblem, health, settings, save
     return () => ro.disconnect();
   }, []);
   const RUN_MIN = 340;
-  let filesShown = folder ? filesWidth : 0;
+  let filesShown = filesWidth;
   let editorShown = editorWidth;
   if (splitWidth > 0) {
     let over = filesShown + editorShown + RUN_MIN - splitWidth;
@@ -63,9 +73,10 @@ export function ProvePage({ project, problem, setProblem, health, settings, save
       editorShown -= cut;
       over -= cut;
     }
-    if (over > 0 && folder) filesShown = Math.max(160, filesShown - over);
+    if (over > 0) filesShown = Math.max(160, filesShown - over);
   }
-  const [openFile, setOpenFile] = useState<string | null>(null);
+  const [openFile, setOpenFile] = useState<{ path: string; text: string; mtime: number } | null>(null);
+  const [onDisk, setOnDisk] = useState<string | null>(null);
   const [started, setStarted] = useState(0);
   const [, tick] = useState(0);
   const menu = useRef<HTMLDivElement>(null);
@@ -85,18 +96,73 @@ export function ProvePage({ project, problem, setProblem, health, settings, save
     [],
   );
 
-  useEffect(() => {
-    void api.leanFolder(project.id).then(setFolder, () => setFolder(null));
-  }, [project.id]);
+  const projectId = project?.id ?? "";
+  const dirty = !!openFile && problem !== openFile.text;
 
   const loadFile = async (path: string) => {
+    if (!projectId) return;
     try {
-      setProblem(await api.readLeanIn(project.id, path));
-      setOpenFile(path);
+      const text = await api.readProjectLean(projectId, path);
+      setProblem(text);
+      setOpenFile({ path, text, mtime: files.files.find((f) => f.path === path)?.mtime ?? Date.now() });
+      setOnDisk(null);
+      files.markSeen(path);
     } catch (e) {
       setFailure(errorText(e));
     }
   };
+
+  /** Save the editor to its project file, or to a new one named after the theorem. */
+  const saveFile = async () => {
+    if (!projectId) return;
+    let path = openFile?.path;
+    if (!path) {
+      const base = theoremName(problem).replace(/[^A-Za-z0-9_.-]/g, "_") || "Problem";
+      const taken = new Set(files.files.map((f) => f.path));
+      path = `${base}.lean`;
+      for (let i = 2; taken.has(path); i++) path = `${base}_${i}.lean`;
+    }
+    try {
+      await api.writeProjectLean(projectId, path, problem);
+      setOpenFile({ path, text: problem, mtime: Date.now() });
+      setOnDisk(null);
+      files.markSeen(path);
+    } catch (e) {
+      setFailure(errorText(e));
+    }
+  };
+
+  // Another project's files are not this editor's.
+  useEffect(() => {
+    setOpenFile(null);
+    setOnDisk(null);
+  }, [projectId]);
+
+  useEffect(() => {
+    if (!openRequest) return;
+    if ("path" in openRequest) return void (running || loadFile(openRequest.path));
+    setProblem(openRequest.text);
+    setOpenFile(null);
+    setOnDisk(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openRequest?.n]);
+
+  // The open file changed on disk (the chat's agent revised it, say): follow it unless the editor holds unsaved edits.
+  const diskFile = openFile && files.files.find((f) => f.path === openFile.path);
+  useEffect(() => {
+    if (!openFile || !diskFile || diskFile.mtime <= openFile.mtime || !projectId) return;
+    void api
+      .readProjectLean(projectId, openFile.path)
+      .then((text) => {
+        if (text === openFile.text) return setOpenFile({ ...openFile, mtime: diskFile.mtime });
+        if (dirty || running) return setOnDisk(text);
+        setProblem(text);
+        setOpenFile({ path: openFile.path, text, mtime: diskFile.mtime });
+        files.markSeen(openFile.path);
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [diskFile?.mtime]);
 
   useEffect(() => {
     if (!running) return;
@@ -130,7 +196,7 @@ export function ProvePage({ project, problem, setProblem, health, settings, save
     setStarted(Date.now());
     setRunning(true);
     try {
-      await api.startProve(problem, project.id);
+      await api.startProve(problem, { projectId: projectId || undefined, file: openFile && !dirty ? openFile.path : undefined });
     } catch (e) {
       setFailure(errorText(e));
     } finally {
@@ -146,7 +212,13 @@ export function ProvePage({ project, problem, setProblem, health, settings, save
     <div className="prove">
       <div className="toolbar">
         <div className="toolbar-title">
-          <span className="crumb">Problem</span>
+          <span className="crumb">{project ? project.name : "Problem"}</span>
+          {openFile && (
+            <span className="crumb" title={openFile.path}>
+              / {openFile.path}
+              {dirty ? " •" : ""}
+            </span>
+          )}
           <span className="theorem">{theoremName(problem)}</span>
         </div>
         <div className="toolbar-actions">
@@ -172,6 +244,7 @@ export function ProvePage({ project, problem, setProblem, health, settings, save
                     key={ex.title}
                     onClick={() => {
                       setProblem(ex.source);
+                      setOpenFile(null);
                       setExamplesOpen(false);
                     }}
                   >
@@ -185,24 +258,26 @@ export function ProvePage({ project, problem, setProblem, health, settings, save
           <Button
             icon={FolderOpen}
             onClick={async () => {
-              const text = await api.openLean(project.id);
+              const text = await api.openLean();
               if (text !== null) {
                 setProblem(text);
                 setOpenFile(null);
               }
             }}
           >
-            Open
+            Open file
           </Button>
-          <Button
-            icon={Save}
-            title="Save this statement as a .lean file in the problem folder"
-            onClick={async () => {
-              if (await api.saveLean(theoremName(problem), problem, project.id)) setFolder(await api.leanFolder(project.id));
-            }}
-          >
-            Save
-          </Button>
+          {openFile ? (
+            <Button icon={Save} disabled={!dirty || running} onClick={() => void saveFile()} title={`Save the editor to ${openFile.path} in the project`}>
+              Save
+            </Button>
+          ) : (
+            project && (
+              <Button icon={Save} disabled={running} onClick={() => void saveFile()} title={`Save this statement as a new .lean file in ${project.name}`}>
+                Save to project
+              </Button>
+            )
+          )}
           {running ? (
             <Button variant="danger" icon={Square} onClick={() => void api.stopProve()}>
               Stop
@@ -215,22 +290,45 @@ export function ProvePage({ project, problem, setProblem, health, settings, save
         </div>
       </div>
 
-      <div className="split" ref={splitBox} style={{ gridTemplateColumns: `${folder ? `${filesShown}px 0 ` : ""}${editorShown}px 0 minmax(0, 1fr)` }}>
-        {folder && (
-          <FilesPane
-            folder={folder}
-            current={openFile}
-            disabled={running}
-            onPick={(p) => void loadFile(p)}
-            onRefresh={() => void api.leanFolder(project.id).then(setFolder)}
-          />
-        )}
-        {folder && <Resizer width={filesShown} onWidth={setFilesWidth} side="left" defaultWidth={240} label="Resize the file list" />}
+      <div className="split" ref={splitBox} style={{ gridTemplateColumns: `${filesShown}px 0 ${editorShown}px 0 minmax(0, 1fr)` }}>
+        <FilesPane project={project} files={files} current={openFile?.path ?? null} disabled={running} onPick={(p) => void loadFile(p)} />
+        <Resizer width={filesShown} onWidth={setFilesWidth} side="left" defaultWidth={240} label="Resize the file list" />
         <section className="pane editor-pane">
           <div className="pane-head">
             <span>Frozen statement</span>
-            <span className="muted small">Type \to, \forall, \R … for symbols</span>
+            <span className="row gap-sm">
+              <span className="muted small">Type \to, \forall, \R … for symbols</span>
+              {project && (
+                <button
+                  className="link small"
+                  title="Go to Chat with this statement as the subject"
+                  onClick={() => onAskChat(openFile ? `About \`${openFile.path}\`: ` : `About this Lean statement:\n\n\`\`\`lean\n${problem.trim()}\n\`\`\`\n\n`)}
+                >
+                  <MessagesSquare size={13} /> Ask in Chat
+                </button>
+              )}
+            </span>
           </div>
+          {onDisk !== null && (
+            <div className="notice small disk-notice">
+              {openFile?.path} changed on disk.
+              <button
+                className="link small"
+                onClick={() => {
+                  if (!openFile) return;
+                  setProblem(onDisk);
+                  setOpenFile({ path: openFile.path, text: onDisk, mtime: Date.now() });
+                  setOnDisk(null);
+                  files.markSeen(openFile.path);
+                }}
+              >
+                Load it
+              </button>
+              <button className="link small" onClick={() => setOnDisk(null)}>
+                Keep mine
+              </button>
+            </div>
+          )}
           <div className="editor-wrap">
             <CodeEditor value={problem} onChange={setProblem} />
           </div>
@@ -316,7 +414,6 @@ export function ProvePage({ project, problem, setProblem, health, settings, save
               <SolvedCard
                 solved={solved}
                 problem={problem}
-                projectId={project.id}
                 where={runMode === "search" ? `Node ${solved.n} of the search tree` : runMode === "ultramath" ? `Member ${solved.n}` : undefined}
               />
             )}
@@ -388,34 +485,58 @@ function HowItWorks({ mode }: { mode: Settings["mode"] }) {
   );
 }
 
-function FilesPane({ folder, current, disabled, onPick, onRefresh }: { folder: LeanFolder; current: string | null; disabled: boolean; onPick: (path: string) => void; onRefresh: () => void }) {
+function FilesPane({ project, files, current, disabled, onPick }: { project: Project | null; files: ProjectFilesState; current: string | null; disabled: boolean; onPick: (path: string) => void }) {
   const [filter, setFilter] = useState("");
   const q = filter.trim().toLowerCase();
-  const shown = q ? folder.files.filter((f) => f.toLowerCase().includes(q)) : folder.files;
+  const shown = q ? files.files.filter((f) => f.path.toLowerCase().includes(q)) : files.files;
+  // What changed since it was last opened comes first, newest first.
+  const fresh = shown.filter((f) => f.fresh).sort((a, b) => b.mtime - a.mtime);
+  const rest = shown.filter((f) => !f.fresh);
+  const row = (f: LeanFile) => {
+    const slash = f.path.lastIndexOf("/");
+    return (
+      <button key={f.path} className={`file ${f.path === current ? "active" : ""} ${f.fresh ? "fresh" : ""}`} disabled={disabled} title={f.fresh ? `${f.path}: new or changed since you last opened it` : f.path} onClick={() => onPick(f.path)}>
+        <FileCode size={13} />
+        <span className="file-name">{f.path.slice(slash + 1)}</span>
+        {slash > 0 && <span className="file-dir">{f.path.slice(0, slash)}</span>}
+      </button>
+    );
+  };
   return (
     <section className="pane files-pane">
       <div className="pane-head">
-        <span title={folder.folder}>Problem files</span>
-        <span className="files-actions">
-          <button className="icon-btn" title="Look for new files" onClick={onRefresh}>
-            <RefreshCw size={13} />
-          </button>
-        </span>
-      </div>
-      <input className="files-filter" placeholder={`Filter ${folder.files.length} files`} value={filter} onChange={(e) => setFilter(e.target.value)} />
-      <div className="files-list">
-        {shown.length === 0 && <div className="muted small files-empty">{folder.files.length ? "No file matches." : "No .lean files yet. Save a statement or a proof here and it shows up."}</div>}
-        {shown.map((f) => {
-          const slash = f.lastIndexOf("/");
-          return (
-            <button key={f} className={f === current ? "file active" : "file"} disabled={disabled} title={f} onClick={() => onPick(f)}>
-              <FileCode size={13} />
-              <span className="file-name">{f.slice(slash + 1)}</span>
-              {slash > 0 && <span className="file-dir">{f.slice(0, slash)}</span>}
+        <span title={files.folder}>{project ? project.name : "Files"}</span>
+        {project && (
+          <span className="files-actions">
+            <button className="icon-btn" title="Rescan the project" onClick={() => void files.refresh()}>
+              <RefreshCw size={13} />
             </button>
-          );
-        })}
+          </span>
+        )}
       </div>
+      {!project ? (
+        <div className="muted small files-empty">Create or choose a project in the sidebar: its .lean files show here, including those the chat writes.</div>
+      ) : (
+        <>
+          <input className="files-filter" placeholder={`Filter ${files.files.length} files`} value={filter} onChange={(e) => setFilter(e.target.value)} />
+          <div className="files-list">
+            {shown.length === 0 && (
+              <div className="muted small files-empty">{files.files.length ? "No file matches." : "No .lean files yet. Ask in Chat to formalize a statement, or write one in the editor and press Save to project."}</div>
+            )}
+            {fresh.length > 0 && (
+              <div className="files-group">
+                <span>New or changed</span>
+                <button className="link small" onClick={() => files.markSeen()}>
+                  Mark seen
+                </button>
+              </div>
+            )}
+            {fresh.map(row)}
+            {fresh.length > 0 && rest.length > 0 && <div className="files-group">All files</div>}
+            {rest.map(row)}
+          </div>
+        </>
+      )}
     </section>
   );
 }

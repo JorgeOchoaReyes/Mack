@@ -117,19 +117,16 @@ export function timeAgo(ts: number): string {
   return new Date(ts).toLocaleDateString();
 }
 
-/** A list of runs: the project's first, then those recorded before runs belonged to projects, under their own heading. */
-export function RunGroups<T>({ items, inProject, children }: { items: T[]; inProject: (item: T) => boolean; children: (item: T) => ReactNode }) {
-  const mine = items.filter(inProject);
-  const older = items.filter((x) => !inProject(x));
+/** Whether a list shows the active project's items or everything. */
+export function ScopeSwitch({ projectName, all, onChange }: { projectName: string; all: boolean; onChange: (all: boolean) => void }) {
   return (
-    <>
-      {mine.length > 0 && <div className="run-list">{mine.map(children)}</div>}
-      {older.length > 0 && (
-        <>
-          <h2 className="run-group">From before problems</h2>
-          <div className="run-list">{older.map(children)}</div>
-        </>
-      )}
-    </>
+    <div className="mode-switch">
+      <button className={all ? "" : "active"} disabled={!projectName} onClick={() => onChange(false)}>
+        {projectName || "No project"}
+      </button>
+      <button className={all ? "active" : ""} onClick={() => onChange(true)}>
+        All projects
+      </button>
+    </div>
   );
 }

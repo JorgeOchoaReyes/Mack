@@ -13,6 +13,12 @@ and how Mack keeps up with upstream.
 
 ## What it does today
 
+- **One project for every screen.** Choose the project (a folder, such as
+  `odd-perfect`) once in the sidebar. Prove lists its `.lean` files and
+  follows them as they change, marking the ones the chat's agent (or anything
+  else) wrote or revised since you last looked; Chat works in the same
+  folder, with an *Open in Prove* button on each Lean file the agent writes;
+  History and Runs show that project's runs.
 - **Prove.** Write or open a Lean statement, press Prove, and watch each
   attempt: the model writes a proof, Lean's errors go back to it, and it
   revises until the strict verifier accepts or attempts run out.

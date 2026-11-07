@@ -7,7 +7,7 @@ import { Badge, CopyButton, formatMs, OutcomeBadge, outcomeTone, Button } from "
 type Attempt = Extract<RunEvent, { type: "attempt" }>;
 type Solved = Extract<RunEvent, { type: "solved" }>;
 
-export function SolvedCard({ solved, problem, where, projectId }: { solved: Solved; problem: string; where?: string; projectId?: string }) {
+export function SolvedCard({ solved, problem, where }: { solved: Solved; problem: string; where?: string }) {
   return (
     <div className="solved-card">
       <div className="solved-head">
@@ -30,7 +30,7 @@ export function SolvedCard({ solved, problem, where, projectId }: { solved: Solv
       </div>
       <div className="row gap-sm">
         <CopyButton text={solved.proof} label="Copy proof" />
-        <Button size="sm" icon={FileDown} onClick={() => void api.saveLean(theoremName(problem), solved.proof, projectId)}>
+        <Button size="sm" icon={FileDown} onClick={() => void api.saveLean(theoremName(problem), solved.proof)}>
           Save .lean
         </Button>
       </div>

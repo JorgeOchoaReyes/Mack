@@ -1,23 +1,25 @@
 import { ArrowLeft, Pause, Play, Plus, RefreshCw, Rows3 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { api, errorText, type Project, type RunStatus, type SearchNode } from "../api";
+import { api, errorText, type RunStatus, type SearchNode } from "../api";
 import { TreeView, type NodeEvent } from "../components/TreeView";
-import { Badge, Button, RunGroups, timeAgo } from "../components/ui";
+import { Badge, Button, ScopeSwitch, timeAgo } from "../components/ui";
 
 const TONE: Record<string, "ok" | "bad" | "warn" | "neutral"> = { solved: "ok", running: "warn", queued: "neutral", exhausted: "bad", stopped: "neutral", failed: "bad" };
 
-/** The project's proof-search runs over problem sets: started here or from a chat, shown from their journals. */
-export function RunsPage({ project }: { project: Project }) {
-  const [runs, setRuns] = useState<RunStatus[]>([]);
+/** Proof-search runs over problem sets: started here or from a chat, shown from their journals. */
+export function RunsPage({ projectId, projectName }: { projectId: string; projectName: string }) {
+  const [allRuns, setRuns] = useState<RunStatus[]>([]);
+  const [all, setAll] = useState(!projectId);
+  const runs = all || !projectId ? allRuns : allRuns.filter((r) => r.project === projectId);
   const [open, setOpen] = useState<RunStatus | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [nodes, setNodes] = useState<SearchNode[]>([]);
   const [error, setError] = useState("");
 
   const reload = useCallback(async () => {
-    setRuns(await api.listDiscovery(project.id));
+    setRuns(await api.listDiscovery());
     if (open) setOpen(await api.discoveryStatus(open.name));
-  }, [open, project.id]);
+  }, [open]);
 
   useEffect(() => {
     void reload();
@@ -98,29 +100,30 @@ export function RunsPage({ project }: { project: Project }) {
   return (
     <div className="page">
       <div className="page-head">
-        <h1>Runs</h1>
+        <h1>Proof-search runs</h1>
         <p className="muted">
-          A run tries to prove several statements at once, each with its own search tree. It can take a long time, so you can stop it and resume it later.
-          Pick .lean files to start one, or ask the assistant in Chat.
+          A run explores a set of problems, each as its own search tree, and records every node, so it can be watched, stopped and resumed. Start one here or
+          ask the assistant in Chat; Search-tree settings apply.
         </p>
         <div className="row gap-sm">
-          <Button variant="primary" icon={Plus} onClick={() => void act(() => api.startDiscoveryFromFiles(project.id))}>
+          <Button variant="primary" icon={Plus} onClick={() => void act(() => api.startDiscoveryFromFiles())}>
             New run from .lean files
           </Button>
           <Button icon={RefreshCw} onClick={() => void reload()}>
             Refresh
           </Button>
+          <ScopeSwitch projectName={projectName} all={all || !projectId} onChange={setAll} />
         </div>
       </div>
       {error && <div className="notice notice-bad">{error}</div>}
       {runs.length === 0 ? (
         <div className="empty">
           <Rows3 size={28} />
-          <p>No runs in {project.name} yet.</p>
+          <p>{allRuns.length && !all ? `No runs in ${projectName} yet.` : "No runs yet."}</p>
         </div>
       ) : (
-        <RunGroups items={runs} inProject={(r) => r.project !== ""}>
-          {(r) => (
+        <div className="run-list">
+          {runs.map((r) => (
             <button key={r.name} className="run-row" onClick={() => setOpen(r)}>
               <Badge tone={r.state === "ended" ? "ok" : r.state === "running" ? "warn" : "neutral"}>{r.state}</Badge>
               <span className="run-thm mono">{r.name}</span>
@@ -129,8 +132,8 @@ export function RunsPage({ project }: { project: Project }) {
               </span>
               <span className="run-meta muted small">{timeAgo(r.startedAt)}</span>
             </button>
-          )}
-        </RunGroups>
+          ))}
+        </div>
       )}
     </div>
   );

@@ -1,6 +1,7 @@
 import { BookOpen, CircleDollarSign, Download, FlaskConical, Lightbulb, PanelLeftClose, PanelLeftOpen, Rows3, GitCompare, History, MessagesSquare, Settings as SettingsIcon, Wrench, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { api, type Health, type LedgerState, type Project, type Settings, type UpdateState, type Upstream } from "./api";
+import { api, errorText, type Health, type LedgerState, type Project, type Settings, type UpdateState, type Upstream } from "./api";
+import { useProjectFiles } from "./project";
 import { formatUsd } from "../core/model/metered";
 import { Logo } from "./components/Logo";
 import { ProjectPicker } from "./components/ProjectPicker";
@@ -11,7 +12,7 @@ import { FeedbackPage } from "./pages/FeedbackPage";
 import { RunsPage } from "./pages/RunsPage";
 import { GuidePage } from "./pages/GuidePage";
 import { HistoryPage } from "./pages/HistoryPage";
-import { ProvePage } from "./pages/ProvePage";
+import { ProvePage, type ProveRequest } from "./pages/ProvePage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { SetupPage } from "./pages/SetupPage";
 import { UpstreamPage } from "./pages/UpstreamPage";
@@ -23,19 +24,10 @@ type Page = "prove" | "chat" | "runs" | "feedback" | "history" | "upstream" | "s
 const PROJECT_PAGES: Page[] = ["chat", "prove", "runs", "history"];
 
 const DRAFT_KEY = "mack.draft";
-const PROJECT_KEY = "mack.project";
-/** Where the Chat page remembered its project before the whole app had one. */
-const OLD_PROJECT_KEY = "mack.chatProject";
+/** The chat's project before projects were shared by every screen. */
+const LEGACY_CHAT_PROJECT = "mack.chatProject";
 const NAV_KEY = "mack.navCollapsed";
 const UPSTREAM_RECHECK_MS = 6 * 60 * 60 * 1000;
-
-function lastProject(): string {
-  try {
-    return localStorage.getItem(PROJECT_KEY) ?? localStorage.getItem(OLD_PROJECT_KEY) ?? "";
-  } catch {
-    return "";
-  }
-}
 
 function loadDraft(): string {
   try {
@@ -49,15 +41,6 @@ export function App() {
   const [page, setPage] = useState<Page>("chat");
   /** A new problem's description, sent as the first message of its chat. */
   const [firstMessage, setFirstMessage] = useState<{ projectId: string; text: string } | null>(null);
-  const [projects, setProjects] = useState<Project[] | null>(null);
-  const [projectId, setProjectIdState] = useState(lastProject);
-  const [settings, setSettings] = useState<Settings | null>(null);
-  const [health, setHealth] = useState<Health | null>(null);
-  const [upstream, setUpstream] = useState<Upstream | null>(null);
-  const [problem, setProblemState] = useState(loadDraft);
-  const [runsVersion, setRunsVersion] = useState(0);
-  const [update, setUpdate] = useState<UpdateState | null>(null);
-  const [spend, setSpend] = useState<LedgerState | null>(null);
   const [navCollapsed, setNavCollapsedState] = useState(() => {
     try {
       return localStorage.getItem(NAV_KEY) === "1";
@@ -92,6 +75,20 @@ export function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+  const [settings, setSettings] = useState<Settings | null>(null);
+  const [health, setHealth] = useState<Health | null>(null);
+  const [upstream, setUpstream] = useState<Upstream | null>(null);
+  const [problem, setProblemState] = useState(loadDraft);
+  const [runsVersion, setRunsVersion] = useState(0);
+  const [update, setUpdate] = useState<UpdateState | null>(null);
+  const [spend, setSpend] = useState<LedgerState | null>(null);
+  const [projects, setProjects] = useState<Project[] | null>(null);
+  /** A project file (or, from History, a bare statement) another screen asked Prove to open, and a message Prove handed to Chat; `n` makes a repeat count. */
+  const [proveOpen, setProveOpen] = useState<ProveRequest | null>(null);
+  const [chatDraft, setChatDraft] = useState<{ text: string; n: number } | null>(null);
+
+  const reloadProjects = useCallback(async () => setProjects(await api.listProjects()), []);
+  useEffect(() => void reloadProjects(), [reloadProjects]);
 
   useEffect(() => {
     void api.globalSpend().then(setSpend);
@@ -102,23 +99,6 @@ export function App() {
     void api.subscribeUpdates().then(setUpdate);
     return api.onUpdateEvent(setUpdate);
   }, []);
-
-  const setProjectId = (id: string) => {
-    setProjectIdState(id);
-    try {
-      localStorage.setItem(PROJECT_KEY, id);
-    } catch {
-      // Remembering the last project is only a convenience.
-    }
-  };
-
-  const reloadProjects = useCallback(async () => {
-    const ps = await api.listProjects();
-    setProjects(ps);
-    return ps;
-  }, []);
-
-  useEffect(() => void reloadProjects(), [reloadProjects]);
 
   const refreshHealth = useCallback(() => void api.health().then(setHealth), []);
   const recheckUpstream = useCallback(async () => setUpstream(await api.checkUpstream()), []);
@@ -147,15 +127,49 @@ export function App() {
     }
   };
 
-  if (!settings || !projects) return <div className="boot" />;
+  const projectId = activeProjectId(settings, projects);
+  const files = useProjectFiles(projectId);
 
-  const project = projects.find((p) => p.id === projectId) ?? projects[0];
+  // Keep the saved choice in step with what is shown: a removed project falls back to the first one.
+  useEffect(() => {
+    if (settings && projects && projectId !== settings.activeProject) void saveSettings({ activeProject: projectId });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, projects]);
+
+  const chooseProject = (id: string) => void saveSettings({ activeProject: id });
+  const createProject = async (name: string): Promise<string> => {
+    try {
+      const p = await api.createProject(name);
+      await reloadProjects();
+      await saveSettings({ activeProject: p.id });
+      return "";
+    } catch (e) {
+      return errorText(e);
+    }
+  };
+  /** A problem made from the welcome screen or the picker: it becomes active and its chat opens with the description. */
   const projectCreated = async (p: Project, description = "") => {
     await reloadProjects();
-    setProjectId(p.id);
+    await saveSettings({ activeProject: p.id });
     if (description.trim()) setFirstMessage({ projectId: p.id, text: description.trim() });
     setPage("chat");
   };
+  const openProject = async (): Promise<string> => {
+    try {
+      const p = await api.openProject();
+      if (p) {
+        await reloadProjects();
+        await saveSettings({ activeProject: p.id });
+      }
+      return "";
+    } catch (e) {
+      return errorText(e);
+    }
+  };
+
+  if (!settings) return <div className="boot" />;
+
+  const project = projects?.find((p) => p.id === projectId);
 
   const leanOk = !!health?.lake && !!health?.hasMathlib;
   const keyOk = !!health && health.keySource !== "none";
@@ -163,12 +177,19 @@ export function App() {
   const allReady = leanOk && keyOk && modelOk;
   const showBanner = upstream?.kind === "changed" && !upstream.dismissed;
 
+  const freshFiles = page !== "prove" && files.fresh > 0;
   type NavItem = { id: Page; label: string; hint: string; icon: typeof FlaskConical; badge?: boolean };
   const work: NavItem[] = [
     { id: "chat", label: "Chat", hint: "Talk about the problem in plain words; the assistant plans and does the work", icon: MessagesSquare },
-    { id: "prove", label: "Lean editor", hint: "Write a Lean statement yourself and have the model prove it", icon: FlaskConical },
+    {
+      id: "prove",
+      label: "Lean editor",
+      hint: freshFiles ? `${files.fresh} new or changed .lean file${files.fresh === 1 ? "" : "s"} in ${project?.name ?? "the problem"}` : "The problem's Lean files: write a statement and have the model prove it",
+      icon: FlaskConical,
+      badge: freshFiles,
+    },
     { id: "runs", label: "Proof searches", hint: "Long searches for proofs of many statements at once", icon: Rows3 },
-    { id: "history", label: "Proof attempts", hint: "Every proof attempt on this problem, verified or not", icon: History },
+    { id: "history", label: "Proof attempts", hint: "Every proof attempt, verified or not", icon: History },
   ];
   const more: NavItem[] = [
     { id: "setup", label: "Setup", hint: "Lean, API keys and models", icon: Wrench, badge: health !== null && !allReady },
@@ -184,6 +205,7 @@ export function App() {
       {n.badge && <span className="nav-badge" />}
     </button>
   );
+  const welcome = !!projects && !project && PROJECT_PAGES.includes(page);
 
   return (
     <div className={`shell ${navCollapsed ? "nav-collapsed" : ""}`}>
@@ -205,7 +227,7 @@ export function App() {
             {(project?.name ?? "?").trim().charAt(0).toUpperCase()}
           </button>
         ) : (
-          <ProjectPicker projects={projects} current={project} onPick={setProjectId} onCreated={(p, d) => void projectCreated(p, d)} />
+          <ProjectPicker projects={projects ?? []} current={project} onPick={chooseProject} onCreated={(p, d) => void projectCreated(p, d)} />
         )}
         <nav>
           {work.map(navButton)}
@@ -285,15 +307,19 @@ export function App() {
           </div>
         )}
         <div className="content-inner">
-          {!project && PROJECT_PAGES.includes(page) && (
-            <WelcomePage health={health} onGoSetup={() => setPage("setup")} onGoGuide={() => setPage("guide")} onCreated={(p, d) => void projectCreated(p, d)} />
-          )}
-          {project && page === "prove" && (
+          {welcome && <WelcomePage health={health} onGoSetup={() => setPage("setup")} onGoGuide={() => setPage("guide")} onCreated={(p, d) => void projectCreated(p, d)} />}
+          {/* Prove and Chat stay mounted, so a run or a reply keeps going while the other is open. */}
+          <div className="page-slot" hidden={welcome || page !== "prove"}>
             <ProvePage
-              key={project.id}
-              project={project}
               problem={problem}
               setProblem={setProblem}
+              project={project ?? null}
+              files={files}
+              openRequest={proveOpen}
+              onAskChat={(text) => {
+                setChatDraft({ text, n: Date.now() });
+                setPage("chat");
+              }}
               health={health}
               settings={settings}
               saveSettings={saveSettings}
@@ -301,28 +327,34 @@ export function App() {
               onHealthChange={refreshHealth}
               onRunFinished={() => setRunsVersion((v) => v + 1)}
             />
-          )}
-          {project && page === "runs" && <RunsPage key={project.id} project={project} />}
-          {page === "feedback" && <FeedbackPage />}
-          {project && page === "chat" && (
+          </div>
+          <div className="page-slot" hidden={welcome || page !== "chat"}>
             <ChatPage
-              key={project.id}
-              project={project}
+              project={project ?? null}
+              hasProjects={!!projects?.length}
+              onCreateProject={createProject}
+              incomingDraft={chatDraft}
+              onOpenInProve={(path) => {
+                setProveOpen({ path, n: Date.now() });
+                setPage("prove");
+              }}
               health={health}
               settings={settings}
               saveSettings={saveSettings}
               onGoSetup={() => setPage("setup")}
-              firstMessage={firstMessage?.projectId === project.id ? firstMessage.text : undefined}
+              firstMessage={firstMessage && firstMessage.projectId === projectId ? firstMessage.text : undefined}
               onFirstMessageUsed={() => setFirstMessage(null)}
             />
-          )}
-          {project && page === "history" && (
+          </div>
+          {!welcome && page === "runs" && <RunsPage projectId={projectId} projectName={project?.name ?? ""} />}
+          {page === "feedback" && <FeedbackPage />}
+          {!welcome && page === "history" && (
             <HistoryPage
-              key={project.id}
-              project={project}
               refreshKey={runsVersion}
+              projectId={projectId}
+              projectName={project?.name ?? ""}
               onRerun={(p) => {
-                setProblem(p);
+                setProveOpen({ text: p, n: Date.now() });
                 setPage("prove");
               }}
             />
@@ -335,4 +367,17 @@ export function App() {
       </main>
     </div>
   );
+}
+
+/** The saved active project while it exists; before projects were shared, the chat's last one; else the first. */
+function activeProjectId(settings: Settings | null, projects: Project[] | null): string {
+  if (!settings || !projects) return settings?.activeProject ?? "";
+  if (projects.some((p) => p.id === settings.activeProject)) return settings.activeProject;
+  let legacy = "";
+  try {
+    legacy = localStorage.getItem(LEGACY_CHAT_PROJECT) ?? "";
+  } catch {
+    // No remembered chat project.
+  }
+  return projects.find((p) => p.id === legacy)?.id ?? projects[0]?.id ?? "";
 }

@@ -1,6 +1,6 @@
 import { UltramathView } from "../components/UltramathView";
 import type { RunEvent, SwarmRecord } from "../api";
-import { AlarmClock, Brain, Check, ChevronRight, Rocket, Users, Download, ExternalLink, GitCompare, GitPullRequest, KeyRound, ListChecks, MessageSquarePlus, ShieldAlert, ShieldCheck, Terminal, Trash2, Wrench, X } from "lucide-react";
+import { AlarmClock, Brain, Check, ChevronRight, Rocket, Users, Download, ExternalLink, GitCompare, GitPullRequest, KeyRound, FolderPlus, ListChecks, MessageSquarePlus, ShieldAlert, ShieldCheck, Terminal, Trash2, Wrench, X } from "lucide-react";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import {
   api,
@@ -31,7 +31,15 @@ import { formatUsd } from "../../core/model/metered";
 import { Badge, Button, Spinner, timeAgo, Toggle } from "../components/ui";
 
 type Props = {
-  project: Project;
+  /** The active project, chosen in the sidebar for every screen. */
+  project: Project | null;
+  hasProjects: boolean;
+  /** Resolves to an error message, or "" when the project was created. */
+  onCreateProject: (name: string) => Promise<string>;
+  /** A message another screen handed over, put in the composer. */
+  incomingDraft: { text: string; n: number } | null;
+  /** Open a project .lean file on the Prove screen. */
+  onOpenInProve: (path: string) => void;
   health: Health | null;
   settings: Settings;
   saveSettings: (s: Partial<Settings>) => Promise<void>;
@@ -53,8 +61,8 @@ function planOpenAtStart(): boolean {
 
 const EFFORTS: ReasoningEffort[] = ["off", "on", "low", "medium", "high", "xhigh"];
 
-export function ChatPage({ project, health, settings, saveSettings, onGoSetup, firstMessage, onFirstMessageUsed }: Props) {
-  const projectId = project.id;
+export function ChatPage({ project, hasProjects, onCreateProject, incomingDraft, onOpenInProve, health, settings, saveSettings, onGoSetup, firstMessage, onFirstMessageUsed }: Props) {
+  const projectId = project?.id ?? "";
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [session, setSession] = useState<ChatSession | null>(null);
   const [draft, setDraft] = useState("");
@@ -110,6 +118,18 @@ export function ChatPage({ project, health, settings, saveSettings, onGoSetup, f
 
   const ready = !!health && health.keySource !== "none" && !!health.model;
 
+  const [newName, setNewName] = useState("");
+  const [projectError, setProjectError] = useState("");
+  const create = async (name: string) => {
+    const err = await onCreateProject(name);
+    setProjectError(err);
+    if (!err) setNewName("");
+  };
+
+  useEffect(() => {
+    if (incomingDraft) setDraft(incomingDraft.text);
+  }, [incomingDraft?.n]);
+
   const reloadSession = useCallback(async () => {
     const cur = sessionRef.current;
     if (cur) {
@@ -120,12 +140,15 @@ export function ChatPage({ project, health, settings, saveSettings, onGoSetup, f
 
   useEffect(() => {
     void api.listApprovals().then(setApprovals);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    void api.listSessions(projectId).then(setSessions);
-    if (settings.suggestions) void api.suggestStart().then((s) => !sessionRef.current && setSuggestion(s));
+    setSession(null);
+    setSuggestion(null);
+    if (projectId) {
+      void api.listSessions(projectId).then(setSessions);
+      if (settings.suggestions) void api.suggestStart().then((s) => !sessionRef.current && setSuggestion(s));
+    } else setSessions([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
@@ -222,10 +245,9 @@ export function ChatPage({ project, health, settings, saveSettings, onGoSetup, f
   };
 
   // A new problem starts with the person's own description of it.
-  const firstSent = useRef(false);
+  // The message is cleared once used, so each new problem's opening is sent exactly once.
   useEffect(() => {
-    if (!firstMessage || firstSent.current) return;
-    firstSent.current = true;
+    if (!firstMessage || !projectId) return;
     onFirstMessageUsed?.();
     const opening = `${firstMessage}
 
@@ -233,7 +255,7 @@ I am new to this. Explain the problem in plain words, tell me honestly how hard 
     if (ready) void sendMessage(false, opening);
     else setDraft(opening);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [firstMessage, ready]);
+  }, [firstMessage, projectId, ready]);
 
   const [skills, setSkills] = useState<{ name: string; description: string }[]>([]);
   useEffect(() => {
@@ -264,12 +286,14 @@ I am new to this. Explain the problem in plain words, tell me honestly how hard 
   return (
     <div className="chat" ref={chatBox} style={{ gridTemplateColumns: `${sideShown}px 0 minmax(0, 1fr)${planOpen ? ` 0 ${planShown}px` : ""}` }}>
       <aside className="chat-side">
-        <div className="chat-side-head">
-          <code className="path small" title="The problem folder: the assistant works on the files here">
-            {project.folder}
-          </code>
-        </div>
-        <Button icon={MessageSquarePlus} onClick={() => void openSession(null)}>
+        {project && (
+          <div className="chat-side-head">
+            <code className="path small" title="The problem folder: the assistant works on the files here">
+              {project.folder}
+            </code>
+          </div>
+        )}
+        <Button icon={MessageSquarePlus} disabled={!projectId} onClick={() => void openSession(null)}>
           New chat
         </Button>
         <div className="chat-sessions">
@@ -362,7 +386,30 @@ I am new to this. Explain the problem in plain words, tell me honestly how hard 
               to chat.
             </div>
           )}
-          {!session && (
+          {!hasProjects && (
+            <div className="how">
+              <h3>Create your first project</h3>
+              <p className="muted">
+                A project is a folder: the assistant reads and (with your approval) writes files there, runs commands, checks Lean, searches the web and reads
+                PDFs, starts proof runs and Ultramath once you approve, and keeps project memory for later chats. Every screen works in the project chosen in
+                the sidebar: Lean files written here show on Prove, and its runs in History.
+              </p>
+              <form
+                className="row gap-sm"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void create(newName);
+                }}
+              >
+                <input className="input grow" placeholder="Project name, e.g. odd-perfect" value={newName} onChange={(e) => setNewName(e.target.value)} />
+                <Button variant="primary" icon={FolderPlus} type="submit" disabled={!newName.trim()}>
+                  Create project
+                </Button>
+              </form>
+              {projectError && <div className="notice notice-bad small">{projectError}</div>}
+            </div>
+          )}
+          {project && !session && (
             <div className="welcome fade-in">
               <div className="welcome-logo">
                 <Logo />
@@ -404,7 +451,7 @@ I am new to this. Explain the problem in plain words, tell me honestly how hard 
               </div>
             </div>
           )}
-          {session && <Conversation messages={session.messages} projectId={projectId} secretMarks={secretMarks} busy={busy} onChoose={(c) => void sendMessage(false, c)} />}
+          {session && <Conversation messages={session.messages} projectId={projectId} secretMarks={secretMarks} busy={busy} onChoose={(c) => void sendMessage(false, c)} onOpenInProve={onOpenInProve} />}
           {streaming && visible(streaming) && (
             <div className="msg assistant fade-in">
               <div className="avatar">
@@ -457,7 +504,7 @@ I am new to this. Explain the problem in plain words, tell me honestly how hard 
           commands={commands}
           busy={busy && !!session}
           disabled={!ready}
-          placeholder={busy ? "Add to the conversation…" : `Ask anything about ${project.name}…`}
+          placeholder={busy ? "Add to the conversation…" : `Ask anything about ${project?.name ?? "the problem"}…`}
           suggestion={suggestion}
           effort={effort}
           onEffort={async (v) => {
@@ -518,7 +565,7 @@ function items(messages: StoredMessage[]): Item[] {
   return out;
 }
 
-function Conversation({ messages, projectId, secretMarks, busy, onChoose }: { messages: StoredMessage[]; projectId: string; secretMarks: Record<number, Finding[]>; busy: boolean; onChoose: (choice: string) => void }) {
+function Conversation({ messages, projectId, secretMarks, busy, onChoose, onOpenInProve }: { messages: StoredMessage[]; projectId: string; secretMarks: Record<number, Finding[]>; busy: boolean; onChoose: (choice: string) => void; onOpenInProve: (path: string) => void }) {
   const list = items(messages);
   /** The person's reply right after a message, to show which option they took. */
   const replyAfter = (k: number): string | undefined => {
@@ -529,7 +576,7 @@ function Conversation({ messages, projectId, secretMarks, busy, onChoose }: { me
     <>
       {list.map((it, k) => {
         const mark = secretMarks[it.index] && <SecretMark findings={secretMarks[it.index]} />;
-        if (it.kind === "activity") return <Activity key={k} results={it.results} running={busy && k === list.length - 1} />;
+        if (it.kind === "activity") return <Activity key={k} results={it.results} running={busy && k === list.length - 1} onOpenInProve={onOpenInProve} />;
         if (it.kind === "assistant") {
           const { body, choices } = splitChoices(it.text);
           const answered = choices.length ? replyAfter(k) : undefined;

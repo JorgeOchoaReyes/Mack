@@ -18,7 +18,7 @@ import type { ChangedFile } from "../core/git";
 import type { GitHubTokenSource, PullRequest } from "../core/github";
 import type { UpdateState } from "../electron/updates";
 import type { UpstreamReport } from "../core/upstream";
-import type { Health, KeySource, LeanFolder, RunEvent, RunMode, RunRecord, RunSummary, Settings } from "../electron/main";
+import type { Health, KeySource, ProjectFiles, RunEvent, RunMode, RunOrigin, RunRecord, RunSummary, Settings } from "../electron/main";
 import type { MackApi } from "../electron/preload";
 
 declare global {
@@ -34,7 +34,7 @@ export type { Plan, PlanStep, StepKind, StepStatus, StepVia };
 export type { Issue, LedgerState, RunStatus, SearchNode, SwarmRecord };
 export type { ChangedFile, Finding, ProviderId, ReasoningEffort, UpdateState };
 export type { ChatEvent, ChatSession, ChatWire, PendingApproval, Project, SessionSummary, StoredMessage, ToolOutcome, ToolSpec };
-export type { Health, KeySource, LeanFolder, ProveEvent, RunEvent, RunMode, RunRecord, RunSummary, SetupEvent, Settings };
+export type { Health, KeySource, ProjectFiles, ProveEvent, RunEvent, RunMode, RunOrigin, RunRecord, RunSummary, SetupEvent, Settings };
 
 const m = () => window.mack;
 
@@ -52,16 +52,19 @@ export const api = {
   checkUpstream: () => m().checkUpstream() as Promise<Upstream>,
   openExternal: (url: string) => m().openExternal(url),
   listModels: (provider?: ProviderId) => m().listModels(provider),
-  startProve: (problem: string, projectId: string) => m().startProve(problem, projectId),
+  startProve: (problem: string, origin?: RunOrigin) => m().startProve(problem, origin),
   stopProve: () => m().stopProve(),
   onProveEvent: (cb: (e: RunEvent) => void) => m().onProveEvent((e) => cb(e as RunEvent)),
   listRuns: () => m().listRuns() as Promise<RunSummary[]>,
   getRun: (id: string) => m().getRun(id) as Promise<RunRecord | null>,
   deleteRun: (id: string) => m().deleteRun(id) as Promise<void>,
-  saveLean: (name: string, text: string, projectId?: string) => m().saveLean(name, text, projectId),
-  openLean: (projectId?: string) => m().openLean(projectId),
-  leanFolder: (projectId: string) => m().leanFolder(projectId) as Promise<LeanFolder>,
-  readLeanIn: (projectId: string, path: string) => m().readLeanIn(projectId, path),
+  saveLean: (name: string, text: string) => m().saveLean(name, text),
+  openLean: () => m().openLean(),
+  projectLeanFiles: (projectId: string) => m().projectLeanFiles(projectId) as Promise<ProjectFiles>,
+  readProjectLean: (projectId: string, path: string) => m().readProjectLean(projectId, path),
+  writeProjectLean: (projectId: string, path: string, text: string) => m().writeProjectLean(projectId, path, text),
+  watchProject: (projectId: string) => m().watchProject(projectId),
+  onProjectFiles: (cb: (projectId: string) => void) => m().onProjectFiles((e) => cb(e as string)),
   listProjects: () => m().listProjects() as Promise<Project[]>,
   createProject: (name: string) => m().createProject(name) as Promise<Project>,
   openProject: () => m().openProject() as Promise<Project | null>,
@@ -95,12 +98,12 @@ export const api = {
   globalSpend: () => m().globalSpend() as Promise<LedgerState>,
   resetGlobalSpend: () => m().resetGlobalSpend() as Promise<LedgerState>,
   onGlobalSpend: (cb: (e: LedgerState) => void) => m().onGlobalSpend((e) => cb(e as LedgerState)),
-  listDiscovery: (projectId: string) => m().listDiscovery(projectId) as Promise<RunStatus[]>,
+  listDiscovery: () => m().listDiscovery() as Promise<RunStatus[]>,
   discoveryStatus: (run: string) => m().discoveryStatus(run) as Promise<RunStatus>,
   discoveryTree: (run: string, problem: string) => m().discoveryTree(run, problem) as Promise<SearchNode[]>,
   stopDiscovery: (run: string) => m().stopDiscovery(run) as Promise<void>,
   resumeDiscovery: (run: string) => m().resumeDiscovery(run) as Promise<RunStatus>,
-  startDiscoveryFromFiles: (projectId: string) => m().startDiscoveryFromFiles(projectId) as Promise<RunStatus | null>,
+  startDiscoveryFromFiles: () => m().startDiscoveryFromFiles() as Promise<RunStatus | null>,
   stopPlugin: (sessionId: string, name: string) => m().stopPlugin(sessionId, name) as Promise<string>,
   stopChat: (sessionId: string) => m().stopChat(sessionId) as Promise<void>,
   onChatEvent: (cb: (e: ChatWire) => void) => m().onChatEvent((e) => cb(e as ChatWire)),
