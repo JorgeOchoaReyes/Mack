@@ -267,7 +267,10 @@ I am new to this. Explain the problem in plain words, tell me honestly how hard 
 
   // What Lean has proved in this problem, for `/showme`.
   const [proved, setProved] = useState<Proved[]>([]);
-  const [showMe, setShowMe] = useState<string | null>(null);
+  const [showMe, setShowMeState] = useState<{ file: string; id?: string } | null>(null);
+  const setShowMe = (file: string, id?: string) => setShowMeState({ file, id });
+  // Bumped when a walkthrough closes, so the plan's list of saved ones catches any new one.
+  const [savedKey, setSavedKey] = useState(0);
   useEffect(() => {
     if (!projectId) return;
     let live = true;
@@ -552,8 +555,8 @@ I am new to this. Explain the problem in plain words, tell me honestly how hard 
         />
       </section>
       {planOpen && <Resizer width={planShown} onWidth={setPlanWidth} side="right" defaultWidth={320} label="Resize the plan" />}
-      {planOpen && <PlanView projectId={projectId} onAsk={(q) => void sendMessage(false, q)} onClose={() => setPlanOpen(false)} onOpenInProve={onOpenInProve} onOpenRun={onOpenRun} onShowMe={setShowMe} />}
-      {showMe && projectId && <ShowMe projectId={projectId} file={showMe} onClose={() => setShowMe(null)} onAsk={setDraft} />}
+      {planOpen && <PlanView projectId={projectId} onAsk={(q) => void sendMessage(false, q)} onClose={() => setPlanOpen(false)} onOpenInProve={onOpenInProve} onOpenRun={onOpenRun} onShowMe={setShowMe} savedKey={savedKey} />}
+      {showMe && projectId && <ShowMe key={`${showMe.file}|${showMe.id ?? ""}`} projectId={projectId} file={showMe.file} savedId={showMe.id} onClose={() => (setShowMeState(null), setSavedKey((k) => k + 1))} onAsk={setDraft} />}
     </div>
   );
 }

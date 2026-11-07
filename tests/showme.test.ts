@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { parseWalkthrough, proofHash, showmeRequest } from "../core/showme";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { listWalkthroughs, parseWalkthrough, proofHash, readWalkthrough, readWalkthroughById, saveWalkthrough, showmeRequest, type StoredWalkthrough } from "../core/showme";
 
 describe("show me", () => {
   it("keeps a valid walkthrough and clamps what the player cannot show", () => {
@@ -48,5 +51,36 @@ describe("show me the whole proof", () => {
     const w = parseWalkthrough(reply, files);
     expect(w.map?.map((m) => `${m.file}<${m.uses.join(",")}`)).toEqual(["Grid/A.lean<", "Grid/B.lean<Grid/A.lean"]);
     expect(w.steps.map((s) => [s.file, s.lines])).toEqual([["Grid/A.lean", [1, 10]], ["Grid/B.lean", [2, 3]], [undefined, undefined]]);
+  });
+});
+
+describe("show me: the problem", () => {
+  it("keeps the problem outline the model writes, and does without one", () => {
+    const steps = `"steps":[{"title":"Claim","explain":"x","visual":{"type":"none"}}]`;
+    const w = parseWalkthrough(`{"problem":{"title":"Squares in a grid","about":"How many squares?","defined":"For n ≥ 1, the number of k×k squares, 1 ≤ k ≤ n, in an n×n grid is n(n+1)(2n+1)/6.","relates":["sums of powers","", 3, "combinatorics"]},"idea":"i",${steps}}`, 3);
+    expect(w.problem).toEqual({ title: "Squares in a grid", about: "How many squares?", defined: expect.stringContaining("n(n+1)(2n+1)/6"), relates: ["sums of powers", "combinatorics"] });
+    expect(parseWalkthrough(`{"idea":"i",${steps}}`, 3).problem).toBeUndefined();
+  });
+});
+
+describe("show me: kept to review later", () => {
+  const make = (file: string, createdAt: number, proof = "p"): StoredWalkthrough => ({ file, proofHash: proofHash(proof), proof, model: "m", createdAt, walkthrough: { idea: `idea ${createdAt}`, steps: [{ title: "t", explain: "e", visual: { type: "none" } }] } });
+
+  it("moves a replaced walkthrough to history instead of losing it, and lists every one", async () => {
+    const root = await mkdtemp(join(tmpdir(), "showme-"));
+    try {
+      await saveWalkthrough(root, make("A.lean", 1));
+      await saveWalkthrough(root, make("A.lean", 2, "changed"));
+      await saveWalkthrough(root, make("*", 3));
+      expect((await readWalkthrough(root, "A.lean"))?.createdAt).toBe(2);
+      const list = await listWalkthroughs(root);
+      expect(list.map((w) => [w.file, w.createdAt, w.latest])).toEqual([["*", 3, true], ["A.lean", 2, true], ["A.lean", 1, false]]);
+      const old = list.find((w) => !w.latest)!;
+      expect(old.id).toMatch(/^history\//);
+      expect((await readWalkthroughById(root, old.id))?.walkthrough.idea).toBe("idea 1");
+      expect(await readWalkthroughById(root, "../../secrets.json")).toBeNull();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });

@@ -1,15 +1,24 @@
 // "Show me": a guided tour of a whole proof, one step at a time. Each step has
 // plain words, what is still left to show, a worked example, a picture, and
 // the proof lines it covers. The tour is written once by the model and kept
-// in the problem folder; Lean checked the proof, not these words.
+// in the problem folder, with every earlier version, so it can be reviewed
+// again later; Lean checked the proof, not these words.
 
-import { ArrowLeft, ArrowRight, BookOpenCheck, MessagesSquare, RefreshCw, ShieldCheck, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, BookOpenCheck, History, MessagesSquare, RefreshCw, ShieldCheck, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, type MapNode, type StoredWalkthrough, type Visual } from "../api";
+import { api, type MapNode, type ProblemOutline, type SavedWalkthrough, type StoredWalkthrough, type Visual } from "../api";
 import { Button, timeAgo } from "./ui";
 
-export function ShowMe({ projectId, file, onClose, onAsk }: { projectId: string; file: string; onClose: () => void; onAsk?: (text: string) => void }) {
+/** `savedId` opens one kept walkthrough (see `api.showmeList`) as it was written, instead of the current one. */
+export function ShowMe({ projectId, file, savedId, onClose, onAsk }: { projectId: string; file: string; savedId?: string; onClose: () => void; onAsk?: (text: string) => void }) {
   const [data, setData] = useState<StoredWalkthrough | null>(null);
+  // Every kept walkthrough of this proof, newest first, to switch between.
+  const [versions, setVersions] = useState<SavedWalkthrough[]>([]);
+  const refreshVersions = () =>
+    api
+      .showmeList(projectId)
+      .then((all) => setVersions(all.filter((w) => w.file === file)))
+      .catch(() => setVersions([]));
   const [meta, setMeta] = useState<{ theorem?: string; summary?: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -22,6 +31,7 @@ export function ShowMe({ projectId, file, onClose, onAsk }: { projectId: string;
     try {
       setData(await api.showmeMake(projectId, file));
       setAt(-1);
+      void refreshVersions();
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -29,22 +39,40 @@ export function ShowMe({ projectId, file, onClose, onAsk }: { projectId: string;
     }
   };
 
+  const openVersion = (id: string) => {
+    setError(null);
+    api
+      .showmeOpen(projectId, id)
+      .then((w) => {
+        setData(w);
+        setAt(-1);
+      })
+      .catch((e: Error) => setError(e.message));
+  };
+
   useEffect(() => {
     let live = true;
+    void refreshVersions();
     api
       .showmeGet(projectId, file)
       .then((r) => {
         if (!live) return;
         setMeta({ theorem: r.theorem, summary: r.summary });
-        if (r.saved) setData(r.saved);
+        if (savedId) openVersion(savedId);
+        else if (r.saved) setData(r.saved);
         else void make();
       })
-      .catch((e: Error) => live && setError(e.message));
+      .catch((e: Error) => {
+        if (!live) return;
+        // The proof may be gone, but a kept walkthrough can still be read.
+        if (savedId) openVersion(savedId);
+        else setError(e.message);
+      });
     return () => {
       live = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, file]);
+  }, [projectId, file, savedId]);
 
   const steps = data?.walkthrough.steps ?? [];
   const go = (i: number) => setAt(Math.max(-1, Math.min(steps.length, i)));
@@ -65,6 +93,7 @@ export function ShowMe({ projectId, file, onClose, onAsk }: { projectId: string;
   const map = data?.walkthrough.map;
   const nameOf = (f?: string) => (f ? (map?.find((m) => m.file === f)?.title ?? f.split("/").pop()) : undefined);
   const proofOf = (f?: string) => (f && data?.proofs?.[f]) || data?.proof || "";
+  const shown = versions.find((v) => v.createdAt === data?.createdAt);
 
   return (
     <div className="path-overlay" role="dialog" aria-modal="true" aria-label={`Show me how ${theorem} is proved`} onClick={onClose}>
@@ -119,6 +148,7 @@ export function ShowMe({ projectId, file, onClose, onAsk }: { projectId: string;
             <div className="showme-body">
               {at === -1 && (
                 <div className="showme-intro">
+                  {data.walkthrough.problem && <ProblemCard problem={data.walkthrough.problem} />}
                   <div className="plan-detail-label">The idea</div>
                   <p className="showme-lead">{data.walkthrough.idea}</p>
                   <p className="muted small">
@@ -192,7 +222,22 @@ export function ShowMe({ projectId, file, onClose, onAsk }: { projectId: string;
               <Button variant="primary" icon={ArrowRight} disabled={at === steps.length} onClick={() => go(at + 1)}>
                 {at === -1 ? "Start" : at === steps.length - 1 ? "Finish" : "Next"}
               </Button>
+              {versions.length > 1 && (
+                <label className="showme-versions muted small" title="Every walkthrough written for this proof is kept in the problem folder; pick one to review it again">
+                  <History size={12} />
+                  <select value={shown?.id ?? ""} onChange={(e) => openVersion(e.target.value)}>
+                    {!shown && <option value="">This one</option>}
+                    {versions.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {new Date(v.createdAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })} · {v.model.split("/").pop()}
+                        {v.current ? "" : " · earlier proof"}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               <span className="muted small showme-note">
+                {shown && !shown.current && <span className="warn">This explains an earlier version of the proof. </span>}
                 Written by {data.model.split("/").pop()} {timeAgo(data.createdAt)}. Lean checked the proof, not this explanation.{" "}
                 <button className="link small" title="Write a new walkthrough (uses the model again)" onClick={() => void make()}>
                   Rewrite
@@ -203,6 +248,31 @@ export function ShowMe({ projectId, file, onClose, onAsk }: { projectId: string;
         )}
       </div>
     </div>
+  );
+}
+
+/** The problem, set out before the proof: what it is about, exactly what is proved, and what it relates to. */
+function ProblemCard({ problem }: { problem: ProblemOutline }) {
+  return (
+    <section className="showme-problem" aria-label="The problem">
+      <div className="plan-detail-label">The problem</div>
+      {problem.title && <h2>{problem.title}</h2>}
+      {problem.about && <p>{problem.about}</p>}
+      {problem.defined && (
+        <div className="showme-defined">
+          <div className="plan-detail-label">Exactly what is proved</div>
+          {problem.defined}
+        </div>
+      )}
+      {problem.relates.length > 0 && (
+        <div className="showme-relates small">
+          <span className="muted" style={{ border: "none", padding: 0 }}>Related to:</span>
+          {problem.relates.map((r) => (
+            <span key={r}>{r}</span>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 

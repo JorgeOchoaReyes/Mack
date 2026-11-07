@@ -14,7 +14,7 @@ import { consolidate, extractSession, forgetMemory, readMemory, recordCitations 
 import { JobManager, type Job } from "../core/chat/shell";
 import { describeStatement, normalizePlan, planPrompt, provedBy, readPlan, recordProved, writePlan, type Plan } from "../core/chat/plan";
 import { proofPath, type ProofPath } from "../core/chat/path";
-import { parseWalkthrough, proofHash, proofsHash, readWalkthrough, saveWalkthrough, SHOWME_ALL_PROMPT, SHOWME_PROMPT, showmeAllRequest, showmeRequest, type StoredWalkthrough, type Walkthrough } from "../core/showme";
+import { listWalkthroughs, parseWalkthrough, proofHash, proofsHash, readWalkthrough, readWalkthroughById, saveWalkthrough, SHOWME_ALL_PROMPT, SHOWME_PROMPT, showmeAllRequest, showmeRequest, type StoredWalkthrough, type Walkthrough } from "../core/showme";
 import { listSkills, loadSkill, SKILL_DIR } from "../core/chat/skills";
 import { suggestNext, suggestTitle, type Transcript } from "../core/chat/suggestions";
 import { confine, imageDataUrl, imageType, MAX_IMAGE_BYTES, pdfText, registerTools, SUB_AGENT_TOOLS, toolSpecs, truncate, type ToolCall } from "../core/chat/tools";
@@ -639,6 +639,25 @@ export function registerChat(d: Deps): ChatControl {
     const a = await acceptedProof(projectId, file);
     const saved = await readWalkthrough(a.p.folder, a.rel);
     return { proof: a.proof, theorem: a.proved.theorem, summary: a.proved.summary, saved: saved && saved.proofHash === proofHash(a.proof) ? saved : null };
+  });
+
+  /** Every walkthrough kept for this problem, latest and older, newest first; `current` when it still matches the proof as it is now. */
+  ipcMain.handle("showme:list", async (_e, projectId: string) => {
+    const p = project(projectId);
+    const list = await listWalkthroughs(p.folder);
+    const now = new Map<string, string | null>();
+    for (const f of new Set(list.map((w) => w.file))) {
+      if (f === "*") now.set(f, await allAccepted(projectId).then((a) => proofsHash(a.proofs), () => null));
+      else now.set(f, await acceptedProof(projectId, f).then((a) => proofHash(a.proof), () => null));
+    }
+    return list.map((w) => ({ ...w, current: now.get(w.file) === w.proofHash }));
+  });
+
+  /** One kept walkthrough by its id, to review again; it may explain an older version of the proof. */
+  ipcMain.handle("showme:open", async (_e, projectId: string, id: string) => {
+    const w = await readWalkthroughById(project(projectId).folder, id);
+    if (!w) throw new Error("That walkthrough is no longer in this problem's folder.");
+    return w;
   });
 
   /** Write a walkthrough with the chat's model, of one proved statement or of the whole problem (`*`), and keep it in the problem folder. */

@@ -4,10 +4,12 @@
 // kinds Mack draws itself (no model-written code runs); Lean checked the
 // proof, not the explanation, and the player says so. A walkthrough is kept
 // in the problem folder (.mack/showme/) next to the proof it explains, and
-// is reused until that proof changes.
+// is reused until that proof changes. Nothing is thrown away: a walkthrough
+// that is rewritten, or whose proof changed, moves to .mack/showme/history/
+// so it can still be opened and reviewed later.
 
 import { createHash } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 export type Visual =
@@ -36,7 +38,21 @@ export type WalkStep = {
 /** One proved result in the map of a whole problem: what it does there and which results it builds on. */
 export type MapNode = { file: string; title: string; role: string; uses: string[] };
 
+/** The problem being solved, set out before the proof: what it asks, exactly, and what it connects to. */
+export type ProblemOutline = {
+  /** A short name for the problem, at most 8 words. */
+  title: string;
+  /** What the problem is about, in two or three plain sentences. */
+  about: string;
+  /** Exactly what is being proved: the precise statement, with every term and symbol defined. */
+  defined: string;
+  /** Areas, known results or uses it relates to, each a short phrase. */
+  relates: string[];
+};
+
 export type Walkthrough = {
+  /** The problem itself, shown first: what it is, its exact definition and what it relates to. */
+  problem?: ProblemOutline;
   /** Whole-problem walkthroughs: how the proved results fit together. */
   map?: MapNode[];
   /** The whole proof's idea in two or three sentences. */
@@ -60,7 +76,26 @@ export type StoredWalkthrough = {
 };
 
 export const proofHash = (proof: string) => createHash("sha256").update(proof.replace(/\r\n/g, "\n")).digest("hex").slice(0, 16);
-const storePath = (root: string, file: string) => join(root, ".mack", "showme", `${createHash("sha256").update(file).digest("hex").slice(0, 16)}.json`);
+const keyOf = (file: string) => createHash("sha256").update(file).digest("hex").slice(0, 16);
+const showmeDir = (root: string) => join(root, ".mack", "showme");
+const storePath = (root: string, file: string) => join(showmeDir(root), `${keyOf(file)}.json`);
+
+/** A saved walkthrough as listed for review: enough to name it and open it again by `id`. */
+export type WalkthroughSummary = {
+  /** Where it is kept, relative to .mack/showme/: `<key>.json` for the latest, `history/<key>-<time>.json` for older ones. */
+  id: string;
+  file: string;
+  theorem?: string;
+  proofHash: string;
+  model: string;
+  createdAt: number;
+  steps: number;
+  idea: string;
+  /** The newest walkthrough of its file (older ones are kept in history). */
+  latest: boolean;
+};
+
+const ID = /^(history\/)?[0-9a-f]{16}(-\d+)?\.json$/;
 
 export async function readWalkthrough(root: string, file: string): Promise<StoredWalkthrough | null> {
   try {
@@ -70,15 +105,53 @@ export async function readWalkthrough(root: string, file: string): Promise<Store
   }
 }
 
+/** One saved walkthrough by its `id` from {@link listWalkthroughs}, latest or from history. */
+export async function readWalkthroughById(root: string, id: string): Promise<StoredWalkthrough | null> {
+  if (!ID.test(id)) return null;
+  try {
+    return JSON.parse(await readFile(join(showmeDir(root), ...id.split("/")), "utf8")) as StoredWalkthrough;
+  } catch {
+    return null;
+  }
+}
+
+/** Save a walkthrough as the latest of its file; the one it replaces moves to history rather than being lost. */
 export async function saveWalkthrough(root: string, w: StoredWalkthrough): Promise<void> {
-  await mkdir(join(root, ".mack", "showme"), { recursive: true });
-  await writeFile(storePath(root, w.file), JSON.stringify(w, null, 2), "utf8");
+  await mkdir(showmeDir(root), { recursive: true });
+  const path = storePath(root, w.file);
+  const old = await readWalkthrough(root, w.file);
+  if (old && old.createdAt !== w.createdAt) {
+    await mkdir(join(showmeDir(root), "history"), { recursive: true });
+    await rename(path, join(showmeDir(root), "history", `${keyOf(w.file)}-${old.createdAt || Date.now()}.json`)).catch(() => undefined);
+  }
+  await writeFile(path, JSON.stringify(w, null, 2), "utf8");
+}
+
+/** Every walkthrough kept for this problem, latest and older, newest first. */
+export async function listWalkthroughs(root: string): Promise<WalkthroughSummary[]> {
+  const ids = [
+    ...(await readdir(showmeDir(root)).catch(() => [] as string[])),
+    ...(await readdir(join(showmeDir(root), "history")).catch(() => [] as string[])).map((f) => `history/${f}`),
+  ].filter((id) => ID.test(id));
+  const out: WalkthroughSummary[] = [];
+  for (const id of ids) {
+    const w = await readWalkthroughById(root, id);
+    if (!w?.walkthrough?.steps) continue;
+    out.push({ id, file: w.file, theorem: w.theorem, proofHash: w.proofHash, model: w.model, createdAt: w.createdAt, steps: w.walkthrough.steps.length, idea: w.walkthrough.idea, latest: !id.startsWith("history/") });
+  }
+  return out.sort((a, b) => b.createdAt - a.createdAt);
 }
 
 export const SHOWME_PROMPT = `You explain a Lean 4 proof that Lean has already accepted, to a person with no training in Lean and little in mathematics. They will step through your explanation one step at a time, with a picture beside each step.
 
 Reply with one JSON object and nothing else:
 {
+  "problem": {
+    "title": "a short name for the problem, at most 8 words",
+    "about": "what the problem is about and why someone would ask it, in two or three plain sentences",
+    "defined": "exactly what is being proved, in ordinary math notation: the precise statement, saying what every variable, symbol and term means (e.g. what counts as a square, the range of n)",
+    "relates": ["2 to 5 short phrases: areas of mathematics, well-known results, or real uses this problem connects to"]
+  },
   "idea": "the whole proof's idea in two or three plain sentences",
   "steps": [
     {
@@ -94,6 +167,7 @@ Reply with one JSON object and nothing else:
 }
 
 Rules:
+- "problem" sets the problem out before any proof: someone who has never seen it should understand what is asked and exactly what is being proved. Base "defined" on the theorem statement itself, not on a looser reading of the question.
 - Cover the whole proof from the first line after := to the end, in order, in 3 to 10 steps. Every proof line belongs to exactly one step. "lines" are the numbers shown at the left of the proof.
 - Start with a step that says what is being claimed (lines: the theorem statement) before the proof steps.
 - Explain the mathematics, not only the tactics: what the induction is on, what the base case and the step say, why an algebraic step is true.
@@ -191,6 +265,18 @@ export function parseWalkthrough(text: string, proofLines: number | Record<strin
     return [{ title, explain, lines: files && !file ? undefined : lines, ...(file ? { file } : {}), goal: str(o.goal, 400), example: str(o.example, 600), visual: visual(o.visual) }];
   });
   if (!steps.length) throw new Error("the walkthrough had no steps");
+  const pr = (raw.problem && typeof raw.problem === "object" ? raw.problem : {}) as Record<string, unknown>;
+  const pAbout = str(pr.about, 800);
+  const pDefined = str(pr.defined, 800);
+  const problem: ProblemOutline | undefined =
+    pAbout || pDefined
+      ? {
+          title: str(pr.title, 100) ?? "",
+          about: pAbout ?? "",
+          defined: pDefined ?? "",
+          relates: Array.isArray(pr.relates) ? pr.relates.flatMap((x) => (typeof x === "string" && x.trim() ? [x.trim().slice(0, 80)] : [])).slice(0, 6) : [],
+        }
+      : undefined;
   const map = files && Array.isArray(raw.map)
     ? raw.map.flatMap((m): MapNode[] => {
         const o = (m && typeof m === "object" ? m : {}) as Record<string, unknown>;
@@ -200,13 +286,19 @@ export function parseWalkthrough(text: string, proofLines: number | Record<strin
         return [{ file, title: str(o.title, 80) ?? file, role: str(o.role, 300) ?? "", uses }];
       })
     : undefined;
-  return { idea: str(raw.idea, 800) ?? "", ...(map?.length ? { map } : {}), steps, takeaway: str(raw.takeaway, 500) };
+  return { ...(problem ? { problem } : {}), idea: str(raw.idea, 800) ?? "", ...(map?.length ? { map } : {}), steps, takeaway: str(raw.takeaway, 500) };
 }
 
 export const SHOWME_ALL_PROMPT = `You explain how several Lean 4 results, each already accepted by Lean, together answer one question. The reader has no training in Lean and little in mathematics. They will step through your explanation one step at a time, with a picture beside each step, and first see a map of how the results depend on each other.
 
 Reply with one JSON object and nothing else:
 {
+  "problem": {
+    "title": "a short name for the question, at most 8 words",
+    "about": "what the question is about and why someone would ask it, in two or three plain sentences",
+    "defined": "exactly what the results prove, in ordinary math notation: the precise statement of the question being answered, saying what every variable, symbol and term means",
+    "relates": ["2 to 5 short phrases: areas of mathematics, well-known results, or real uses this question connects to"]
+  },
   "idea": "how the results together answer the question, in two to four plain sentences",
   "map": [ { "file": "the file, exactly as given", "title": "a short name, at most 5 words", "role": "what this result contributes to the answer, one sentence", "uses": ["files whose results this one relies on, exactly as given"] } ],
   "steps": [
@@ -224,6 +316,7 @@ Reply with one JSON object and nothing else:
 }
 
 Rules:
+- "problem" sets the question out before any proof: someone who has never seen it should understand what is asked and exactly what is being proved. Base "defined" on the theorem statements themselves, not on a looser reading of the question.
 - Put every result in the map. Order the steps so a result comes after the results it uses, and end with the one that most directly answers the question.
 - Walk through every result: for each, one step for its claim and then its proof's main moves, 2 to 4 steps per result and at most 16 steps in all. "lines" are the line numbers shown in that file.
 - Explain the mathematics, not only the tactics, and say how each result connects to the others and to the question. Where two results prove the same thing in different forms, say so plainly.

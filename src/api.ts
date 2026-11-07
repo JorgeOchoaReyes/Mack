@@ -7,8 +7,10 @@ import type { ChatEvent, ChatSession, StoredMessage, ToolOutcome } from "../core
 import type { ToolSpec } from "../core/chat/tools";
 import type { Plan, PlanStep, Proved, StepKind, StepStatus, StepVia } from "../core/chat/plan";
 import type { PathStep, ProofPath } from "../core/chat/path";
-import type { MapNode, StoredWalkthrough, Visual, WalkStep, Walkthrough } from "../core/showme";
-export type { MapNode, StoredWalkthrough, Visual, WalkStep, Walkthrough };
+import type { MapNode, ProblemOutline, StoredWalkthrough, Visual, WalkStep, Walkthrough, WalkthroughSummary } from "../core/showme";
+export type { MapNode, ProblemOutline, StoredWalkthrough, Visual, WalkStep, Walkthrough };
+/** A kept walkthrough, as listed for review; `current` when it still explains the proof as it is now. */
+export type SavedWalkthrough = WalkthroughSummary & { current: boolean };
 import type { ChatWire, PendingApproval, Project, SendOptions, SessionSummary } from "../electron/chat";
 import type { ReasoningEffort } from "../core/model/provider";
 import type { Finding } from "../core/secrets";
@@ -82,6 +84,8 @@ export const api = {
   communityShare: (projectId: string, file: string) => m().communityShare(projectId, file) as Promise<{ url: string; slug: string }>,
   showmeGet: (projectId: string, file: string) => m().showmeGet(projectId, file) as Promise<{ proof: string; theorem?: string; summary?: string; saved: StoredWalkthrough | null }>,
   showmeMake: (projectId: string, file: string) => m().showmeMake(projectId, file) as Promise<StoredWalkthrough>,
+  showmeList: (projectId: string) => m().showmeList(projectId) as Promise<SavedWalkthrough[]>,
+  showmeOpen: (projectId: string, id: string) => m().showmeOpen(projectId, id) as Promise<StoredWalkthrough>,
   listSessions: (projectId: string) => m().listSessions(projectId) as Promise<SessionSummary[]>,
   getSession: (projectId: string, id: string) => m().getSession(projectId, id) as Promise<ChatSession | null>,
   deleteSession: (projectId: string, id: string) => m().deleteSession(projectId, id) as Promise<void>,

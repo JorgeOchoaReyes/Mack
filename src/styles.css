@@ -723,6 +723,15 @@ body:has(.resizer.dragging) { cursor: col-resize; user-select: none; }
 .showme-done { display: flex; align-items: center; gap: 8px; font-weight: 600; }
 .showme-foot { border-top: 1px solid var(--border); padding-top: 10px; }
 .showme-note { margin-left: auto; text-align: right; }
+.showme-versions { display: inline-flex; align-items: center; gap: 4px; }
+.showme-versions select { background: var(--bg); color: inherit; border: 1px solid var(--border); border-radius: 6px; padding: 2px 4px; font: inherit; max-width: 260px; }
+.showme-note .warn { color: var(--warn); }
+.showme-problem { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 14px; }
+.showme-problem h2 { margin: 2px 0 6px; font-size: 1.05em; }
+.showme-problem p { margin: 4px 0; }
+.showme-defined { border-left: 2px solid var(--accent); padding-left: 10px; margin: 8px 0; }
+.showme-relates { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.showme-relates span { border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; }
 .viz-cell { fill: var(--surface); stroke: var(--muted); stroke-width: 1; }
 .viz-dot { fill: var(--accent); }
 .viz-square { fill: rgb(255 214 10 / 0.25); stroke: var(--text); stroke-width: 3; transition: x 0.3s, y 0.3s; }
@@ -839,3 +848,7 @@ body:has(.resizer.dragging) { cursor: col-resize; user-select: none; }
 .prove-chip { cursor: pointer; padding: 2px 4px 2px 9px; gap: 6px; }
 .prove-chip:hover { border-color: var(--accent-edge); }
 .prove-chip-go { display: inline-flex; align-items: center; gap: 3px; font-family: var(--sans, inherit); font-size: 11px; color: var(--accent-text); background: var(--accent-soft); border-radius: 99px; padding: 1px 7px; }
+.plan-saved-list { list-style: none; margin: 0; padding: 0 0 0 8px; }
+.plan-saved-row { display: flex; align-items: center; gap: 6px; width: 100%; background: none; border: none; color: inherit; text-align: left; padding: 4px 6px; border-radius: 6px; cursor: pointer; font: inherit; }
+.plan-saved-row:hover { background: var(--sunken); }
+.plan-saved-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

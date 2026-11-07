@@ -1,6 +1,6 @@
-import { AlarmClock, BookOpen, BookOpenCheck, Bot, Calculator, ChevronRight, FileCheck2, FileCode, GitPullRequest, Globe, MessagesSquare, Network, Route, Rows3, Terminal, Users, CircleCheck, CircleDashed, CircleDot, CircleSlash, Lightbulb, OctagonAlert, PenLine, ShieldCheck, Sparkles, X, type LucideIcon } from "lucide-react";
+import { History, AlarmClock, BookOpen, BookOpenCheck, Bot, Calculator, ChevronRight, FileCheck2, FileCode, GitPullRequest, Globe, MessagesSquare, Network, Route, Rows3, Terminal, Users, CircleCheck, CircleDashed, CircleDot, CircleSlash, Lightbulb, OctagonAlert, PenLine, ShieldCheck, Sparkles, X, type LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
-import { api, type ChatWire, type Plan, type PlanStep, type Proved, type StepKind, type StepStatus, type StepVia } from "../api";
+import { api, type ChatWire, type SavedWalkthrough, type Plan, type PlanStep, type Proved, type StepKind, type StepStatus, type StepVia } from "../api";
 import { ProofPathView } from "./ProofPathView";
 import { ShareProofDialog } from "./ShareProofDialog";
 import { timeAgo } from "./ui";
@@ -46,13 +46,23 @@ function firstSentence(text: string): string {
  * The problem's plan beside the chat, short by default: the goal, a one-line outlook and one line per step.
  * Everything else (the full outlook, why a step matters, what came of it) opens on a click.
  */
-export function PlanView({ projectId, onAsk, onClose, onOpenInProve, onOpenRun, onShowMe }: { projectId: string; onAsk: (text: string) => void; onClose: () => void; onOpenInProve?: (path: string) => void; onOpenRun?: (id: string) => void; onShowMe?: (file: string) => void }) {
+export function PlanView({ projectId, onAsk, onClose, onOpenInProve, onOpenRun, onShowMe, savedKey }: { projectId: string; onAsk: (text: string) => void; onClose: () => void; onOpenInProve?: (path: string) => void; onOpenRun?: (id: string) => void; onShowMe?: (file: string, savedId?: string) => void; savedKey?: number }) {
   const [plan, setPlan] = useState<Plan | null>(null);
   const [goalOpen, setGoalOpen] = useState(false);
   const [openSteps, setOpenSteps] = useState<Set<string>>(new Set());
   const [showFinished, setShowFinished] = useState(false);
   const [pathOf, setPathOf] = useState<Proved | null>(null);
   const [shareOf, setShareOf] = useState<Proved | null>(null);
+  // Walkthroughs kept in the problem folder, to review again.
+  const [saved, setSaved] = useState<SavedWalkthrough[]>([]);
+  const [showSaved, setShowSaved] = useState(false);
+  useEffect(() => {
+    let live = true;
+    void api.showmeList(projectId).then((l) => live && setSaved(l)).catch(() => live && setSaved([]));
+    return () => {
+      live = false;
+    };
+  }, [projectId, savedKey, plan?.updatedAt]);
 
   useEffect(() => {
     let live = true;
@@ -81,7 +91,7 @@ export function PlanView({ projectId, onAsk, onClose, onOpenInProve, onOpenRun, 
   const finished = steps.filter((s) => s.status === "done" || s.status === "dropped");
   const ahead = steps.filter((s) => s.status !== "done" && s.status !== "dropped");
   const proved = [...(plan?.proved ?? [])].reverse();
-  const empty = !plan || (!plan.goal && !steps.length && !proved.length);
+  const empty = !plan || (!plan.goal && !steps.length && !proved.length && !saved.length);
 
   return (
     <aside className="plan">
@@ -175,6 +185,31 @@ export function PlanView({ projectId, onAsk, onClose, onOpenInProve, onOpenRun, 
                   </li>
                 ))}
               </ul>
+            </section>
+          )}
+
+          {onShowMe && saved.length > 0 && (
+            <section className="plan-saved" aria-label="Saved walkthroughs">
+              <button className="plan-group" onClick={() => setShowSaved(!showSaved)} title="Every Show me walkthrough written for this problem is kept in its folder (.mack/showme/), including earlier versions">
+                <ChevronRight size={12} style={{ transform: showSaved ? "rotate(90deg)" : undefined }} />
+                <History size={12} /> Saved walkthroughs ({saved.length})
+              </button>
+              {showSaved && (
+                <ul className="plan-saved-list">
+                  {saved.map((w) => (
+                    <li key={w.id}>
+                      <button className="plan-saved-row" title={w.idea} onClick={() => onShowMe(w.file, w.id)}>
+                        <BookOpenCheck size={12} className="accent" />
+                        <span className="plan-saved-name">{w.file === "*" ? "The whole proof" : <code>{w.theorem ?? w.file.split("/").pop()}</code>}</span>
+                        <span className="muted small">
+                          {w.steps} steps · {timeAgo(w.createdAt)}
+                          {w.current ? "" : " · earlier proof"}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </section>
           )}
 
