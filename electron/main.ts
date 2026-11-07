@@ -83,8 +83,6 @@ export type Settings = {
   upstreamCheck: boolean;
   /** An upstream head the user chose to stay behind; no banner until upstream moves past it. */
   upstreamDismissed: string;
-  /** The folder the Prove page lists .lean files from; empty when none is open. */
-  proveFolder: string;
 };
 
 export type RunMode = "single" | "search" | "ultramath";
@@ -120,13 +118,15 @@ export type RunRecord = {
   provider?: ProviderId;
   /** Absent on runs recorded before the search tree: those were "single". */
   mode?: RunMode;
+  /** The project the run belongs to; absent on runs recorded before projects. */
+  projectId?: string;
   problem: string;
   outcome: "solved" | "failed";
   message: string;
   events: RunEvent[];
 };
 
-export type RunSummary = Pick<RunRecord, "id" | "startedAt" | "finishedAt" | "model" | "mode" | "outcome" | "message"> & {
+export type RunSummary = Pick<RunRecord, "id" | "startedAt" | "finishedAt" | "model" | "mode" | "projectId" | "outcome" | "message"> & {
   theorem: string;
   attempts: number;
 };
@@ -159,7 +159,6 @@ const DEFAULTS: Settings = {
   runConcurrency: 1,
   upstreamCheck: true,
   upstreamDismissed: "",
-  proveFolder: "",
 };
 
 const userData = (...p: string[]) => join(app.getPath("userData"), ...p);
@@ -461,7 +460,7 @@ function newMeter(s: Settings, model: string, spent = 0, capped = true): { meter
 }
 
 /** One proof run in the given mode, recorded in the run history. Shared by the Prove screen and the chat's `start_proof`. */
-async function runProof(problem: string, mode: RunMode, forward: (ev: RunEvent) => void): Promise<RunRecord> {
+async function runProof(problem: string, mode: RunMode, projectId: string, forward: (ev: RunEvent) => void): Promise<RunRecord> {
   if (proving) throw new Error("a proof run is already in progress");
   const s = { ...readSettings(), mode };
   const model = s.models[s.provider];
@@ -486,6 +485,7 @@ async function runProof(problem: string, mode: RunMode, forward: (ev: RunEvent) 
     model,
     provider: s.provider,
     mode: s.mode,
+    projectId,
     problem,
     outcome: "failed",
     message: "",
@@ -543,8 +543,9 @@ async function runProof(problem: string, mode: RunMode, forward: (ev: RunEvent) 
   return record;
 }
 
-ipcMain.handle("prove:start", async (e, problem: string) => {
-  const record = await runProof(problem, readSettings().mode, (ev) => {
+ipcMain.handle("prove:start", async (e, problem: string, projectId: string) => {
+  chat.project(projectId);
+  const record = await runProof(problem, readSettings().mode, projectId, (ev) => {
     if (!e.sender.isDestroyed()) e.sender.send("prove:event", ev);
   });
   return record.id;
@@ -578,21 +579,31 @@ ipcMain.handle("runs:delete", (_e, id: string) => {
   if (/^\d+$/.test(id)) rmSync(join(runsDir(), `${id}.json`), { force: true });
 });
 
-ipcMain.handle("file:saveLean", async (e, name: string, text: string) => {
+/** A project's folder, or undefined for none or an unknown one: dialogs then open where Windows last left them. */
+function folderOf(projectId?: string): string | undefined {
+  try {
+    return projectId ? chat.project(projectId).folder : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+ipcMain.handle("file:saveLean", async (e, name: string, text: string, projectId?: string) => {
   const win = BrowserWindow.fromWebContents(e.sender);
-  const r = await dialog.showSaveDialog(win!, { defaultPath: `${name}.lean`, filters: [{ name: "Lean", extensions: ["lean"] }] });
+  const folder = folderOf(projectId);
+  const r = await dialog.showSaveDialog(win!, { defaultPath: folder ? join(folder, `${name}.lean`) : `${name}.lean`, filters: [{ name: "Lean", extensions: ["lean"] }] });
   if (r.canceled || !r.filePath) return false;
   writeFileSync(r.filePath, text, "utf8");
   return true;
 });
 
-ipcMain.handle("file:openLean", async (e) => {
+ipcMain.handle("file:openLean", async (e, projectId?: string) => {
   const win = BrowserWindow.fromWebContents(e.sender);
-  const r = await dialog.showOpenDialog(win!, { properties: ["openFile"], filters: [{ name: "Lean", extensions: ["lean"] }] });
+  const r = await dialog.showOpenDialog(win!, { defaultPath: folderOf(projectId), properties: ["openFile"], filters: [{ name: "Lean", extensions: ["lean"] }] });
   return r.canceled ? null : readFileSync(r.filePaths[0], "utf8");
 });
 
-/** A folder of problems on the Prove page, with its .lean files relative to it. */
+/** A project's folder on the Prove page, with its .lean files relative to it. */
 export type LeanFolder = { folder: string; files: string[] };
 
 const SKIP_DIRS = new Set([".lake", ".git", ".github", ".mack", "node_modules", "build"]);
@@ -614,27 +625,14 @@ function leanFiles(root: string, dir = "", out: string[] = []): string[] {
   return out;
 }
 
-const leanFolder = (folder: string): LeanFolder | null => (folder && existsSync(folder) ? { folder, files: leanFiles(folder) } : null);
-
-ipcMain.handle("file:openLeanFolder", async (e) => {
-  const win = BrowserWindow.fromWebContents(e.sender);
-  const r = await dialog.showOpenDialog(win!, { properties: ["openDirectory"], title: "Open a folder of Lean problems" });
-  if (r.canceled || !r.filePaths.length) return null;
-  writeSettings({ proveFolder: r.filePaths[0] });
-  return leanFolder(r.filePaths[0]);
+ipcMain.handle("file:leanFolder", (_e, projectId: string): LeanFolder => {
+  const folder = chat.project(projectId).folder;
+  return { folder, files: leanFiles(folder) };
 });
 
-ipcMain.handle("file:leanFolder", () => leanFolder(readSettings().proveFolder));
-
-ipcMain.handle("file:closeLeanFolder", () => {
-  writeSettings({ proveFolder: "" });
-});
-
-ipcMain.handle("file:readLeanIn", async (_e, rel: string) => {
-  const folder = readSettings().proveFolder;
-  if (!folder) throw new Error("no folder is open");
+ipcMain.handle("file:readLeanIn", async (_e, projectId: string, rel: string) => {
   if (typeof rel !== "string" || !rel.endsWith(".lean")) throw new Error("not a .lean file");
-  return readFileSync(await confine(folder, rel), "utf8");
+  return readFileSync(await confine(chat.project(projectId).folder, rel), "utf8");
 });
 
 registerUpdates(() => readSettings().autoUpdate);
@@ -815,14 +813,15 @@ function runTool(call: { name: string; args: Record<string, unknown> }, ctx: { p
   }
 }
 
-ipcMain.handle("discovery:list", () => runs.list());
+/** A project's runs, and those started before runs belonged to projects. */
+ipcMain.handle("discovery:list", (_e, projectId: string) => runs.list().filter((r) => r.project === projectId || r.project === ""));
 ipcMain.handle("discovery:status", (_e, run: string) => runs.status(run));
 ipcMain.handle("discovery:tree", (_e, run: string, problem: string) => runs.tree(run, problem));
 ipcMain.handle("discovery:stop", (_e, run: string) => runs.stop(run));
 ipcMain.handle("discovery:resume", (_e, run: string) => runs.resume(run));
-ipcMain.handle("discovery:startFiles", async (e) => {
+ipcMain.handle("discovery:startFiles", async (e, projectId: string) => {
   const win = BrowserWindow.fromWebContents(e.sender);
-  const r = await dialog.showOpenDialog(win!, { properties: ["openFile", "multiSelections"], filters: [{ name: "Lean", extensions: ["lean"] }], title: "Problems for a proof-search run" });
+  const r = await dialog.showOpenDialog(win!, { defaultPath: chat.project(projectId).folder, properties: ["openFile", "multiSelections"], filters: [{ name: "Lean", extensions: ["lean"] }], title: "Problems for a proof-search run" });
   if (r.canceled || !r.filePaths.length) return null;
   const s = readSettings();
   newMeter(s, s.models[s.provider]);
@@ -831,7 +830,7 @@ ipcMain.handle("discovery:startFiles", async (e) => {
     const objection = frozenObjection(p.frozen);
     if (objection) throw new Error(`${p.id} is not a usable frozen file: ${objection}`);
   }
-  return runs.start({ name: `run-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}`, project: "", problems, limits: s.search, worker: s.searchWorker, concurrency: s.runConcurrency, analysis: s.searchAnalysis });
+  return runs.start({ name: `run-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}`, project: projectId, problems, limits: s.search, worker: s.searchWorker, concurrency: s.runConcurrency, analysis: s.searchAnalysis });
 });
 
 loadDotEnv();

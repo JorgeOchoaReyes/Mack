@@ -1,6 +1,6 @@
-import { BookOpen, ChevronDown, FileCode, FolderOpen, FolderTree, GitBranch, RefreshCw, X, Play, Square, Sparkles, CircleCheck, CircleAlert, Cpu, Repeat, Users } from "lucide-react";
+import { BookOpen, ChevronDown, FileCode, FolderOpen, GitBranch, RefreshCw, Play, Save, Square, Sparkles, CircleCheck, CircleAlert, Cpu, Repeat, Users } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { api, errorText, theoremName, type Health, type LeanFolder, type RunEvent, type Settings } from "../api";
+import { api, errorText, theoremName, type Health, type LeanFolder, type Project, type RunEvent, type Settings } from "../api";
 import { providerInfo } from "../../core/model/providers";
 import { formatUsd } from "../../core/model/metered";
 import { CodeEditor } from "../components/CodeEditor";
@@ -9,12 +9,14 @@ import { TreeSummary, TreeView, type NodeEvent } from "../components/TreeView";
 import { AcceptedCard, UltramathView } from "../components/UltramathView";
 import { problemKind } from "../../core/lean/rules";
 import { Button, Spinner } from "../components/ui";
+import { Resizer, usePanelWidth } from "../components/Resizer";
 import { EXAMPLES } from "../examples";
 
 type Attempt = Extract<RunEvent, { type: "attempt" }>;
 type Solved = Extract<RunEvent, { type: "solved" }>;
 
 type Props = {
+  project: Project;
   problem: string;
   setProblem: (p: string) => void;
   health: Health | null;
@@ -25,7 +27,7 @@ type Props = {
   onRunFinished: () => void;
 };
 
-export function ProvePage({ problem, setProblem, health, settings, saveSettings, onGoSetup, onHealthChange, onRunFinished }: Props) {
+export function ProvePage({ project, problem, setProblem, health, settings, saveSettings, onGoSetup, onHealthChange, onRunFinished }: Props) {
   const maxAttempts = settings.maxAttempts;
   const [running, setRunning] = useState(false);
   const [status, setStatus] = useState("");
@@ -39,6 +41,30 @@ export function ProvePage({ problem, setProblem, health, settings, saveSettings,
   const [failure, setFailure] = useState("");
   const [examplesOpen, setExamplesOpen] = useState(false);
   const [folder, setFolder] = useState<LeanFolder | null>(null);
+  // Panel widths the person drags; they give way when the window is narrow, so the run pane keeps room.
+  const [filesWidth, setFilesWidth] = usePanelWidth("mack.leanFilesWidth", 240, 160, 480);
+  const [editorWidth, setEditorWidth] = usePanelWidth("mack.leanEditorWidth", 560, 300, 1400);
+  const splitBox = useRef<HTMLDivElement>(null);
+  const [splitWidth, setSplitWidth] = useState(0);
+  useEffect(() => {
+    const el = splitBox.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => setSplitWidth(e.contentRect.width));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const RUN_MIN = 340;
+  let filesShown = folder ? filesWidth : 0;
+  let editorShown = editorWidth;
+  if (splitWidth > 0) {
+    let over = filesShown + editorShown + RUN_MIN - splitWidth;
+    if (over > 0) {
+      const cut = Math.min(over, Math.max(0, editorShown - 300));
+      editorShown -= cut;
+      over -= cut;
+    }
+    if (over > 0 && folder) filesShown = Math.max(160, filesShown - over);
+  }
   const [openFile, setOpenFile] = useState<string | null>(null);
   const [started, setStarted] = useState(0);
   const [, tick] = useState(0);
@@ -60,12 +86,12 @@ export function ProvePage({ problem, setProblem, health, settings, saveSettings,
   );
 
   useEffect(() => {
-    void api.leanFolder().then(setFolder);
-  }, []);
+    void api.leanFolder(project.id).then(setFolder, () => setFolder(null));
+  }, [project.id]);
 
   const loadFile = async (path: string) => {
     try {
-      setProblem(await api.readLeanIn(path));
+      setProblem(await api.readLeanIn(project.id, path));
       setOpenFile(path);
     } catch (e) {
       setFailure(errorText(e));
@@ -104,7 +130,7 @@ export function ProvePage({ problem, setProblem, health, settings, saveSettings,
     setStarted(Date.now());
     setRunning(true);
     try {
-      await api.startProve(problem);
+      await api.startProve(problem, project.id);
     } catch (e) {
       setFailure(errorText(e));
     } finally {
@@ -159,7 +185,7 @@ export function ProvePage({ problem, setProblem, health, settings, saveSettings,
           <Button
             icon={FolderOpen}
             onClick={async () => {
-              const text = await api.openLean();
+              const text = await api.openLean(project.id);
               if (text !== null) {
                 setProblem(text);
                 setOpenFile(null);
@@ -169,17 +195,13 @@ export function ProvePage({ problem, setProblem, health, settings, saveSettings,
             Open
           </Button>
           <Button
-            icon={FolderTree}
-            title="Open a folder and list every .lean file in it"
+            icon={Save}
+            title="Save this statement as a .lean file in the problem folder"
             onClick={async () => {
-              const f = await api.openLeanFolder();
-              if (f) {
-                setFolder(f);
-                setOpenFile(null);
-              }
+              if (await api.saveLean(theoremName(problem), problem, project.id)) setFolder(await api.leanFolder(project.id));
             }}
           >
-            Folder
+            Save
           </Button>
           {running ? (
             <Button variant="danger" icon={Square} onClick={() => void api.stopProve()}>
@@ -193,21 +215,17 @@ export function ProvePage({ problem, setProblem, health, settings, saveSettings,
         </div>
       </div>
 
-      <div className={folder ? "split with-files" : "split"}>
+      <div className="split" ref={splitBox} style={{ gridTemplateColumns: `${folder ? `${filesShown}px 0 ` : ""}${editorShown}px 0 minmax(0, 1fr)` }}>
         {folder && (
           <FilesPane
             folder={folder}
             current={openFile}
             disabled={running}
             onPick={(p) => void loadFile(p)}
-            onRefresh={() => void api.leanFolder().then(setFolder)}
-            onClose={() => {
-              void api.closeLeanFolder();
-              setFolder(null);
-              setOpenFile(null);
-            }}
+            onRefresh={() => void api.leanFolder(project.id).then(setFolder)}
           />
         )}
+        {folder && <Resizer width={filesShown} onWidth={setFilesWidth} side="left" defaultWidth={240} label="Resize the file list" />}
         <section className="pane editor-pane">
           <div className="pane-head">
             <span>Frozen statement</span>
@@ -221,6 +239,7 @@ export function ProvePage({ problem, setProblem, health, settings, saveSettings,
           </div>
         </section>
 
+        <Resizer width={editorShown} onWidth={setEditorWidth} side="left" defaultWidth={560} label="Resize the editor" />
         <section className="pane run-pane">
           <div className="pane-head">
             <span>Run</span>
@@ -297,6 +316,7 @@ export function ProvePage({ problem, setProblem, health, settings, saveSettings,
               <SolvedCard
                 solved={solved}
                 problem={problem}
+                projectId={project.id}
                 where={runMode === "search" ? `Node ${solved.n} of the search tree` : runMode === "ultramath" ? `Member ${solved.n}` : undefined}
               />
             )}
@@ -368,27 +388,23 @@ function HowItWorks({ mode }: { mode: Settings["mode"] }) {
   );
 }
 
-function FilesPane({ folder, current, disabled, onPick, onRefresh, onClose }: { folder: LeanFolder; current: string | null; disabled: boolean; onPick: (path: string) => void; onRefresh: () => void; onClose: () => void }) {
+function FilesPane({ folder, current, disabled, onPick, onRefresh }: { folder: LeanFolder; current: string | null; disabled: boolean; onPick: (path: string) => void; onRefresh: () => void }) {
   const [filter, setFilter] = useState("");
   const q = filter.trim().toLowerCase();
   const shown = q ? folder.files.filter((f) => f.toLowerCase().includes(q)) : folder.files;
-  const name = folder.folder.split(/[\\/]/).filter(Boolean).pop() ?? folder.folder;
   return (
     <section className="pane files-pane">
       <div className="pane-head">
-        <span title={folder.folder}>{name}</span>
+        <span title={folder.folder}>Problem files</span>
         <span className="files-actions">
-          <button className="icon-btn" title="Rescan the folder" onClick={onRefresh}>
+          <button className="icon-btn" title="Look for new files" onClick={onRefresh}>
             <RefreshCw size={13} />
-          </button>
-          <button className="icon-btn" title="Close the folder" onClick={onClose}>
-            <X size={13} />
           </button>
         </span>
       </div>
       <input className="files-filter" placeholder={`Filter ${folder.files.length} files`} value={filter} onChange={(e) => setFilter(e.target.value)} />
       <div className="files-list">
-        {shown.length === 0 && <div className="muted small files-empty">{folder.files.length ? "No file matches." : "No .lean files in this folder."}</div>}
+        {shown.length === 0 && <div className="muted small files-empty">{folder.files.length ? "No file matches." : "No .lean files yet. Save a statement or a proof here and it shows up."}</div>}
         {shown.map((f) => {
           const slash = f.lastIndexOf("/");
           return (

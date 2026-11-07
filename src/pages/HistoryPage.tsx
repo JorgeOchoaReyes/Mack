@@ -1,19 +1,19 @@
 import { ArrowLeft, CircleAlert, History, RotateCcw, ShieldCheck, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { api, type RunEvent, type RunRecord, type RunSummary } from "../api";
+import { api, type Project, type RunEvent, type RunRecord, type RunSummary } from "../api";
 import { CodeEditor } from "../components/CodeEditor";
 import { SolvedCard, Timeline } from "../components/RunView";
 import { TreeSummary, TreeView, type NodeEvent } from "../components/TreeView";
 import { AcceptedCard, UltramathView } from "../components/UltramathView";
-import { Button, formatMs, timeAgo } from "../components/ui";
+import { Button, formatMs, RunGroups, timeAgo } from "../components/ui";
 
-type Props = { refreshKey: number; onRerun: (problem: string) => void };
+type Props = { project: Project; refreshKey: number; onRerun: (problem: string) => void };
 
-export function HistoryPage({ refreshKey, onRerun }: Props) {
+export function HistoryPage({ project, refreshKey, onRerun }: Props) {
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const [open, setOpen] = useState<RunRecord | null>(null);
 
-  const reload = () => void api.listRuns().then(setRuns);
+  const reload = () => void api.listRuns().then((all) => setRuns(all.filter((r) => r.projectId === project.id || !r.projectId)));
   useEffect(reload, [refreshKey]);
 
   if (open) {
@@ -55,7 +55,7 @@ export function HistoryPage({ refreshKey, onRerun }: Props) {
           <CodeEditor value={open.problem} readOnly />
         </div>
         {solved ? (
-          <SolvedCard solved={solved} problem={open.problem} where={where} />
+          <SolvedCard solved={solved} problem={open.problem} where={where} projectId={project.id} />
         ) : accepted ? (
           <AcceptedCard accepted={accepted} />
         ) : (
@@ -79,16 +79,16 @@ export function HistoryPage({ refreshKey, onRerun }: Props) {
     <div className="page">
       <div className="page-head">
         <h1>History</h1>
-        <p className="muted">Every run is kept on this computer, with each attempt and what Lean said about it.</p>
+        <p className="muted">Every proof attempt in {project.name}, with what the model tried and what Lean said about it. Open one in the editor to try it again.</p>
       </div>
       {runs.length === 0 ? (
         <div className="empty">
           <History size={28} />
-          <p>No runs yet.</p>
+          <p>Nothing proved in {project.name} yet.</p>
         </div>
       ) : (
-        <div className="run-list">
-          {runs.map((r) => (
+        <RunGroups items={runs} inProject={(r) => !!r.projectId}>
+          {(r) => (
             <button key={r.id} className="run-row" onClick={() => void api.getRun(r.id).then(setOpen)}>
               {r.outcome === "solved" ? <ShieldCheck size={17} className="ok" /> : <CircleAlert size={17} className="bad" />}
               <span className="run-thm mono">{r.theorem}</span>
@@ -102,8 +102,8 @@ export function HistoryPage({ refreshKey, onRerun }: Props) {
                 · {r.model.split("/").pop()} · {timeAgo(r.startedAt)}
               </span>
             </button>
-          ))}
-        </div>
+          )}
+        </RunGroups>
       )}
     </div>
   );

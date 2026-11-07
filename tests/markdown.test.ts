@@ -23,3 +23,16 @@ describe("chat markdown", () => {
     expect(cells("a | b | c")).toEqual(["a", "b", "c"]);
   });
 });
+
+describe("splitChoices", () => {
+  it("takes the options out of a choices block and leaves the rest", async () => {
+    const { splitChoices } = await import("../src/components/chat/Markdown");
+    const r = splitChoices("Which first?\n\n```choices\n- Read the existing formalization first\n2. Build the API from scratch\n```");
+    expect(r.body).toBe("Which first?");
+    expect(r.choices).toEqual(["Read the existing formalization first", "Build the API from scratch"]);
+  });
+  it("leaves a message without one alone", async () => {
+    const { splitChoices } = await import("../src/components/chat/Markdown");
+    expect(splitChoices("Just text.")).toEqual({ body: "Just text.", choices: [] });
+  });
+});

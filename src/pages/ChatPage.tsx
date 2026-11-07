@@ -1,6 +1,6 @@
 import { UltramathView } from "../components/UltramathView";
 import type { RunEvent, SwarmRecord } from "../api";
-import { AlarmClock, Brain, ChevronRight, Users, Download, ExternalLink, GitCompare, GitPullRequest, KeyRound, FolderOpen, FolderPlus, MessageSquarePlus, ShieldAlert, Terminal, Trash2, Wrench, X } from "lucide-react";
+import { AlarmClock, Brain, Check, ChevronRight, Rocket, Users, Download, ExternalLink, GitCompare, GitPullRequest, KeyRound, ListChecks, MessageSquarePlus, ShieldAlert, ShieldCheck, Terminal, Trash2, Wrench, X } from "lucide-react";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import {
   api,
@@ -23,25 +23,38 @@ import {
 import { CodeEditor } from "../components/CodeEditor";
 import { Activity } from "../components/chat/Activity";
 import { Composer, type SlashCommand } from "../components/chat/Composer";
-import { Markdown, visible } from "../components/chat/Markdown";
+import { Markdown, splitChoices, visible } from "../components/chat/Markdown";
 import { Logo } from "../components/Logo";
+import { PlanView } from "../components/PlanView";
+import { Resizer, usePanelWidth } from "../components/Resizer";
 import { formatUsd } from "../../core/model/metered";
 import { Badge, Button, Spinner, timeAgo, Toggle } from "../components/ui";
 
-type Props = { health: Health | null; settings: Settings; saveSettings: (s: Partial<Settings>) => Promise<void>; onGoSetup: () => void };
+type Props = {
+  project: Project;
+  health: Health | null;
+  settings: Settings;
+  saveSettings: (s: Partial<Settings>) => Promise<void>;
+  onGoSetup: () => void;
+  /** The problem as the person first described it: sent as the first message of a new problem. */
+  firstMessage?: string;
+  onFirstMessageUsed?: () => void;
+};
 
-const LAST_PROJECT = "mack.chatProject";
+const PLAN_KEY = "mack.planOpen";
+
+function planOpenAtStart(): boolean {
+  try {
+    return localStorage.getItem(PLAN_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
+
 const EFFORTS: ReasoningEffort[] = ["off", "on", "low", "medium", "high", "xhigh"];
 
-export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [projectId, setProjectId] = useState<string>(() => {
-    try {
-      return localStorage.getItem(LAST_PROJECT) ?? "";
-    } catch {
-      return "";
-    }
-  });
+export function ChatPage({ project, health, settings, saveSettings, onGoSetup, firstMessage, onFirstMessageUsed }: Props) {
+  const projectId = project.id;
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [session, setSession] = useState<ChatSession | null>(null);
   const [draft, setDraft] = useState("");
@@ -54,32 +67,48 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
   const [approvals, setApprovals] = useState<PendingApproval[]>([]);
   const [panel, setPanel] = useState<"none" | "memory" | "tools" | "review" | "swarms">("none");
   const [secretMarks, setSecretMarks] = useState<Record<number, Finding[]>>({});
-  const [newName, setNewName] = useState("");
-  const [projectError, setProjectError] = useState("");
+  const [planOpen, setPlanOpenState] = useState(planOpenAtStart);
+  /** Auto mode for the chat the next message starts, before it exists. */
+  const [newChatAuto, setNewChatAuto] = useState(false);
+  /** Why auto mode last paused, shown until the person acts. */
+  const [autoNote, setAutoNote] = useState("");
+  const [sideWidth, setSideWidth] = usePanelWidth("mack.chatSideWidth", 240, 160, 420);
+  const [planWidth, setPlanWidth] = usePanelWidth("mack.planWidth", 320, 220, 640);
+  // The saved widths give way when the window is narrow, so the conversation always keeps room.
+  const chatBox = useRef<HTMLDivElement>(null);
+  const [boxWidth, setBoxWidth] = useState(0);
+  useEffect(() => {
+    const el = chatBox.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => setBoxWidth(e.contentRect.width));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const MAIN_MIN = 380;
+  let sideShown = sideWidth;
+  let planShown = planOpen ? planWidth : 0;
+  if (boxWidth > 0) {
+    let over = sideShown + planShown + MAIN_MIN - boxWidth;
+    if (over > 0 && planOpen) {
+      const cut = Math.min(over, planShown - 220);
+      planShown -= Math.max(0, cut);
+      over -= Math.max(0, cut);
+    }
+    if (over > 0) sideShown = Math.max(160, sideShown - over);
+  }
+  const setPlanOpen = (v: boolean) => {
+    setPlanOpenState(v);
+    try {
+      localStorage.setItem(PLAN_KEY, v ? "1" : "0");
+    } catch {
+      // Only a remembered layout.
+    }
+  };
   const scroller = useRef<HTMLDivElement>(null);
   const sessionRef = useRef<ChatSession | null>(null);
   sessionRef.current = session;
 
-  const project = projects.find((p) => p.id === projectId);
   const ready = !!health && health.keySource !== "none" && !!health.model;
-
-  const create = async (name: string) => {
-    setProjectError("");
-    try {
-      const p = await api.createProject(name);
-      setNewName("");
-      await reloadProjects();
-      setProjectId(p.id);
-    } catch (err) {
-      setProjectError(errorText(err));
-    }
-  };
-
-  const reloadProjects = useCallback(async () => {
-    const ps = await api.listProjects();
-    setProjects(ps);
-    if (!ps.some((p) => p.id === projectId)) setProjectId(ps[0]?.id ?? "");
-  }, [projectId]);
 
   const reloadSession = useCallback(async () => {
     const cur = sessionRef.current;
@@ -90,23 +119,13 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
   }, []);
 
   useEffect(() => {
-    void reloadProjects();
     void api.listApprovals().then(setApprovals);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(LAST_PROJECT, projectId);
-    } catch {
-      // Remembering the last project is only a convenience.
-    }
-    setSession(null);
-    setSuggestion(null);
-    if (projectId) {
-      void api.listSessions(projectId).then(setSessions);
-      if (settings.suggestions) void api.suggestStart().then((s) => !sessionRef.current && setSuggestion(s));
-    } else setSessions([]);
+    void api.listSessions(projectId).then(setSessions);
+    if (settings.suggestions) void api.suggestStart().then((s) => !sessionRef.current && setSuggestion(s));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
@@ -115,8 +134,13 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
       api.onChatEvent((w: ChatWire) => {
         if ("approval" in w) return setApprovals((a) => [...a, w.approval]);
         if ("approvalDone" in w) return setApprovals((a) => a.filter((x) => x.id !== w.approvalDone));
+        if ("plan" in w) return;
         const cur = sessionRef.current;
         const mine = cur?.id === w.sessionId;
+        if ("autoStopped" in w) {
+          if (mine) setAutoNote(w.autoStopped);
+          return;
+        }
         if ("suggestion" in w) {
           if (mine) setSuggestion(w.suggestion);
           return;
@@ -161,7 +185,7 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
 
   /** Leaving a session lets memory read it; failures only cost a memory, never the chat. */
   const rememberInBackground = () => {
-    if (projectId && sessionRef.current && sessionRef.current.messages.length > 1) void api.updateMemory(projectId).catch(() => {});
+    if (sessionRef.current && sessionRef.current.messages.length > 1) void api.updateMemory(projectId).catch(() => {});
   };
 
   const openSession = async (id: string | null) => {
@@ -174,9 +198,9 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
     setBusy(!!id && !!sessions.find((x) => x.id === id)?.busy);
   };
 
-  const sendMessage = async (sendNow = false) => {
-    const text = draft.trim();
-    if ((!text && !files.length) || !projectId) return;
+  const sendMessage = async (sendNow = false, override?: string) => {
+    const text = (override ?? draft).trim();
+    if (!text && !files.length) return;
     setDraft("");
     setFiles([]);
     setError("");
@@ -186,7 +210,8 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
       setStatus("Thinking…");
     }
     try {
-      const id = await api.sendChat(projectId, session?.id ?? null, text, { sendNow, attachments: files });
+      const id = await api.sendChat(projectId, session?.id ?? null, text, { sendNow, attachments: files, auto: !session && newChatAuto });
+      setAutoNote("");
       const s = await api.getSession(projectId, id);
       setSession(s);
       setSessions(await api.listSessions(projectId));
@@ -196,13 +221,28 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
     }
   };
 
+  // A new problem starts with the person's own description of it.
+  const firstSent = useRef(false);
+  useEffect(() => {
+    if (!firstMessage || firstSent.current) return;
+    firstSent.current = true;
+    onFirstMessageUsed?.();
+    const opening = `${firstMessage}
+
+I am new to this. Explain the problem in plain words, tell me honestly how hard it is and what is already known, then make a plan.`;
+    if (ready) void sendMessage(false, opening);
+    else setDraft(opening);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [firstMessage, ready]);
+
   const [skills, setSkills] = useState<{ name: string; description: string }[]>([]);
   useEffect(() => {
     if (projectId) void api.listSkills(projectId).then(setSkills).catch(() => setSkills([]));
   }, [projectId, session?.messages.length]);
 
   const commands: SlashCommand[] = [
-    { name: "/skill", hint: "List this project's skills", group: "Skills", send: true },
+    { name: "/plan", hint: "Make or update the plan for this problem", group: "Start", insert: "Update the plan: " },
+    { name: "/skill", hint: "List this problem's skills", group: "Skills", send: true },
     ...skills.map((k) => ({ name: `/skill ${k.name}`, hint: k.description || "Load this skill", group: "Skills" as const, send: true })),
     { name: "/skill https://", hint: "Load a published skill from its SKILL.md URL", group: "Skills", insert: "/skill https://" },
     { name: "/prove", hint: "Formalize a statement in Lean and run a proof search", group: "Start", insert: "Write the Lean 4 statement of the following, check that it compiles, then start a proof search on it: " },
@@ -211,7 +251,7 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
     { name: "/remind", hint: "Have the assistant come back to something later", group: "Start", insert: "In 30 minutes, remind yourself to " },
     { name: "/new", hint: "Start a new chat", group: "Chat", run: () => void openSession(null) },
     { name: "/export", hint: "Save this chat as Markdown, secrets masked", group: "Chat", run: () => session && void api.exportSession(projectId, session.id) },
-    { name: "/memory", hint: "What this project remembers", group: "Panels", run: () => setPanel("memory") },
+    { name: "/memory", hint: "What Mack remembers about this problem", group: "Panels", run: () => setPanel("memory") },
     { name: "/review", hint: "Uncommitted changes; open a pull request", group: "Panels", run: () => setPanel("review") },
     { name: "/tools", hint: "What the assistant can do, and approvals", group: "Panels", run: () => setPanel("tools") },
     { name: "/swarms", hint: "This chat's Ultramath swarms", group: "Panels", run: () => setPanel("swarms") },
@@ -222,51 +262,14 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
   const effort = session?.effort ?? settings.chatEffort;
 
   return (
-    <div className="chat">
+    <div className="chat" ref={chatBox} style={{ gridTemplateColumns: `${sideShown}px 0 minmax(0, 1fr)${planOpen ? ` 0 ${planShown}px` : ""}` }}>
       <aside className="chat-side">
         <div className="chat-side-head">
-          <select className="input" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-            {projects.length === 0 && <option value="">No project yet</option>}
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-          <form
-            className="row gap-sm"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void create(newName);
-            }}
-          >
-            <input className="input grow" placeholder="New project name" value={newName} onChange={(e) => setNewName(e.target.value)} />
-            <Button size="sm" icon={FolderPlus} type="submit" disabled={!newName.trim()} title="Create a project folder in MackProjects">
-              Create
-            </Button>
-          </form>
-          <button
-            className="link small"
-            type="button"
-            onClick={async () => {
-              setProjectError("");
-              try {
-                const p = await api.openProject();
-                if (p) {
-                  await reloadProjects();
-                  setProjectId(p.id);
-                }
-              } catch (err) {
-                setProjectError(errorText(err));
-              }
-            }}
-          >
-            <FolderOpen size={13} /> Or use an existing folder…
-          </button>
-          {projectError && <div className="notice notice-bad small">{projectError}</div>}
-          {project && <code className="path small">{project.folder}</code>}
+          <code className="path small" title="The problem folder: the assistant works on the files here">
+            {project.folder}
+          </code>
         </div>
-        <Button icon={MessageSquarePlus} disabled={!projectId} onClick={() => void openSession(null)}>
+        <Button icon={MessageSquarePlus} onClick={() => void openSession(null)}>
           New chat
         </Button>
         <div className="chat-sessions">
@@ -296,18 +299,23 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
           ))}
         </div>
         <div className="chat-side-foot">
-          <Button size="sm" variant="ghost" icon={Brain} disabled={!projectId} onClick={() => setPanel(panel === "memory" ? "none" : "memory")}>
+          <Button size="sm" variant="ghost" icon={Brain} onClick={() => setPanel(panel === "memory" ? "none" : "memory")}>
             Memory
           </Button>
           <Button size="sm" variant="ghost" icon={Wrench} onClick={() => setPanel(panel === "tools" ? "none" : "tools")}>
             What it can do
           </Button>
-          <Button size="sm" variant="ghost" icon={GitCompare} disabled={!projectId} onClick={() => setPanel(panel === "review" ? "none" : "review")}>
+          <Button size="sm" variant="ghost" icon={GitCompare} onClick={() => setPanel(panel === "review" ? "none" : "review")}>
             Review
           </Button>
-          <Button size="sm" variant="ghost" icon={Users} disabled={!projectId} onClick={() => setPanel(panel === "swarms" ? "none" : "swarms")}>
+          <Button size="sm" variant="ghost" icon={Users} onClick={() => setPanel(panel === "swarms" ? "none" : "swarms")}>
             Ultramath
           </Button>
+          {!planOpen && (
+            <Button size="sm" variant="ghost" icon={ListChecks} onClick={() => setPlanOpen(true)}>
+              Show the plan
+            </Button>
+          )}
           {session && (
             <Button size="sm" variant="ghost" icon={Download} onClick={() => void api.exportSession(projectId, session.id)} title="Save this chat as Markdown, secrets masked">
               Export
@@ -316,9 +324,10 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
         </div>
       </aside>
 
+      <Resizer width={sideShown} onWidth={setSideWidth} side="left" defaultWidth={240} label="Resize the chat list" />
       <section className="chat-main">
-        {panel === "memory" && projectId && <MemoryPanel projectId={projectId} onClose={() => setPanel("none")} />}
-        {panel === "review" && projectId && <ReviewPanel projectId={projectId} sessionId={session?.id ?? null} chatTitle={session?.title ?? ""} onClose={() => setPanel("none")} />}
+        {panel === "memory" && <MemoryPanel projectId={projectId} onClose={() => setPanel("none")} />}
+        {panel === "review" && <ReviewPanel projectId={projectId} sessionId={session?.id ?? null} chatTitle={session?.title ?? ""} onClose={() => setPanel("none")} />}
         {panel === "swarms" &&
           (session ? (
             <SwarmsPanel projectId={projectId} sessionId={session.id} onClose={() => setPanel("none")} />
@@ -353,41 +362,39 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
               to chat.
             </div>
           )}
-          {projects.length === 0 && (
-            <div className="how">
-              <h3>Create your first project</h3>
-              <p className="muted">
-                A project is a folder: the assistant reads and (with your approval) writes files there, runs commands, checks Lean, searches the web and reads
-                PDFs, starts proof runs and Ultramath once you approve, and keeps project memory for later chats.
-              </p>
-              <form
-                className="row gap-sm"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void create(newName);
-                }}
-              >
-                <input className="input grow" placeholder="Project name, e.g. odd-perfect" value={newName} onChange={(e) => setNewName(e.target.value)} />
-                <Button variant="primary" icon={FolderPlus} type="submit" disabled={!newName.trim()}>
-                  Create project
-                </Button>
-              </form>
-              {projectError && <div className="notice notice-bad small">{projectError}</div>}
-            </div>
-          )}
-          {project && !session && (
+          {!session && (
             <div className="welcome fade-in">
               <div className="welcome-logo">
                 <Logo />
               </div>
               <h2>{project.name}</h2>
-              <p className="muted">Ask about a problem, a paper or a proof. Type <kbd>/</kbd> for commands and skills; attach PDFs, images and .lean files with the clip.</p>
+              <p className="muted">Talk it through in plain words. The assistant explains, plans the work, reads what is known and tries proofs; you decide what it may do.</p>
+              <ol className="how-strip">
+                <li>
+                  <MessageSquarePlus size={15} />
+                  <span>
+                    <b>Talk</b> Describe the problem or ask a question.
+                  </span>
+                </li>
+                <li>
+                  <ListChecks size={15} />
+                  <span>
+                    <b>Plan</b> It breaks the work into steps, shown on the right.
+                  </span>
+                </li>
+                <li>
+                  <ShieldCheck size={15} />
+                  <span>
+                    <b>Check</b> Proofs go to Lean, a computer proof checker. Only what Lean accepts counts as proved.
+                  </span>
+                </li>
+              </ol>
               <div className="starters">
                 {[
-                  ["Formalize & prove", "Write the Lean 4 statement that every prime power is not a perfect number, check it compiles, then start a proof search."],
-                  ["Survey the literature", "Find the key papers on odd perfect numbers, save them here, and summarize what each proves."],
-                  ["Plan an attack", "Plan how to formalize Euler's theorem on the form of odd perfect numbers as a chain of Lean lemmas."],
-                  ["Explore with Ultramath", "Start Ultramath with 4 members on: find a new necessary condition on odd perfect numbers."],
+                  ["Explain it to me", `Explain "${project.name}" in plain words, as if I had no maths background. What is the question, and why do people care?`],
+                  ["What is known?", "What have mathematicians already proved about this problem? Find the key results and papers, save them here, and summarize each in plain words."],
+                  ["Make a plan", "Make a plan for this problem: tell me honestly how hard it is, and break the work into steps we can really do."],
+                  ["Prove a first piece", "Pick a small, known fact about this problem, state it in Lean, and try to prove it, explaining each step."],
                 ].map(([t, q]) => (
                   <button key={t} className="starter" onClick={() => setDraft(q)}>
                     <b>{t}</b>
@@ -397,14 +404,14 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
               </div>
             </div>
           )}
-          {session && <Conversation messages={session.messages} projectId={projectId} secretMarks={secretMarks} busy={busy} />}
+          {session && <Conversation messages={session.messages} projectId={projectId} secretMarks={secretMarks} busy={busy} onChoose={(c) => void sendMessage(false, c)} />}
           {streaming && visible(streaming) && (
             <div className="msg assistant fade-in">
               <div className="avatar">
                 <Logo />
               </div>
               <div className="msg-body">
-                <Markdown text={visible(streaming)} projectId={projectId} />
+                <Markdown text={splitChoices(visible(streaming)).body} projectId={projectId} />
                 <span className="cursor" />
               </div>
             </div>
@@ -413,6 +420,12 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
             <ApprovalCard key={a.id} approval={a} />
           ))}
           {otherApprovals.length > 0 && <div className="notice">Another chat is waiting for your approval.</div>}
+          {autoNote && !busy && (
+            <div className="event-note fade-in">
+              <Rocket size={13} />
+              <span>{autoNote}</span>
+            </div>
+          )}
           {busy && !(streaming && visible(streaming)) && (
             <div className="thinking fade-in">
               <span className="dots">
@@ -443,8 +456,8 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
           onRemoveFile={(f) => setFiles(files.filter((x) => x !== f))}
           commands={commands}
           busy={busy && !!session}
-          disabled={!project || !ready}
-          placeholder={project ? (busy ? "Add to the conversation…" : `Message the assistant about ${project.name}…`) : "Create a project first"}
+          disabled={!ready}
+          placeholder={busy ? "Add to the conversation…" : `Ask anything about ${project.name}…`}
           suggestion={suggestion}
           effort={effort}
           onEffort={async (v) => {
@@ -454,8 +467,22 @@ export function ChatPage({ health, settings, saveSettings, onGoSetup }: Props) {
             } else await saveSettings({ chatEffort: v });
           }}
           spend={session?.costUsd !== undefined ? formatUsd(session.costUsd) : undefined}
+          auto={session ? session.auto === true : newChatAuto}
+          onAuto={async (on) => {
+            if (session) {
+              setSession({ ...session, auto: on });
+              try {
+                await api.setAuto(projectId, session.id, on);
+                if (on) setAutoNote("");
+              } catch (e) {
+                setError(errorText(e));
+              }
+            } else setNewChatAuto(on);
+          }}
         />
       </section>
+      {planOpen && <Resizer width={planShown} onWidth={setPlanWidth} side="right" defaultWidth={320} label="Resize the plan" />}
+      {planOpen && <PlanView projectId={projectId} onAsk={(q) => void sendMessage(false, q)} onClose={() => setPlanOpen(false)} />}
     </div>
   );
 }
@@ -491,26 +518,55 @@ function items(messages: StoredMessage[]): Item[] {
   return out;
 }
 
-function Conversation({ messages, projectId, secretMarks, busy }: { messages: StoredMessage[]; projectId: string; secretMarks: Record<number, Finding[]>; busy: boolean }) {
+function Conversation({ messages, projectId, secretMarks, busy, onChoose }: { messages: StoredMessage[]; projectId: string; secretMarks: Record<number, Finding[]>; busy: boolean; onChoose: (choice: string) => void }) {
   const list = items(messages);
+  /** The person's reply right after a message, to show which option they took. */
+  const replyAfter = (k: number): string | undefined => {
+    const next = list.slice(k + 1).find((x) => x.kind === "user");
+    return next?.kind === "user" ? next.m.content.trim() : undefined;
+  };
   return (
     <>
       {list.map((it, k) => {
         const mark = secretMarks[it.index] && <SecretMark findings={secretMarks[it.index]} />;
         if (it.kind === "activity") return <Activity key={k} results={it.results} running={busy && k === list.length - 1} />;
-        if (it.kind === "assistant")
+        if (it.kind === "assistant") {
+          const { body, choices } = splitChoices(it.text);
+          const answered = choices.length ? replyAfter(k) : undefined;
+          const open = choices.length > 0 && answered === undefined && !busy;
           return (
             <div key={k} className="msg assistant fade-in">
               <div className="avatar">
                 <Logo />
               </div>
               <div className="msg-body">
-                <Markdown text={it.text} projectId={projectId} />
+                <Markdown text={body} projectId={projectId} />
+                {choices.length > 0 && (
+                  <div className={`choices ${open ? "" : "closed"}`} role="group" aria-label="Options">
+                    {choices.map((c) => (
+                      <button key={c} className={`choice ${answered === c ? "picked" : ""}`} disabled={!open} onClick={() => onChoose(c)}>
+                        {answered === c && <Check size={13} />}
+                        {c}
+                      </button>
+                    ))}
+                    {open && <span className="muted small choices-hint">or type your own answer below</span>}
+                  </div>
+                )}
                 {mark}
               </div>
             </div>
           );
+        }
         const m = it.m;
+        if (m.source === "auto")
+          return (
+            <div key={k} className="event-note fade-in">
+              <Rocket size={13} />
+              <span>
+                <b>Auto mode</b> {m.content.split("\n")[0].slice(0, 200)}
+              </span>
+            </div>
+          );
         if (m.source === "reminder" || m.source === "job")
           return (
             <div key={k} className="event-note fade-in">
@@ -624,7 +680,7 @@ function MemoryPanel({ projectId, onClose }: { projectId: string; onClose: () =>
     <div className="chat-panel">
       <div className="row gap-sm">
         <Brain size={16} />
-        <b>Project memory</b>
+        <b>What Mack remembers</b>
         <button className="icon-btn" style={{ marginLeft: "auto" }} onClick={onClose}>
           <X size={15} />
         </button>
@@ -817,7 +873,7 @@ function ReviewPanel({ projectId, sessionId, chatTitle, onClose }: { projectId: 
       )}
       {state && !state.repo && (
         <div className="row gap-sm">
-          <span className="muted small">This project folder is not a git repository.</span>
+          <span className="muted small">This problem folder is not a git repository.</span>
           <Button size="sm" onClick={async () => ((await api.reviewInit(projectId)) ? load() : setError("Could not run git init: is Git installed?"))}>
             Make it one
           </Button>

@@ -5,6 +5,7 @@ import type { ProveEvent } from "../core/prove";
 import type { ProviderId } from "../core/model/providers";
 import type { ChatEvent, ChatSession, StoredMessage, ToolOutcome } from "../core/chat/agent";
 import type { ToolSpec } from "../core/chat/tools";
+import type { Plan, PlanStep, StepKind, StepStatus, StepVia } from "../core/chat/plan";
 import type { ChatWire, PendingApproval, Project, SendOptions, SessionSummary } from "../electron/chat";
 import type { ReasoningEffort } from "../core/model/provider";
 import type { Finding } from "../core/secrets";
@@ -29,6 +30,7 @@ declare global {
 export type GitHubStatus = { source: GitHubTokenSource; login?: string; error?: string };
 export type { PullRequest };
 export type Upstream = (UpstreamReport & { dismissed?: boolean }) | { kind: "off" };
+export type { Plan, PlanStep, StepKind, StepStatus, StepVia };
 export type { Issue, LedgerState, RunStatus, SearchNode, SwarmRecord };
 export type { ChangedFile, Finding, ProviderId, ReasoningEffort, UpdateState };
 export type { ChatEvent, ChatSession, ChatWire, PendingApproval, Project, SessionSummary, StoredMessage, ToolOutcome, ToolSpec };
@@ -50,28 +52,29 @@ export const api = {
   checkUpstream: () => m().checkUpstream() as Promise<Upstream>,
   openExternal: (url: string) => m().openExternal(url),
   listModels: (provider?: ProviderId) => m().listModels(provider),
-  startProve: (problem: string) => m().startProve(problem),
+  startProve: (problem: string, projectId: string) => m().startProve(problem, projectId),
   stopProve: () => m().stopProve(),
   onProveEvent: (cb: (e: RunEvent) => void) => m().onProveEvent((e) => cb(e as RunEvent)),
   listRuns: () => m().listRuns() as Promise<RunSummary[]>,
   getRun: (id: string) => m().getRun(id) as Promise<RunRecord | null>,
   deleteRun: (id: string) => m().deleteRun(id) as Promise<void>,
-  saveLean: (name: string, text: string) => m().saveLean(name, text),
-  openLean: () => m().openLean(),
-  openLeanFolder: () => m().openLeanFolder() as Promise<LeanFolder | null>,
-  leanFolder: () => m().leanFolder() as Promise<LeanFolder | null>,
-  closeLeanFolder: () => m().closeLeanFolder(),
-  readLeanIn: (path: string) => m().readLeanIn(path),
+  saveLean: (name: string, text: string, projectId?: string) => m().saveLean(name, text, projectId),
+  openLean: (projectId?: string) => m().openLean(projectId),
+  leanFolder: (projectId: string) => m().leanFolder(projectId) as Promise<LeanFolder>,
+  readLeanIn: (projectId: string, path: string) => m().readLeanIn(projectId, path),
   listProjects: () => m().listProjects() as Promise<Project[]>,
   createProject: (name: string) => m().createProject(name) as Promise<Project>,
   openProject: () => m().openProject() as Promise<Project | null>,
   removeProject: (id: string) => m().removeProject(id) as Promise<void>,
+  renameProject: (id: string, name: string) => m().renameProject(id, name) as Promise<Project>,
+  getPlan: (projectId: string) => m().getPlan(projectId) as Promise<Plan>,
   listSessions: (projectId: string) => m().listSessions(projectId) as Promise<SessionSummary[]>,
   getSession: (projectId: string, id: string) => m().getSession(projectId, id) as Promise<ChatSession | null>,
   deleteSession: (projectId: string, id: string) => m().deleteSession(projectId, id) as Promise<void>,
   sendChat: (projectId: string, sessionId: string | null, text: string, opts?: SendOptions) => m().sendChat(projectId, sessionId, text, opts),
   attachFiles: (projectId: string) => m().attachFiles(projectId),
   setEffort: (projectId: string, sessionId: string, effort: ReasoningEffort) => m().setEffort(projectId, sessionId, effort) as Promise<void>,
+  setAuto: (projectId: string, sessionId: string, on: boolean) => m().setAuto(projectId, sessionId, on) as Promise<void>,
   suggestStart: () => m().suggestStart(),
   projectImage: (projectId: string, path: string) => m().projectImage(projectId, path),
   listSkills: (projectId: string) => m().listSkills(projectId) as Promise<{ name: string; description: string }[]>,
@@ -92,12 +95,12 @@ export const api = {
   globalSpend: () => m().globalSpend() as Promise<LedgerState>,
   resetGlobalSpend: () => m().resetGlobalSpend() as Promise<LedgerState>,
   onGlobalSpend: (cb: (e: LedgerState) => void) => m().onGlobalSpend((e) => cb(e as LedgerState)),
-  listDiscovery: () => m().listDiscovery() as Promise<RunStatus[]>,
+  listDiscovery: (projectId: string) => m().listDiscovery(projectId) as Promise<RunStatus[]>,
   discoveryStatus: (run: string) => m().discoveryStatus(run) as Promise<RunStatus>,
   discoveryTree: (run: string, problem: string) => m().discoveryTree(run, problem) as Promise<SearchNode[]>,
   stopDiscovery: (run: string) => m().stopDiscovery(run) as Promise<void>,
   resumeDiscovery: (run: string) => m().resumeDiscovery(run) as Promise<RunStatus>,
-  startDiscoveryFromFiles: () => m().startDiscoveryFromFiles() as Promise<RunStatus | null>,
+  startDiscoveryFromFiles: (projectId: string) => m().startDiscoveryFromFiles(projectId) as Promise<RunStatus | null>,
   stopPlugin: (sessionId: string, name: string) => m().stopPlugin(sessionId, name) as Promise<string>,
   stopChat: (sessionId: string) => m().stopChat(sessionId) as Promise<void>,
   onChatEvent: (cb: (e: ChatWire) => void) => m().onChatEvent((e) => cb(e as ChatWire)),

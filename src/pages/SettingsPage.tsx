@@ -183,11 +183,11 @@ export function SettingsPage({ settings, saveSettings, onGo }: Props) {
       <section className="settings-group">
         <h2>Upstream methodology</h2>
         <p className="muted">
-          Automatic checks of Open Math Harness are {settings.upstreamCheck ? "on" : "off"}. Change this and see what changed upstream in Upstream.
+          Automatic checks of Open Math Harness are {settings.upstreamCheck ? "on" : "off"}. Change this and see what changed upstream in Harness updates.
         </p>
         <div className="row gap-sm">
           <Button icon={ArrowRight} onClick={() => onGo("upstream")}>
-            Open Upstream
+            Open Harness updates
           </Button>
         </div>
       </section>

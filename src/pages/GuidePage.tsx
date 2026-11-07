@@ -1,4 +1,4 @@
-import { ArrowRight, BookOpen, CircleCheck, CircleDollarSign, GitCompare, Lock, ShieldCheck, Wrench } from "lucide-react";
+import { ArrowRight, BookOpen, CircleCheck, CircleDollarSign, FolderOpen, GitCompare, Lock, ShieldCheck, Wrench } from "lucide-react";
 import { Badge, Button, OutcomeBadge } from "../components/ui";
 
 type Props = { onGo: (page: "setup" | "prove" | "upstream") => void };
@@ -32,10 +32,38 @@ export function GuidePage({ onGo }: Props) {
 
       <section className="guide-card">
         <div className="guide-icon">
+          <FolderOpen size={18} />
+        </div>
+        <div>
+          <h2>2. Make a project</h2>
+          <p>
+            A project is a folder for one piece of work. The picker at the top of the sidebar shows which project you are in; <strong>Prove</strong>,{" "}
+            <strong>Chat</strong>, <strong>Runs</strong> and <strong>History</strong> all work inside it. The <code>.lean</code> files in the folder are listed
+            on Prove, and the assistant in Chat reads and (with your approval) writes the files there.
+          </p>
+          <ul>
+            <li>
+              <strong>Prove</strong>: the model proves one statement while you watch.
+            </li>
+            <li>
+              <strong>Chat</strong>: describe a problem in plain words; the assistant can write the Lean statement, search papers and start proofs for you.
+            </li>
+            <li>
+              <strong>Runs</strong>: long proof searches over many statements at once, which you can stop and resume.
+            </li>
+            <li>
+              <strong>History</strong>: every proof attempt in the project, to look back at or try again.
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <section className="guide-card">
+        <div className="guide-icon">
           <BookOpen size={18} />
         </div>
         <div>
-          <h2>2. Write the statement</h2>
+          <h2>3. Write the statement</h2>
           <p>
             On <strong>Prove</strong>, write a Lean file that starts with <code>import Mathlib</code> and states one theorem proved by <code>sorry</code>, or
             pick one from <em>Examples</em>. This statement is <em>frozen</em>: a proof only counts if it proves exactly this, word for word.
@@ -55,7 +83,7 @@ sorry`}</pre>
           <ShieldCheck size={18} />
         </div>
         <div>
-          <h2>3. Press Prove and watch the attempts</h2>
+          <h2>4. Press Prove and watch the attempts</h2>
           <p>
             Each attempt, the model writes a complete proof and Lean checks it. Lean's errors go back to the model, which revises. Each attempt ends with a
             label:
@@ -111,11 +139,11 @@ sorry`}</pre>
           <h2>Staying current with Open Math Harness</h2>
           <p>
             Mack checks the Open Math Harness repository when it opens and every 6 hours. If upstream changes how it checks or searches for proofs, a yellow
-            banner appears and <strong>Upstream</strong> shows what changed and which part of Mack it affects. You can turn checks off, or choose to stay on
+            banner appears and <strong>Harness updates</strong> shows what changed and which part of Mack it affects. You can turn checks off, or choose to stay on
             your current version.
           </p>
           <Button size="sm" icon={ArrowRight} onClick={() => onGo("upstream")}>
-            Open Upstream
+            Open Harness updates
           </Button>
         </div>
       </section>

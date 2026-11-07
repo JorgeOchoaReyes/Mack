@@ -1,0 +1,131 @@
+// A problem's plan: what we are trying to show, where we honestly stand, and
+// the steps that get us there. The chat's assistant writes it with
+// `plan_update`; the person reads it beside the chat. It lives in the problem
+// folder (.mack/plan.json), so it travels with the work.
+
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+
+/** What a step does, in the person's terms. Only "lean" steps end in a machine-checked proof. */
+export const STEP_KINDS = ["lean", "read", "compute", "think", "write"] as const;
+export type StepKind = (typeof STEP_KINDS)[number];
+
+/** Which of Mack's features a step uses: the plan says how each step gets done, not only what. */
+export const STEP_VIA = ["chat", "web", "python", "lean_check", "proof_run", "proof_search", "ultramath", "agents", "reminder", "pull_request"] as const;
+export type StepVia = (typeof STEP_VIA)[number];
+
+export const STEP_STATUSES = ["todo", "doing", "done", "stuck", "dropped"] as const;
+export type StepStatus = (typeof STEP_STATUSES)[number];
+
+export type PlanStep = {
+  id: string;
+  title: string;
+  kind: StepKind;
+  /** The feature that does the work; absent means the conversation itself. */
+  via?: StepVia;
+  status: StepStatus;
+  /** Why this step matters, in plain words. */
+  why?: string;
+  /** What came of it: a verified theorem, a reference, a number, a dead end. */
+  result?: string;
+  /** True only when a Lean verifier accepted this step's proof in a session. */
+  verified?: boolean;
+};
+
+export type Plan = {
+  /** The problem in one or two plain sentences. */
+  goal: string;
+  /** Where we stand, honestly: what is known, how hard it is, what we aim for. */
+  outlook: string;
+  steps: PlanStep[];
+  updatedAt: number;
+};
+
+export const EMPTY_PLAN: Plan = { goal: "", outlook: "", steps: [], updatedAt: 0 };
+
+const planPath = (root: string) => join(root, ".mack", "plan.json");
+
+export async function readPlan(root: string): Promise<Plan> {
+  try {
+    return normalizePlan(JSON.parse(await readFile(planPath(root), "utf8")), EMPTY_PLAN);
+  } catch {
+    return EMPTY_PLAN;
+  }
+}
+
+export async function writePlan(root: string, plan: Plan): Promise<void> {
+  await mkdir(join(root, ".mack"), { recursive: true });
+  await writeFile(planPath(root), JSON.stringify(plan, null, 2), "utf8");
+}
+
+const text = (v: unknown, max: number): string | undefined => (typeof v === "string" && v.trim() ? v.trim().slice(0, max) : undefined);
+const oneOf = <T extends string>(v: unknown, all: readonly T[], fallback: T): T => (all.includes(v as T) ? (v as T) : fallback);
+
+/**
+ * The plan a `plan_update` call (or a stored file) describes, on top of the current one:
+ * fields it leaves out are kept; `steps`, when given, replaces the list.
+ */
+export function normalizePlan(raw: unknown, current: Plan): Plan {
+  const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  let steps = current.steps;
+  let rawSteps = o.steps;
+  if (typeof rawSteps === "string") {
+    try {
+      rawSteps = JSON.parse(rawSteps);
+    } catch {
+      throw new Error("steps must be an array of steps");
+    }
+  }
+  if (rawSteps !== undefined) {
+    if (!Array.isArray(rawSteps)) throw new Error("steps must be an array of steps");
+    steps = rawSteps.slice(0, 60).flatMap((s, i): PlanStep[] => {
+      const x = (s && typeof s === "object" ? s : {}) as Record<string, unknown>;
+      const title = text(x.title, 200);
+      if (!title) return [];
+      const status = oneOf(x.status, STEP_STATUSES, "todo");
+      const before = current.steps.find((c) => c.id === x.id);
+      return [
+        {
+          id: text(x.id, 40) ?? `s${i + 1}`,
+          title,
+          kind: oneOf(x.kind, STEP_KINDS, "think"),
+          via: STEP_VIA.includes(x.via as StepVia) ? (x.via as StepVia) : undefined,
+          status,
+          why: text(x.why, 600),
+          result: text(x.result, 1200),
+          // A step stays verified only while it is done; the model cannot clear the record by rewording it.
+          verified: status === "done" && (x.verified === true || before?.verified === true) ? true : undefined,
+        },
+      ];
+    });
+  }
+  return {
+    goal: text(o.goal, 800) ?? current.goal,
+    outlook: text(o.outlook, 1500) ?? current.outlook,
+    steps,
+    updatedAt: Date.now(),
+  };
+}
+
+/** The plan as the assistant reads it at the start of a turn. */
+export function planPrompt(plan: Plan): string {
+  const how = `# The plan
+
+The person follows this problem through its plan, shown beside the chat. Keep it current with \`plan_update\`: set the goal and an honest outlook when the problem is new, break the work into steps, and update a step's status and result as soon as it changes. Write for someone with no training in mathematics or Lean: plain words, no unexplained jargon. Be brief, because the person sees the short parts first and opens details only when they want them: the goal is one sentence, the outlook starts with one sentence that says the honest bottom line (the rest of the outlook is detail), and a step title is a short action of at most ten words. Put the detail in a step's \`why\` and \`result\`. Kinds: "lean" (state or prove something in Lean; mark it verified only when \`verify_lean\` or a proof run's verifier accepted it), "read" (find and read what is known), "compute" (check examples or search numerically), "think" (work out an idea or a reduction), "write" (write up what we found). For a famous open problem, say plainly that a full solution is very unlikely and aim the steps at things that can really be done: understanding it, checking known partial results in Lean, exploring small cases.
+
+Plan with everything Mack can do, and give each step a \`via\` naming the feature that does it:
+- "web": \`web_search\` and \`fetch_url\` (papers and PDFs) to find what is known; save notes in the problem folder, e.g. notes/literature.md.
+- "python": \`shell_exec\` running a Python script (in the background for long runs) to test small cases, search for counterexamples or check a bound numerically; save the script and its output. Evidence, never proof.
+- "lean_check": write a Lean statement and \`check_lean\` it, to pin down exactly what is claimed before any proof attempt. Freeze the statement in its own file.
+- "proof_run": \`start_proof\` on one statement: "single" for a lemma that should be routine, "search" for a harder one (a tree of attempts).
+- "proof_search": \`discovery_start\` on several Lean files at once: break a known result into a chain of lemmas and search for all of them in one run, then read \`discovery_status\`.
+- "ultramath": \`ultramath_start\` puts several agents on one hard question, each taking a different direction on a shared board. Use it for a genuinely open or stuck sub-question, not for routine lemmas, and judge what they submit.
+- "agents": \`run_agent\` for a side task done in parallel (read one paper, try one idea) while you continue.
+- "reminder": \`conversation_remind\` to come back to long work (a proof search, a swarm, a background computation) instead of waiting.
+- "pull_request": \`open_pr\` to publish finished, verified work for review.
+- "chat": explaining, deciding and writing up in the conversation itself.
+A good plan mixes these: understand and read first, compute to build intuition, state precisely in Lean, prove the known pieces with proof runs or one proof search, put a swarm on the genuinely hard part, and write up honestly what was and was not proved.`;
+  if (!plan.goal && !plan.steps.length) return `${how}\n\nThere is no plan yet.`;
+  const steps = plan.steps.map((s) => `- [${s.status}${s.verified ? ", verified" : ""}] (${s.kind}${s.via ? ` via ${s.via}` : ""}) ${s.id}: ${s.title}${s.result ? ` — ${s.result}` : ""}`).join("\n");
+  return `${how}\n\nThe current plan:\nGoal: ${plan.goal || "(not set)"}\nOutlook: ${plan.outlook || "(not set)"}\nSteps:\n${steps || "(none)"}`;
+}

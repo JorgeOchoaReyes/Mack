@@ -1,8 +1,9 @@
-import { BookOpen, CircleDollarSign, Download, FlaskConical, Lightbulb, Rows3, GitCompare, History, MessagesSquare, Settings as SettingsIcon, Wrench, X } from "lucide-react";
+import { BookOpen, CircleDollarSign, Download, FlaskConical, Lightbulb, PanelLeftClose, PanelLeftOpen, Rows3, GitCompare, History, MessagesSquare, Settings as SettingsIcon, Wrench, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { api, type Health, type LedgerState, type Settings, type UpdateState, type Upstream } from "./api";
+import { api, type Health, type LedgerState, type Project, type Settings, type UpdateState, type Upstream } from "./api";
 import { formatUsd } from "../core/model/metered";
 import { Logo } from "./components/Logo";
+import { ProjectPicker } from "./components/ProjectPicker";
 import { Button, Dot } from "./components/ui";
 import { EXAMPLES } from "./examples";
 import { ChatPage } from "./pages/ChatPage";
@@ -14,22 +15,26 @@ import { ProvePage } from "./pages/ProvePage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { SetupPage } from "./pages/SetupPage";
 import { UpstreamPage } from "./pages/UpstreamPage";
+import { WelcomePage } from "./pages/WelcomePage";
 
 type Page = "prove" | "chat" | "runs" | "feedback" | "history" | "upstream" | "setup" | "settings" | "guide";
 
+/** Pages that work on the current problem; without one they show the welcome screen. */
+const PROJECT_PAGES: Page[] = ["chat", "prove", "runs", "history"];
+
 const DRAFT_KEY = "mack.draft";
-const SEEN_GUIDE_KEY = "mack.seenGuide";
+const PROJECT_KEY = "mack.project";
+/** Where the Chat page remembered its project before the whole app had one. */
+const OLD_PROJECT_KEY = "mack.chatProject";
+const NAV_KEY = "mack.navCollapsed";
 const UPSTREAM_RECHECK_MS = 6 * 60 * 60 * 1000;
 
-/** The Guide on first launch, Prove afterwards. */
-function firstPage(): Page {
+function lastProject(): string {
   try {
-    if (localStorage.getItem(SEEN_GUIDE_KEY)) return "prove";
-    localStorage.setItem(SEEN_GUIDE_KEY, "1");
+    return localStorage.getItem(PROJECT_KEY) ?? localStorage.getItem(OLD_PROJECT_KEY) ?? "";
   } catch {
-    return "prove";
+    return "";
   }
-  return "guide";
 }
 
 function loadDraft(): string {
@@ -41,7 +46,11 @@ function loadDraft(): string {
 }
 
 export function App() {
-  const [page, setPage] = useState<Page>(firstPage);
+  const [page, setPage] = useState<Page>("chat");
+  /** A new problem's description, sent as the first message of its chat. */
+  const [firstMessage, setFirstMessage] = useState<{ projectId: string; text: string } | null>(null);
+  const [projects, setProjects] = useState<Project[] | null>(null);
+  const [projectId, setProjectIdState] = useState(lastProject);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [health, setHealth] = useState<Health | null>(null);
   const [upstream, setUpstream] = useState<Upstream | null>(null);
@@ -49,6 +58,40 @@ export function App() {
   const [runsVersion, setRunsVersion] = useState(0);
   const [update, setUpdate] = useState<UpdateState | null>(null);
   const [spend, setSpend] = useState<LedgerState | null>(null);
+  const [navCollapsed, setNavCollapsedState] = useState(() => {
+    try {
+      return localStorage.getItem(NAV_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const setNavCollapsed = useCallback((v: boolean) => {
+    setNavCollapsedState(v);
+    try {
+      localStorage.setItem(NAV_KEY, v ? "1" : "0");
+    } catch {
+      // Only a remembered layout.
+    }
+  }, []);
+
+  // Ctrl+B folds the sidebar, as in most editors.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "b") {
+        e.preventDefault();
+        setNavCollapsedState((v) => {
+          try {
+            localStorage.setItem(NAV_KEY, v ? "0" : "1");
+          } catch {
+            // Only a remembered layout.
+          }
+          return !v;
+        });
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   useEffect(() => {
     void api.globalSpend().then(setSpend);
@@ -59,6 +102,23 @@ export function App() {
     void api.subscribeUpdates().then(setUpdate);
     return api.onUpdateEvent(setUpdate);
   }, []);
+
+  const setProjectId = (id: string) => {
+    setProjectIdState(id);
+    try {
+      localStorage.setItem(PROJECT_KEY, id);
+    } catch {
+      // Remembering the last project is only a convenience.
+    }
+  };
+
+  const reloadProjects = useCallback(async () => {
+    const ps = await api.listProjects();
+    setProjects(ps);
+    return ps;
+  }, []);
+
+  useEffect(() => void reloadProjects(), [reloadProjects]);
 
   const refreshHealth = useCallback(() => void api.health().then(setHealth), []);
   const recheckUpstream = useCallback(async () => setUpstream(await api.checkUpstream()), []);
@@ -87,7 +147,15 @@ export function App() {
     }
   };
 
-  if (!settings) return <div className="boot" />;
+  if (!settings || !projects) return <div className="boot" />;
+
+  const project = projects.find((p) => p.id === projectId) ?? projects[0];
+  const projectCreated = async (p: Project, description = "") => {
+    await reloadProjects();
+    setProjectId(p.id);
+    if (description.trim()) setFirstMessage({ projectId: p.id, text: description.trim() });
+    setPage("chat");
+  };
 
   const leanOk = !!health?.lake && !!health?.hasMathlib;
   const keyOk = !!health && health.keySource !== "none";
@@ -95,53 +163,72 @@ export function App() {
   const allReady = leanOk && keyOk && modelOk;
   const showBanner = upstream?.kind === "changed" && !upstream.dismissed;
 
-  const nav: { id: Page; label: string; icon: typeof FlaskConical; badge?: boolean }[] = [
-    { id: "prove", label: "Prove", icon: FlaskConical },
-    { id: "chat", label: "Chat", icon: MessagesSquare },
-    { id: "runs", label: "Runs", icon: Rows3 },
-    { id: "history", label: "History", icon: History },
-    { id: "upstream", label: "Upstream", icon: GitCompare, badge: showBanner },
-    { id: "setup", label: "Setup", icon: Wrench, badge: health !== null && !allReady },
-    { id: "settings", label: "Settings", icon: SettingsIcon },
-    { id: "guide", label: "Guide", icon: BookOpen },
-    { id: "feedback", label: "Feedback", icon: Lightbulb },
+  type NavItem = { id: Page; label: string; hint: string; icon: typeof FlaskConical; badge?: boolean };
+  const work: NavItem[] = [
+    { id: "chat", label: "Chat", hint: "Talk about the problem in plain words; the assistant plans and does the work", icon: MessagesSquare },
+    { id: "prove", label: "Lean editor", hint: "Write a Lean statement yourself and have the model prove it", icon: FlaskConical },
+    { id: "runs", label: "Proof searches", hint: "Long searches for proofs of many statements at once", icon: Rows3 },
+    { id: "history", label: "Proof attempts", hint: "Every proof attempt on this problem, verified or not", icon: History },
   ];
+  const more: NavItem[] = [
+    { id: "setup", label: "Setup", hint: "Lean, API keys and models", icon: Wrench, badge: health !== null && !allReady },
+    { id: "settings", label: "Settings", hint: "Spending limits and how runs behave", icon: SettingsIcon },
+    { id: "guide", label: "Guide", hint: "How Mack works", icon: BookOpen },
+    { id: "upstream", label: "Harness updates", hint: "Changes in Open Math Harness, the methods Mack follows", icon: GitCompare, badge: showBanner },
+    { id: "feedback", label: "Feedback", hint: "Report a bug or suggest an idea", icon: Lightbulb },
+  ];
+  const navButton = (n: NavItem) => (
+    <button key={n.id} className={`nav-item ${page === n.id ? "active" : ""}`} title={navCollapsed ? `${n.label}: ${n.hint}` : n.hint} onClick={() => setPage(n.id)}>
+      <n.icon size={17} />
+      <span className="nav-text">{n.label}</span>
+      {n.badge && <span className="nav-badge" />}
+    </button>
+  );
 
   return (
-    <div className="shell">
+    <div className={`shell ${navCollapsed ? "nav-collapsed" : ""}`}>
       <aside className="sidebar">
         <div className="brand">
           <div className="logo">
             <Logo />
           </div>
-          <div>
+          <div className="brand-text">
             <div className="brand-name">Mack</div>
             <div className="brand-sub">Lean-checked research</div>
           </div>
+          <button className="icon-btn nav-toggle" title={navCollapsed ? "Expand the sidebar (Ctrl+B)" : "Collapse the sidebar (Ctrl+B)"} onClick={() => setNavCollapsed(!navCollapsed)}>
+            {navCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+          </button>
         </div>
+        {navCollapsed ? (
+          <button className="project-mini" title={`Problem: ${project?.name ?? "none yet"} (click to switch)`} onClick={() => setNavCollapsed(false)}>
+            {(project?.name ?? "?").trim().charAt(0).toUpperCase()}
+          </button>
+        ) : (
+          <ProjectPicker projects={projects} current={project} onPick={setProjectId} onCreated={(p, d) => void projectCreated(p, d)} />
+        )}
         <nav>
-          {nav.map((n) => (
-            <button key={n.id} className={`nav-item ${page === n.id ? "active" : ""}`} onClick={() => setPage(n.id)}>
-              <n.icon size={17} />
-              <span>{n.label}</span>
-              {n.badge && <span className="nav-badge" />}
-            </button>
-          ))}
+          {work.map(navButton)}
+          <div className="nav-group">Mack</div>
+          {more.map(navButton)}
         </nav>
         <button className="health" onClick={() => setPage("setup")}>
-          <div className="health-row">
-            <Dot tone={health === null ? "neutral" : leanOk ? "ok" : "bad"} /> Lean
+          <div className="health-row" title="Lean">
+            <Dot tone={health === null ? "neutral" : leanOk ? "ok" : "bad"} /> <span className="nav-text">Lean</span>
           </div>
-          <div className="health-row">
-            <Dot tone={health === null ? "neutral" : keyOk ? "ok" : "bad"} /> API key
+          <div className="health-row" title="API key">
+            <Dot tone={health === null ? "neutral" : keyOk ? "ok" : "bad"} /> <span className="nav-text">API key</span>
           </div>
-          <div className="health-row">
-            <Dot tone={health === null ? "neutral" : modelOk ? "ok" : "bad"} /> Model
+          <div className="health-row" title="Model">
+            <Dot tone={health === null ? "neutral" : modelOk ? "ok" : "bad"} /> <span className="nav-text">Model</span>
           </div>
           {spend && (
-            <div className="health-row" title="Everything Mack has spent in this period, against the global limit (Settings → Spending)">
-              <Dot tone={spend.limit > 0 && spend.spent >= spend.limit ? "bad" : spend.limit > 0 && spend.spent >= spend.limit * 0.8 ? "warn" : "ok"} /> {formatUsd(spend.spent)}
-              {spend.limit > 0 ? ` / ${formatUsd(spend.limit)}` : ""}
+            <div className="health-row" title={`Spent ${formatUsd(spend.spent)}${spend.limit > 0 ? ` of ${formatUsd(spend.limit)}` : ""}: everything Mack has spent in this period, against the global limit (Settings → Spending)`}>
+              <Dot tone={spend.limit > 0 && spend.spent >= spend.limit ? "bad" : spend.limit > 0 && spend.spent >= spend.limit * 0.8 ? "warn" : "ok"} />{" "}
+              <span className="nav-text">
+                {formatUsd(spend.spent)}
+                {spend.limit > 0 ? ` / ${formatUsd(spend.limit)}` : ""}
+              </span>
             </div>
           )}
         </button>
@@ -198,8 +285,13 @@ export function App() {
           </div>
         )}
         <div className="content-inner">
-          {page === "prove" && (
+          {!project && PROJECT_PAGES.includes(page) && (
+            <WelcomePage health={health} onGoSetup={() => setPage("setup")} onGoGuide={() => setPage("guide")} onCreated={(p, d) => void projectCreated(p, d)} />
+          )}
+          {project && page === "prove" && (
             <ProvePage
+              key={project.id}
+              project={project}
               problem={problem}
               setProblem={setProblem}
               health={health}
@@ -210,11 +302,24 @@ export function App() {
               onRunFinished={() => setRunsVersion((v) => v + 1)}
             />
           )}
-          {page === "runs" && <RunsPage />}
+          {project && page === "runs" && <RunsPage key={project.id} project={project} />}
           {page === "feedback" && <FeedbackPage />}
-          {page === "chat" && <ChatPage health={health} settings={settings} saveSettings={saveSettings} onGoSetup={() => setPage("setup")} />}
-          {page === "history" && (
+          {project && page === "chat" && (
+            <ChatPage
+              key={project.id}
+              project={project}
+              health={health}
+              settings={settings}
+              saveSettings={saveSettings}
+              onGoSetup={() => setPage("setup")}
+              firstMessage={firstMessage?.projectId === project.id ? firstMessage.text : undefined}
+              onFirstMessageUsed={() => setFirstMessage(null)}
+            />
+          )}
+          {project && page === "history" && (
             <HistoryPage
+              key={project.id}
+              project={project}
               refreshKey={runsVersion}
               onRerun={(p) => {
                 setProblem(p);
