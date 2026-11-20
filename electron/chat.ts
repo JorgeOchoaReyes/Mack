@@ -95,7 +95,7 @@ export function registerChat(d: Deps): ChatControl {
         "goal?": "the problem in one or two plain sentences",
         "outlook?": "where we honestly stand: what is known, how hard it is, what we can realistically aim for",
         "steps?":
-          "array of {id, title, kind, via?, status, why?, result?, verified?}: kind is lean, read, compute, think or write; via is the Mack feature that does it (web, python, lean_check, proof_run, proof_search, ultramath, agents, reminder, pull_request or chat); status is todo, doing, done, stuck or dropped; verified is true only when a Lean verifier accepted the step's proof",
+          "array of {id, title, kind, via?, status, why?, result?, verified?}: kind is lean, read, compute, think or write; via is the Mack feature that does it (web, python, construction, lean_check, proof_run, proof_search, ultramath, agents, reminder, pull_request or chat); status is todo, doing, done, stuck or dropped; verified is true only when a Lean verifier accepted the step's proof",
       },
       protected: false,
     },

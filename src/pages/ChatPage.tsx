@@ -678,6 +678,7 @@ const ASKS: Record<string, string> = {
   start_proof: "start a proof run",
   shell_exec: "run a command",
   http_request: "make a web request",
+  construction_search: "start a construction search",
 };
 
 function ApprovalCard({ approval }: { approval: PendingApproval }) {
@@ -719,7 +720,14 @@ function ApprovalCard({ approval }: { approval: PendingApproval }) {
             <code>{String(a.method ?? "GET")}</code> <code>{String(a.url)}</code>
           </>
         )}
+        {call.name === "construction_search" && (
+          <>
+            Up to {String(a.programs ?? 20)} Python programs, written by the model, will run on this computer as you, in <code>constructions/{String(a.name)}</code>, each
+            scored by <code>{String(a.evaluator)}</code>. Each program is one model call from your account.
+          </>
+        )}
       </div>
+      {call.name === "construction_search" && typeof a.task === "string" && <pre className="lean-output">{a.task}</pre>}
       {call.name === "write_file" && typeof a.content === "string" && (
         <div className="code-frame">
           <CodeEditor value={a.content} readOnly />

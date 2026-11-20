@@ -1,4 +1,4 @@
-import { History, AlarmClock, BookOpen, BookOpenCheck, Bot, Calculator, ChevronRight, FileCheck2, FileCode, GitPullRequest, Globe, MessagesSquare, Network, Route, Rows3, Terminal, Users, CircleCheck, CircleDashed, CircleDot, CircleSlash, Lightbulb, OctagonAlert, PenLine, ShieldCheck, Sparkles, X, type LucideIcon } from "lucide-react";
+import { History, AlarmClock, BookOpen, BookOpenCheck, Bot, Calculator, ChevronRight, FileCheck2, FileCode, GitPullRequest, Globe, MessagesSquare, Network, Route, Rows3, Shapes, Terminal, Users, CircleCheck, CircleDashed, CircleDot, CircleSlash, Lightbulb, OctagonAlert, PenLine, ShieldCheck, Sparkles, X, type LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, type ChatWire, type SavedWalkthrough, type Plan, type PlanStep, type Proved, type StepKind, type StepStatus, type StepVia } from "../api";
 import { ProofPathView } from "./ProofPathView";
@@ -19,6 +19,7 @@ const VIA: Record<StepVia, { label: string; icon: LucideIcon; hint: string }> = 
   chat: { label: "In the chat", icon: MessagesSquare, hint: "Worked out in the conversation with you." },
   web: { label: "Web & papers", icon: Globe, hint: "Searches the web and reads papers and PDFs, and saves notes in the problem folder." },
   python: { label: "Python", icon: Terminal, hint: "Runs a program on your computer to test examples or search numerically. Evidence, not proof." },
+  construction: { label: "Construction search", icon: Shapes, hint: "Evolves programs that build an object, such as a counterexample or a better configuration, scored by an evaluator. Evidence, not proof." },
   lean_check: { label: "Lean statement", icon: FileCheck2, hint: "Writes the exact claim in Lean and checks it compiles, so everyone agrees what is being proved." },
   proof_run: { label: "Proof run", icon: Network, hint: "The model tries to prove one Lean statement; Lean's verifier decides. Shown under Proof attempts." },
   proof_search: { label: "Proof search", icon: Rows3, hint: "A long search for proofs of several Lean statements at once. Shown under Proof searches." },

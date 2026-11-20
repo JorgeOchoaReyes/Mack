@@ -31,6 +31,7 @@ import { RunManager, type Problem, type RunStatus } from "../core/search/runs";
 import { RUN_TOOLS } from "../core/search/run-tools";
 import { CHAT_TOOLS as SWARM_CHAT_TOOLS, SwarmService } from "../core/ultramath/service";
 import { confine, registerTools } from "../core/chat/tools";
+import { CONSTRUCT_TOOLS, ConstructionService } from "../core/construct/service";
 import { frozenObjection } from "../core/lean/rules";
 import { basename } from "node:path";
 import { statSync } from "node:fs";
@@ -799,6 +800,17 @@ const runs = new RunManager(
 
 registerTools(RUN_TOOLS);
 registerTools(SWARM_CHAT_TOOLS);
+registerTools(CONSTRUCT_TOOLS);
+
+const constructions = new ConstructionService({
+  provider: () => {
+    const s = readSettings();
+    const model = s.models[s.provider];
+    const m = newMeter(s, model);
+    return { provider: metered(makeProvider(s, s.provider), m.price, m.meter), model };
+  },
+  wake: (projectId, sessionId, text) => chat.wake(projectId, sessionId, "job", text),
+});
 
 const swarmMeters = new Map<string, { meter: Meter; price: Price | undefined }>();
 
@@ -856,7 +868,7 @@ const chat = registerChat({
     }
   },
   githubToken: async () => (await githubAuth()).token,
-  extraTools: ({ projectId, root, sessionId }) => (call) => runTool(call, { projectId, root, sessionId }) ?? swarmTool(call, { projectId, root, sessionId }),
+  extraTools: ({ projectId, root, sessionId }) => (call) => runTool(call, { projectId, root, sessionId }) ?? swarmTool(call, { projectId, root, sessionId }) ?? constructTool(call, { projectId, root, sessionId }),
 });
 
 // The folder an older Prove page had open becomes a project, so it is listed as before.
@@ -892,6 +904,20 @@ function swarmTool(call: { name: string; args: Record<string, unknown> }, ctx: {
       return now(() => swarms.stop(ctx.sessionId, a.swarm));
     case "ultramath_resume":
       return now(() => swarms.resume(ctx.projectId, ctx.root, ctx.sessionId, a));
+    default:
+      return undefined;
+  }
+}
+
+/** The chat's `construction_*` tools; a search is the chat's, named by the session. */
+function constructTool(call: { name: string; args: Record<string, unknown> }, ctx: { projectId: string; root: string; sessionId: string }): Promise<string> | undefined {
+  switch (call.name) {
+    case "construction_search":
+      return constructions.start(ctx.projectId, ctx.root, ctx.sessionId, call.args);
+    case "construction_status":
+      return (async () => constructions.status(ctx.sessionId, call.args.name))();
+    case "construction_stop":
+      return (async () => constructions.stop(ctx.sessionId, call.args.name))();
     default:
       return undefined;
   }
@@ -982,6 +1008,7 @@ app.on("window-all-closed", () => app.quit());
 app.on("will-quit", () => {
   runs.stopAll();
   swarms.stopAll();
+  constructions.stopAll();
   repl?.pool.stop();
   chat.stopAll();
 });
