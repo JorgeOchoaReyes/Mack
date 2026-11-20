@@ -41,6 +41,13 @@ export const TOOL_SPECS: ToolSpec[] = [
     protected: false,
   },
   {
+    name: "search_mathlib",
+    description:
+      "Search Mathlib's theorems and definitions by words of their name, statement or docs (e.g. \"prime dvd mul\", \"sum divisors\") or by name (e.g. \"Nat.Prime.two_le\"). Use it to find real lemma names before writing a proof instead of guessing them; confirm a name's exact type with #check in check_lean.",
+    args: { query: "words, or a full or partial name", "limit?": "how many results, default 15" },
+    protected: false,
+  },
+  {
     name: "check_statement",
     description:
       "Before proving a statement, try to break it: Lean's random tester (plausible) looks for values that make it false. A counterexample means no proof exists; none found is evidence, not proof.",
@@ -111,7 +118,7 @@ export const TOOL_SPECS: ToolSpec[] = [
 ];
 
 /** Tools a sub-agent is offered: reading and checking, nothing that changes anything or spends budget. */
-export const SUB_AGENT_TOOLS = ["list_files", "read_file", "search_files", "check_lean", "check_statement", "verify_lean", "web_search", "fetch_url", "view_image"];
+export const SUB_AGENT_TOOLS = ["list_files", "read_file", "search_files", "search_mathlib", "check_lean", "check_statement", "verify_lean", "web_search", "fetch_url", "view_image"];
 
 /** Tools other features add to the chat (Ultramath, proof search, MCP servers); run through the same guard. */
 const EXTRA: ToolSpec[] = [];

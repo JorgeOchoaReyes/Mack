@@ -22,6 +22,8 @@ export type ExecutorContext = {
   root: string;
   /** Lean, when installed: a fresh run for verification and the quick check. */
   lean?: { run: LeanRun; check?: LeanCheckRun };
+  /** Search Mathlib's declarations, when its source is installed. */
+  searchMathlib?: (query: string, limit: number) => Promise<string>;
   policy: Partial<Record<string, ApprovalPolicy>>;
   /** Ask the person about one exact call; resolves true when approved. */
   ask: (call: ToolCall) => Promise<boolean>;
@@ -98,6 +100,11 @@ async function run(call: ToolCall, c: ExecutorContext): Promise<string> {
       const source = typeof a.source === "string" && a.source ? a.source : await readFile(await confine(c.root, str(a.path, "path or source")), "utf8");
       const check = c.lean.check ? await c.lean.check(source) : checkFromRun(await c.lean.run(source));
       return describeCheck(check);
+    }
+    case "search_mathlib": {
+      if (!c.searchMathlib) throw new Error("Mathlib is not installed; set it up in Setup");
+      const limit = Math.max(1, Math.min(40, Math.floor(Number(a.limit)) || 15));
+      return c.searchMathlib(str(a.query, "query"), limit);
     }
     case "check_statement": {
       if (!c.lean) throw new Error("Lean is not installed; set it up in Setup");

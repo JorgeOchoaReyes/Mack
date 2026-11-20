@@ -7,8 +7,11 @@
 // call then brings `MEMORY.md` (the index loaded into future sessions) and
 // `memory_summary.md` into line with the records. A new session is given
 // `MEMORY.md` framed as data, never as instructions. Memory lives outside the
-// project folder, where the chat's file tools cannot reach it. Mack does not
-// count citations of used memories yet.
+// project folder, where the chat's file tools cannot reach it. As upstream's
+// `used` does, Mack counts which index lines sessions cite as having changed
+// what they did, matching each citation to the line it names, and tells the
+// consolidation which lines are used and which nobody has cited for a month,
+// so what gets used survives and what does not is dropped.
 
 import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -92,17 +95,70 @@ the memory line you used|note=[why it mattered]
 Cite what you read and used. Do not cite something you merely scrolled past — an inflated count keeps stale memories alive at the expense of useful ones.`;
 }
 
-/** Count what a session cited (upstream `used`): the harness's bookkeeping about the model, never a model's tool. */
-export async function recordCitations(s: MemoryStore, cited: string[]): Promise<void> {
-  if (!cited.length) return;
-  const file = join(s.dir, "used.json");
-  const used = JSON.parse(await readOr(file, "{}")) as Record<string, number>;
-  for (const c of cited) {
-    const line = c.split("|")[0].trim().slice(0, 300);
-    if (line) used[line] = (used[line] ?? 0) + 1;
+/** How often an index line was cited, and when last. */
+export type Usage = { n: number; last: number };
+
+const STALE_MS = 30 * 24 * 60 * 60 * 1000;
+
+const norm = (s: string) => s.toLowerCase().replace(/^[-*\s]+/, "").replace(/[^a-z0-9α-ω.∑∏≤≥]+/g, " ").trim();
+const tokens = (s: string) => new Set(norm(s).split(" ").filter((w) => w.length > 2));
+
+/** The lines of MEMORY.md that hold a memory: its list items, or its non-heading lines. */
+export function indexLines(index: string): string[] {
+  return index
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l && !l.startsWith("#"));
+}
+
+/** The index line a citation names: the same line, one containing the other, or mostly the same words; undefined when none is close. */
+export function matchLine(cited: string, lines: string[]): string | undefined {
+  const c = norm(cited);
+  if (!c) return undefined;
+  const exact = lines.find((l) => norm(l) === c);
+  if (exact) return exact;
+  const within = lines.find((l) => {
+    const n = norm(l);
+    return n.length > 12 && c.length > 12 && (n.includes(c) || c.includes(n));
+  });
+  if (within) return within;
+  const ct = tokens(cited);
+  let best: { line: string; score: number } | undefined;
+  for (const l of lines) {
+    const lt = tokens(l);
+    const shared = [...ct].filter((w) => lt.has(w)).length;
+    const score = shared / Math.max(1, Math.min(ct.size, lt.size));
+    if (score >= 0.6 && (!best || score > best.score)) best = { line: l, score };
   }
+  return best?.line;
+}
+
+async function readUsage(s: MemoryStore): Promise<Record<string, Usage>> {
+  const raw = JSON.parse(await readOr(join(s.dir, "used.json"), "{}")) as Record<string, number | Usage>;
+  // Counts kept before dates were: a bare number.
+  return Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, typeof v === "number" ? { n: v, last: 0 } : v]));
+}
+
+/** Count what a session cited (upstream `used`), each citation against the index line it names: the harness's bookkeeping about the model, never a model's tool. */
+export async function recordCitations(s: MemoryStore, cited: string[], now = Date.now()): Promise<void> {
+  if (!cited.length) return;
+  const lines = indexLines(await readOr(paths(s).index));
+  const used = await readUsage(s);
+  // A reply that cites one line five times has used it once.
+  const keys = new Set(cited.map((c) => matchLine(c.split("|")[0], lines) ?? c.split("|")[0].trim().slice(0, 300)).filter(Boolean));
+  for (const k of keys) used[k] = { n: (used[k]?.n ?? 0) + 1, last: now };
   await mkdir(s.dir, { recursive: true });
-  await writeFile(file, JSON.stringify(used), "utf8");
+  await writeFile(join(s.dir, "used.json"), JSON.stringify(used), "utf8");
+}
+
+/** Index lines that have been in MEMORY.md for a month and that no session cited in that month. */
+export function staleLines(lines: string[], used: Record<string, Usage>, firstSeen: Record<string, number>, now: number): string[] {
+  return lines.filter((l) => {
+    const since = firstSeen[l];
+    if (since === undefined || now - since < STALE_MS) return false;
+    const u = used[l];
+    return !u || now - u.last >= STALE_MS;
+  });
 }
 
 export type MemoryStore = { dir: string };
@@ -189,15 +245,22 @@ Keep in mind while you read:
 }
 
 /** Fold the records added since the last consolidation into MEMORY.md and memory_summary.md. */
-export async function consolidate(s: MemoryStore, provider: ModelProvider, model: string): Promise<boolean> {
+export async function consolidate(s: MemoryStore, provider: ModelProvider, model: string, now = Date.now()): Promise<boolean> {
   const p = paths(s);
   const pending = JSON.parse(await readOr(p.pending, "[]")) as string[];
   if (!pending.length) return false;
   const records = await Promise.all(pending.map(async (n) => `## ${n}\n${await readOr(join(p.records, n))}`));
-  const used = Object.entries(JSON.parse(await readOr(join(s.dir, "used.json"), "{}")) as Record<string, number>)
-    .sort((a, b) => b[1] - a[1])
+  const usage = await readUsage(s);
+  const used = Object.entries(usage)
+    .sort((a, b) => b[1].n - a[1].n)
     .slice(0, 60)
-    .map(([line, n]) => `- cited ${n}×: ${line}`)
+    .map(([line, u]) => `- cited ${u.n}×: ${line}`)
+    .join("\n");
+  const seenFile = join(s.dir, "seen.json");
+  const firstSeen = JSON.parse(await readOr(seenFile, "{}")) as Record<string, number>;
+  const stale = staleLines(indexLines(await readOr(p.index)), usage, firstSeen, now)
+    .slice(0, 40)
+    .map((l) => `- ${l}`)
     .join("\n");
   const r = await provider.chat({
     model,
@@ -205,7 +268,7 @@ export async function consolidate(s: MemoryStore, provider: ModelProvider, model
       { role: "system", content: CONSOLIDATION_SYSTEM },
       {
         role: "user",
-        content: `Current MEMORY.md:\n\`\`\`\n${await readOr(p.index, "(empty)")}\n\`\`\`\n\nCurrent memory_summary.md:\n\`\`\`\n${await readOr(p.summary, "(empty)")}\n\`\`\`\n\nRecords added since the last consolidation:\n\n${records.join("\n\n")}${used ? `\n\nHow often sessions cited memory lines as having changed what they did (lines never cited are the first to drop when the index is long):\n${used}` : ""}`,
+        content: `Current MEMORY.md:\n\`\`\`\n${await readOr(p.index, "(empty)")}\n\`\`\`\n\nCurrent memory_summary.md:\n\`\`\`\n${await readOr(p.summary, "(empty)")}\n\`\`\`\n\nRecords added since the last consolidation:\n\n${records.join("\n\n")}${used ? `\n\nHow often sessions cited memory lines as having changed what they did (lines never cited are the first to drop when the index is long):\n${used}` : ""}${stale ? `\n\nLines that have been in MEMORY.md for a month without any session citing them. Drop them, unless one holds something that cannot be rediscovered (a measurement, a verified result, a stated constraint):\n${stale}` : ""}`,
       },
     ],
     maxTokens: 4096,
@@ -216,6 +279,10 @@ export async function consolidate(s: MemoryStore, provider: ModelProvider, model
   const summary = /```summary\s*\n([\s\S]*?)```/.exec(text)?.[1];
   if (index === undefined || summary === undefined) throw new Error("the consolidation did not return both files");
   await writeFile(p.index, index.trim() + "\n", "utf8");
+  // When each line of the new index first appeared, so a line nobody uses can be recognised as stale a month on.
+  const seen: Record<string, number> = {};
+  for (const l of indexLines(index)) seen[l] = firstSeen[l] ?? now;
+  await writeFile(seenFile, JSON.stringify(seen), "utf8");
   await writeFile(p.summary, summary.trim() + "\n", "utf8");
   await writeFile(p.pending, "[]", "utf8");
   return true;

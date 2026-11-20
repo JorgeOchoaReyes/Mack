@@ -19,6 +19,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { extractLean } from "../prove";
 import { lemmaNote, prepare, type Lemma, type PrepareEvent } from "../prepare";
+import { unknownNames } from "../lean/mathlib-index";
 import { complete } from "../lean/analysis";
 import { sketchScore, type Analysis } from "../lean/sketch";
 import { admit, initialPolicy, partialScore, scoreOf, SearchTree, type Limits, type NodeStatus, type SearchNode } from "./tree";
@@ -58,6 +59,8 @@ export type SearchOptions = {
   prepare?: { checkStatement: boolean; idea: boolean };
   /** Lemmas this project has already proved, offered to every worker. */
   lemmas?: Lemma[];
+  /** Real Mathlib names close to ones Lean did not know, as a note for a worker continuing that node. */
+  lookup?: (unknown: string[]) => Promise<string>;
   /** A rollout to continue: its recorded nodes, rounds done and model calls spent. */
   resume?: { nodes: SearchNode[]; rounds: number; calls: number };
   journal?: (e: JournalEntry) => void;
@@ -157,6 +160,10 @@ export async function search(o: SearchOptions): Promise<void> {
     notes = prep.notes;
   } else if (o.lemmas?.length) notes = lemmaNote(o.lemmas);
 
+  /** The closest real Mathlib names for those a node's check did not know. */
+  const hintFor = async (check: LeanCheck | null): Promise<string> =>
+    check && o.lookup ? o.lookup(unknownNames(check.errors.map((e) => e.message).join("\n"))).catch(() => "") : "";
+
   const { w, k1, fanout, callsPerContinuation, modelCalls } = o.limits;
   const tree = o.resume?.nodes.length
     ? SearchTree.from(o.resume.nodes)
@@ -236,7 +243,7 @@ ${note}` };
       parentFile: parent.file,
       parentState,
       parentCheck: pc ? describeCheck(pc) : parentId === 0 ? null : `status: ${parent.status}\n${parent.detail.slice(0, 3000)}`,
-      notes,
+      notes: [notes, await hintFor(pc ?? null)].filter(Boolean).join("\n\n"),
       siblings: siblings.length ? `Other continuations already made from this same point (${siblings.length}): ${siblings.slice(-12).map((s) => `node ${s.id}: ${s.status} (${s.errors} error(s), ${s.sorries} sorry(ies))`).join("; ")}. Use their results to avoid repeating unsuccessful work.` : "",
       branches: tree.nodes.filter((n) => n.task && n.id !== parentId).slice(-6).map((n) => ({ task: n.task!, node: n.id, status: n.status, errors: n.errors, sorries: n.sorries })),
       dir: join(ws, task),
@@ -264,8 +271,9 @@ ${note}` };
   const continueNode = async (parentId: number, round: number, siblings: SearchNode[]): Promise<void> => {
     const parent = tree.nodes[parentId];
     const started = Date.now();
+    const hint = await hintFor(checks.get(parentId) ?? null);
     const messages: ChatMessage[] = [
-      { role: "system", content: workerSystem({ statement, frozen: o.frozen, parent, check: checks.get(parentId) ?? null, siblings, notes }) },
+      { role: "system", content: workerSystem({ statement, frozen: o.frozen, parent, check: checks.get(parentId) ?? null, siblings, notes: [notes, hint].filter(Boolean).join("\n\n") }) },
       { role: "user", content: "Return the complete file." },
     ];
     let best = null as { file: string; ev: Evaluation; approach: string } | null;
