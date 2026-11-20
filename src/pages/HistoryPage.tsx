@@ -38,7 +38,8 @@ export function HistoryPage({ refreshKey, projectId, projectName, onRerun, openR
           </button>
           <h1 className="mono-title">{/^theorem\s+(\S+)/m.exec(open.problem)?.[1] ?? "untitled"}</h1>
           <p className="muted">
-            {new Date(open.startedAt).toLocaleString()} · {open.model.split("/").pop()} · {formatMs(open.finishedAt - open.startedAt)}
+            {new Date(open.startedAt).toLocaleString()} · {open.model.split("/").pop()} ·{" "}
+            {open.via === "chat" ? "written in the chat and checked with the strict verifier" : formatMs(open.finishedAt - open.startedAt)}
           </p>
           <div className="row gap-sm">
             <Button variant="primary" icon={RotateCcw} onClick={() => onRerun(open.problem)}>
@@ -84,8 +85,11 @@ export function HistoryPage({ refreshKey, projectId, projectName, onRerun, openR
   return (
     <div className="page">
       <div className="page-head">
-        <h1>History</h1>
-        <p className="muted">Every run is kept on this computer, with each attempt and what Lean said about it.</p>
+        <h1>Proof attempts</h1>
+        <p className="muted">
+          Every proof of one statement, verified or not: runs from the Lean editor, runs the chat started, and proofs the chat wrote and checked itself. Each is kept on
+          this computer with what Lean said. Long searches over many statements at once are under Proof searches.
+        </p>
         <ScopeSwitch projectName={projectName} all={all || !projectId} onChange={setAll} />
       </div>
       {runs.length === 0 ? (
@@ -104,7 +108,9 @@ export function HistoryPage({ refreshKey, projectId, projectName, onRerun, openR
               </span>
               <span className="muted small">{r.outcome === "solved" ? "Verified" : r.message.split("\n")[0]}</span>
               <span className="run-meta muted small">
-                {r.mode === "search"
+                {r.via === "chat"
+                  ? "checked in the chat"
+                  : r.mode === "search"
                   ? `search tree, ${r.attempts} node${r.attempts === 1 ? "" : "s"}`
                   : r.mode === "ultramath"
                     ? `Ultramath, ${r.attempts} turn${r.attempts === 1 ? "" : "s"}`

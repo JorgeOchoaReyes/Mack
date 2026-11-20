@@ -30,6 +30,8 @@ import { metered, type Meter, type Price } from "../core/model/metered";
 import type { RunEvent, RunMode, RunOrigin, RunRecord, Settings } from "./main";
 
 export type Project = { id: string; name: string; folder: string; createdAt: number };
+/** A proof the chat wrote and checked with `verify_lean`: the statement and proof files as they were, and the verdict. */
+export type ChatAttempt = { projectId: string; file: string; proofFile: string; problem: string; proof: string; model: string; accepted: boolean; detail: string; axioms: string[]; at: number };
 export type SessionSummary = Pick<ChatSession, "id" | "projectId" | "title" | "startedAt" | "updatedAt"> & { messages: number; busy: boolean };
 export type PendingApproval = { id: string; sessionId: string; call: ToolCall };
 export type Reminder = { id: string; sessionId: string; text: string; dueAt: number };
@@ -51,6 +53,8 @@ type Deps = {
   newMeter: (s: Settings, model: string, spent?: number, capped?: boolean) => { meter: Meter; price: Price | undefined };
   lean: (s: Settings) => { run: LeanRun; check?: LeanCheckRun } | undefined;
   runProof: (problem: string, mode: RunMode, forward: (ev: RunEvent) => void, origin?: RunOrigin) => Promise<RunRecord>;
+  /** Keep a chat's own `verify_lean` verdict with the proof attempts, as one attempt. */
+  recordChatAttempt: (a: ChatAttempt) => void;
   /** The GitHub token for project pull requests, or "" when none is set up. */
   githubToken: () => Promise<string>;
   /** Runs the tools other features register (Ultramath, proof search, MCP) for one session. */
@@ -328,6 +332,7 @@ export function registerChat(d: Deps): ChatControl {
     const ownTools = () => plugins.specs(session.id);
     /** A verifier's acceptance goes on the plan's Proved list, straight from the outcome, and the person sees it at once. */
     const noteProved = async (o: ToolOutcome): Promise<ToolOutcome> => {
+      noteAttempt(o);
       const found = provedBy(o);
       if (found) {
         const next = recordProved(await planOf(p), provedEntry(p, found, Date.now()));
@@ -336,6 +341,23 @@ export function registerChat(d: Deps): ChatControl {
         send({ sessionId: session.id, plan: shown(p, next), projectId: p.id });
       }
       return o;
+    };
+    /** A `verify_lean` verdict, accepted or rejected, is kept with the proof attempts. */
+    const noteAttempt = (o: ToolOutcome) => {
+      if (o.name !== "verify_lean" || !o.ok || !/^(accepted|rejected)/.test(o.output)) return;
+      const clean = (v: unknown) => (typeof v === "string" ? v.replace(/\\/g, "/").replace(/^\.\//, "") : "");
+      const file = clean(o.args.statement_path);
+      const proofFile = clean(o.args.proof_path);
+      const read = (rel: string) => {
+        try {
+          return readFileSync(join(p.folder, rel), "utf8");
+        } catch {
+          return "";
+        }
+      };
+      const accepted = o.output.startsWith("accepted");
+      const axioms = accepted ? (/axioms: ([^)]*)\)/.exec(o.output)?.[1] ?? "").split(",").map((x) => x.trim()).filter((x) => x && x !== "none") : [];
+      d.recordChatAttempt({ projectId: p.id, file, proofFile, problem: read(file), proof: read(proofFile), model, accepted, detail: accepted ? "" : o.output.replace(/^rejected:\s*/, ""), axioms, at: Date.now() });
     };
     const exec = async (call: ToolCall, sub = false): Promise<ToolOutcome> => noteProved(await execRaw(call, sub));
     const execRaw = async (call: ToolCall, sub = false): Promise<ToolOutcome> =>

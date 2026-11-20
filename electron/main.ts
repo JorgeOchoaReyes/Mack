@@ -125,13 +125,15 @@ export type RunRecord = {
   provider?: ProviderId;
   /** Absent on runs recorded before the search tree: those were "single". */
   mode?: RunMode;
+  /** "chat": the chat wrote the proof itself and checked it with `verify_lean`; one attempt, no prover. */
+  via?: "chat";
   problem: string;
   outcome: "solved" | "failed";
   message: string;
   events: RunEvent[];
 };
 
-export type RunSummary = Pick<RunRecord, "id" | "projectId" | "file" | "startedAt" | "finishedAt" | "model" | "mode" | "outcome" | "message"> & {
+export type RunSummary = Pick<RunRecord, "id" | "projectId" | "file" | "startedAt" | "finishedAt" | "model" | "mode" | "via" | "outcome" | "message"> & {
   theorem: string;
   attempts: number;
 };
@@ -778,6 +780,31 @@ const chat = registerChat({
     return { run, check: quickCheck(s, 1) };
   },
   runProof,
+  recordChatAttempt: (a) => {
+    const id = `${a.at}`;
+    const record: RunRecord = {
+      id,
+      projectId: a.projectId,
+      file: a.file,
+      startedAt: a.at,
+      finishedAt: a.at,
+      model: a.model,
+      mode: "single",
+      via: "chat",
+      problem: a.problem,
+      outcome: a.accepted ? "solved" : "failed",
+      message: a.accepted ? "" : `The verifier rejected ${a.proofFile}: ${a.detail}`,
+      events: [
+        { type: "attempt", n: 1, candidate: a.proof, outcome: a.accepted ? "verified" : "rejected", detail: a.detail, ms: 0, tokens: 0 },
+        ...(a.accepted ? [{ type: "solved" as const, n: 1, proof: a.proof, axioms: a.axioms }] : []),
+      ],
+    };
+    try {
+      writeFileSync(join(runsDir(), `${id}.json`), JSON.stringify(record));
+    } catch {
+      // The attempt still stands in the chat; only its copy here is lost.
+    }
+  },
   githubToken: async () => (await githubAuth()).token,
   extraTools: ({ projectId, root, sessionId }) => (call) => runTool(call, { projectId, root, sessionId }) ?? swarmTool(call, { projectId, root, sessionId }),
 });

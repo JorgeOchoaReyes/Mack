@@ -100,10 +100,10 @@ export function RunsPage({ projectId, projectName }: { projectId: string; projec
   return (
     <div className="page">
       <div className="page-head">
-        <h1>Proof-search runs</h1>
+        <h1>Proof searches</h1>
         <p className="muted">
-          A run explores a set of problems, each as its own search tree, and records every node, so it can be watched, stopped and resumed. Start one here or
-          ask the assistant in Chat; Search-tree settings apply.
+          A long search over a set of statements at once, each with its own search tree, that can be watched, stopped and resumed: for a chain of lemmas, or many
+          problems in one go. Start one here or ask the assistant in Chat; Search-tree settings apply. Proofs of one statement at a time are under Proof attempts.
         </p>
         <div className="row gap-sm">
           <Button variant="primary" icon={Plus} onClick={() => void act(() => api.startDiscoveryFromFiles())}>
