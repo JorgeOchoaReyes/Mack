@@ -57,7 +57,27 @@ export function SettingsPage({ settings, saveSettings, onGo }: Props) {
               onChange={(e) => void saveSettings({ timeoutMs: Math.max(10, Number(e.target.value) || 10) * 1000 })}
             />
           </Field>
+          <Field label="Attempts at once" hint="Independent chains of attempts running side by side, sharing the attempts above. The first verified proof stops the others. Each chain keeps a Lean REPL in memory.">
+            <input
+              className="input"
+              type="number"
+              min={1}
+              max={4}
+              value={settings.parallelAttempts}
+              onChange={(e) => void saveSettings({ parallelAttempts: Math.max(1, Math.min(4, Number(e.target.value) || 1)) })}
+            />
+          </Field>
         </div>
+        <Toggle
+          checked={settings.checkStatement}
+          onChange={(v) => void saveSettings({ checkStatement: v })}
+          label="Try to break the statement first: Lean's random tester looks for a counterexample before any model call. A counterexample stops the run, since no proof can exist."
+        />
+        <Toggle
+          checked={settings.proofIdea}
+          onChange={(v) => void saveSettings({ proofIdea: v })}
+          label="Plan the proof in words first: one model call writes the proof as small steps, and every attempt is given that plan."
+        />
       </section>
 
       <section className="settings-group">

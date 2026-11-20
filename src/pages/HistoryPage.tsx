@@ -2,7 +2,7 @@ import { ArrowLeft, CircleAlert, History, RotateCcw, ShieldCheck, Trash2 } from 
 import { useEffect, useState } from "react";
 import { api, type RunEvent, type RunRecord, type RunSummary } from "../api";
 import { CodeEditor } from "../components/CodeEditor";
-import { SolvedCard, Timeline } from "../components/RunView";
+import { BeforeProving, SolvedCard, Timeline } from "../components/RunView";
 import { TreeSummary, TreeView, type NodeEvent } from "../components/TreeView";
 import { AcceptedCard, UltramathView } from "../components/UltramathView";
 import { Button, formatMs, ScopeSwitch, timeAgo } from "../components/ui";
@@ -61,6 +61,7 @@ export function HistoryPage({ refreshKey, projectId, projectName, onRerun, openR
         <div className="code-frame">
           <CodeEditor value={open.problem} readOnly />
         </div>
+        <BeforeProving events={open.events} />
         {solved ? (
           <SolvedCard solved={solved} problem={open.problem} where={where} />
         ) : accepted ? (

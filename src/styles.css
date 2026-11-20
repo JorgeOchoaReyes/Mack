@@ -852,3 +852,11 @@ body:has(.resizer.dragging) { cursor: col-resize; user-select: none; }
 .plan-saved-row { display: flex; align-items: center; gap: 6px; width: 100%; background: none; border: none; color: inherit; text-align: left; padding: 4px 6px; border-radius: 6px; cursor: pointer; font: inherit; }
 .plan-saved-row:hover { background: var(--sunken); }
 .plan-saved-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Before the first attempt: the statement check and the plan in words */
+.before-proving { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.before-row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.before-detail { white-space: pre-wrap; flex-basis: 100%; color: var(--muted); }
+.before-idea .link { display: inline-flex; align-items: center; gap: 4px; }
+.before-text { white-space: pre-wrap; margin-top: 6px; line-height: 1.55; }
+.rot90 { transform: rotate(90deg); }

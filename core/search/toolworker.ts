@@ -92,6 +92,8 @@ export type ToolWorkerOptions = {
   parentState?: string;
   parentCheck: string | null;
   siblings: string;
+  /** The plan in words and the project's lemmas, from the steps before the first round. */
+  notes?: string;
   branches: BranchRef[];
   dir: string;
   board?: PlanBoard;
@@ -163,7 +165,7 @@ function taskMessage(o: ToolWorkerOptions): string {
   return `You are starting a fresh attempt from node ${o.parentNode} of the search tree; the workspace holds that node's file${o.parentState ? " and its STATE.md" : ""}. Read it before you change it.
 
 The harness checked the file the previous attempt submitted:
-${o.parentCheck ?? "(root node: not checked; the proof is the statement with sorry)"}${o.siblings ? `\n\n${o.siblings}` : ""}${branches}
+${o.parentCheck ?? "(root node: not checked; the proof is the statement with sorry)"}${o.siblings ? `\n\n${o.siblings}` : ""}${o.notes ? `\n\n${o.notes}` : ""}${branches}
 
 Use the current files and verdict to choose the next meaningful mathematical step.`;
 }

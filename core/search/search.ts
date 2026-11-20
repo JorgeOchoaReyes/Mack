@@ -18,6 +18,7 @@ import { PlanBoard, runToolWorker } from "./toolworker";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { extractLean } from "../prove";
+import { lemmaNote, prepare, type Lemma, type PrepareEvent } from "../prepare";
 import { complete } from "../lean/analysis";
 import { sketchScore, type Analysis } from "../lean/sketch";
 import { admit, initialPolicy, partialScore, scoreOf, SearchTree, type Limits, type NodeStatus, type SearchNode } from "./tree";
@@ -30,7 +31,8 @@ export type SearchEvent =
   | { type: "round"; round: number; batch: number[] }
   | { type: "node"; node: SearchNode; ms: number; tokens: number; calls: number }
   | { type: "solved"; n: number; proof: string; axioms: string[] }
-  | { type: "failed"; message: string };
+  | { type: "failed"; message: string }
+  | PrepareEvent;
 
 export type SearchOptions = {
   frozen: string;
@@ -52,6 +54,10 @@ export type SearchOptions = {
   /** The problem's name: the workspace file is `<problem>.lean`. */
   problem?: string;
   effort?: ReasoningEffort;
+  /** The steps before the first round (core/prepare.ts); skipped on a resume. */
+  prepare?: { checkStatement: boolean; idea: boolean };
+  /** Lemmas this project has already proved, offered to every worker. */
+  lemmas?: Lemma[];
   /** A rollout to continue: its recorded nodes, rounds done and model calls spent. */
   resume?: { nodes: SearchNode[]; rounds: number; calls: number };
   journal?: (e: JournalEntry) => void;
@@ -68,6 +74,8 @@ export function workerSystem(o: {
   parent: SearchNode;
   check: LeanCheck | null;
   siblings: SearchNode[];
+  /** The plan in words and the project's lemmas, from the steps before the first round. */
+  notes?: string;
 }): string {
   const parts = [
     `You are proving one theorem in Lean 4 with Mathlib, and you are continuing a partial proof that someone else started.
@@ -83,6 +91,7 @@ The frozen theorem statement (keep it byte for byte):
 ${o.frozen.trimEnd()}
 \`\`\``,
   ];
+  if (o.notes) parts.push(o.notes);
   if (o.parent.file !== o.frozen) parts.push(`The current file (the node's workspace):\n\`\`\`lean\n${o.parent.file.trimEnd()}\n\`\`\``);
   else parts.push("The current file is the statement itself: nothing has been proved yet.");
   parts.push(
@@ -139,6 +148,14 @@ export async function search(o: SearchOptions): Promise<void> {
   o.onEvent({ type: "status", message: "Elaborating the frozen statement with Lean (first run loads Mathlib)…" });
   const pristine = await pristineType(o.frozen, o.run);
   if (!pristine.ok) return o.onEvent({ type: "failed", message: `Lean could not check the problem file:\n${pristine.reason}` });
+
+  let notes = "";
+  if (!o.resume?.nodes.length && o.prepare) {
+    const prep = await prepare({ frozen: o.frozen, provider: o.provider, model: o.model, check: o.check, ...o.prepare, lemmas: o.lemmas, signal: o.signal, onEvent: o.onEvent });
+    if (o.signal?.aborted) return o.onEvent({ type: "failed", message: "Stopped." });
+    if (prep.stop) return o.onEvent({ type: "failed", message: prep.stop });
+    notes = prep.notes;
+  } else if (o.lemmas?.length) notes = lemmaNote(o.lemmas);
 
   const { w, k1, fanout, callsPerContinuation, modelCalls } = o.limits;
   const tree = o.resume?.nodes.length
@@ -219,6 +236,7 @@ ${note}` };
       parentFile: parent.file,
       parentState,
       parentCheck: pc ? describeCheck(pc) : parentId === 0 ? null : `status: ${parent.status}\n${parent.detail.slice(0, 3000)}`,
+      notes,
       siblings: siblings.length ? `Other continuations already made from this same point (${siblings.length}): ${siblings.slice(-12).map((s) => `node ${s.id}: ${s.status} (${s.errors} error(s), ${s.sorries} sorry(ies))`).join("; ")}. Use their results to avoid repeating unsuccessful work.` : "",
       branches: tree.nodes.filter((n) => n.task && n.id !== parentId).slice(-6).map((n) => ({ task: n.task!, node: n.id, status: n.status, errors: n.errors, sorries: n.sorries })),
       dir: join(ws, task),
@@ -247,7 +265,7 @@ ${note}` };
     const parent = tree.nodes[parentId];
     const started = Date.now();
     const messages: ChatMessage[] = [
-      { role: "system", content: workerSystem({ statement, frozen: o.frozen, parent, check: checks.get(parentId) ?? null, siblings }) },
+      { role: "system", content: workerSystem({ statement, frozen: o.frozen, parent, check: checks.get(parentId) ?? null, siblings, notes }) },
       { role: "user", content: "Return the complete file." },
     ];
     let best = null as { file: string; ev: Evaluation; approach: string } | null;

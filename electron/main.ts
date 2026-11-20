@@ -15,6 +15,8 @@ import { OpenAICompatibleProvider } from "../core/model/openai-compatible";
 import { PROVIDERS, providerInfo, type ProviderId } from "../core/model/providers";
 import { ghCliToken, githubLogin, type GitHubTokenSource } from "../core/github";
 import { prove, type ProveEvent } from "../core/prove";
+import { lemmaSource, type Lemma } from "../core/prepare";
+import { readPlan } from "../core/chat/plan";
 import { search, type SearchEvent } from "../core/search/search";
 import { DEFAULT_LIMITS, type Limits } from "../core/search/tree";
 import { DEFAULT_ULTRAMATH, problemKind, ultramath, type UltramathEvent, type UltramathLimits } from "../core/ultramath/swarm";
@@ -60,6 +62,12 @@ export type Settings = {
   searchAnalysis: boolean;
   /** Problems a proof-search run explores at once. */
   runConcurrency: number;
+  /** Before proving: try to break the statement with Lean's random tester. */
+  checkStatement: boolean;
+  /** Before proving: have the model plan the proof in words, which every attempt is given. */
+  proofIdea: boolean;
+  /** Single mode: independent chains of attempts run at once, sharing the attempt budget. */
+  parallelAttempts: number;
   /** What the chat may do without asking, per protected tool; absent means ask. */
   approvals: Partial<Record<string, ApprovalPolicy>>;
   /** Models that read images: attachments and `view_image` reach only these. */
@@ -164,6 +172,9 @@ const DEFAULTS: Settings = {
   searchWorker: "fixed",
   searchAnalysis: true,
   runConcurrency: 1,
+  checkStatement: true,
+  proofIdea: true,
+  parallelAttempts: 1,
   upstreamCheck: true,
   upstreamDismissed: "",
   activeProject: "",
@@ -471,6 +482,36 @@ function newMeter(s: Settings, model: string, spent = 0, capped = true): { meter
 /** Where a proof run came from: its project and, when it proves a project file as saved, that file. */
 export type RunOrigin = { projectId?: string; file?: string };
 
+/**
+ * The lemmas a verifier accepted in a project, newest first, from its plan's Proved list: the
+ * accepted proof file for `verify_lean`, the run's proof for a proof run. `except` is the
+ * statement being proved now, which must not be offered its own proof.
+ */
+async function projectLemmas(projectId: string, except?: string): Promise<Lemma[]> {
+  let folder: string;
+  try {
+    folder = chat.project(projectId).folder;
+  } catch {
+    return [];
+  }
+  const plan = await readPlan(folder);
+  const out: Lemma[] = [];
+  for (const p of [...(plan.proved ?? [])].reverse()) {
+    if (p.file === except || !p.proof) continue;
+    try {
+      if (p.how === "verify_lean") out.push({ file: p.file, source: lemmaSource(readFileSync(await confine(folder, p.proof), "utf8")) });
+      else {
+        const r = JSON.parse(readFileSync(join(runsDir(), `${p.proof.replace(/[^0-9]/g, "")}.json`), "utf8")) as RunRecord;
+        const solved = r.events.find((e): e is Extract<RunEvent, { type: "solved" }> => e.type === "solved");
+        if (solved) out.push({ file: p.file, source: lemmaSource(solved.proof) });
+      }
+    } catch {
+      // A proof file or run that is gone is simply not offered.
+    }
+  }
+  return out;
+}
+
 /** One proof run in the given mode, recorded in the run history. Shared by the Prove screen and the chat's `start_proof`. */
 async function runProof(problem: string, mode: RunMode, forward: (ev: RunEvent) => void, origin: RunOrigin = {}): Promise<RunRecord> {
   if (proving) throw new Error("a proof run is already in progress");
@@ -516,6 +557,7 @@ async function runProof(problem: string, mode: RunMode, forward: (ev: RunEvent) 
   };
   try {
     const run = leanRunner({ workspace: s.leanWorkspace, timeoutMs: s.timeoutMs });
+    const lemmas = origin.projectId ? await projectLemmas(origin.projectId, origin.file) : [];
     if (s.mode === "ultramath") {
       const lean = needsLean ? { run, check: quickCheck(s, 2) ?? (async (src: string) => checkFromRun(await run(src))) } : {};
       await ultramath({ problem, provider, model, ...lean, limits: s.ultramath, signal: proving.signal, onEvent: send });
@@ -528,6 +570,8 @@ async function runProof(problem: string, mode: RunMode, forward: (ev: RunEvent) 
         model,
         run,
         check,
+        prepare: { checkStatement: s.checkStatement, idea: s.proofIdea },
+        lemmas,
         limits: s.search,
         analysis: s.searchAnalysis,
         sketch: sketchFor(problem),
@@ -537,13 +581,17 @@ async function runProof(problem: string, mode: RunMode, forward: (ev: RunEvent) 
         onEvent: send,
       });
     } else {
+      const parallel = Math.max(1, Math.min(4, Math.floor(s.parallelAttempts) || 1));
       await prove({
         frozen: problem,
         provider,
         model,
         run,
-        check: quickCheck(s, 1),
+        check: quickCheck(s, parallel),
         maxAttempts: s.maxAttempts,
+        parallel,
+        prepare: { checkStatement: s.checkStatement, idea: s.proofIdea },
+        lemmas,
         signal: proving.signal,
         onEvent: send,
       });
@@ -727,6 +775,8 @@ const runs = new RunManager(
       run,
       check,
       limits: task.limits,
+      prepare: { checkStatement: s.checkStatement, idea: s.proofIdea },
+      lemmas: task.project ? await projectLemmas(task.project) : [],
       analysis: task.analysis,
       sketch: sketchFor(problem.frozen),
       worker: task.worker,

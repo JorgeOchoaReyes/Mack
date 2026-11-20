@@ -8,6 +8,7 @@ import { readFile, rm, rmdir, stat } from "node:fs/promises";
 import { describeResult, runCommand, type JobManager } from "./shell";
 import { loadSkill } from "./skills";
 import { checkFromRun, describeCheck, type LeanCheckRun } from "../lean/check";
+import { describeStatementCheck, falsify } from "../lean/falsify";
 import { describeRejection, pristineType, verifyText, type LeanRun } from "../lean/verify";
 import type { ToolOutcome } from "./agent";
 import type { McpTarget } from "../mcp/client";
@@ -97,6 +98,13 @@ async function run(call: ToolCall, c: ExecutorContext): Promise<string> {
       const source = typeof a.source === "string" && a.source ? a.source : await readFile(await confine(c.root, str(a.path, "path or source")), "utf8");
       const check = c.lean.check ? await c.lean.check(source) : checkFromRun(await c.lean.run(source));
       return describeCheck(check);
+    }
+    case "check_statement": {
+      if (!c.lean) throw new Error("Lean is not installed; set it up in Setup");
+      const lean = c.lean;
+      const source = typeof a.source === "string" && a.source ? a.source : await readFile(await confine(c.root, str(a.path, "path or source")), "utf8");
+      const result = await falsify(source, lean.check ?? (async (src) => checkFromRun(await lean.run(src))));
+      return `${describeStatementCheck(result)}\n\nNow restate the statement in plain words, every hypothesis included, and ask the person whether it says what they mean before any proof is attempted.`;
     }
     case "verify_lean":
       if (!c.lean) throw new Error("Lean is not installed; set it up in Setup");

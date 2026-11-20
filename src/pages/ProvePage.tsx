@@ -5,7 +5,7 @@ import type { LeanFile, ProjectFilesState } from "../project";
 import { providerInfo } from "../../core/model/providers";
 import { formatUsd } from "../../core/model/metered";
 import { CodeEditor } from "../components/CodeEditor";
-import { SolvedCard, Timeline } from "../components/RunView";
+import { BeforeProving, SolvedCard, Timeline } from "../components/RunView";
 import { TreeSummary, TreeView, type NodeEvent } from "../components/TreeView";
 import { AcceptedCard, UltramathView } from "../components/UltramathView";
 import { problemKind } from "../../core/lean/rules";
@@ -42,6 +42,7 @@ export function ProvePage({ problem, setProblem, project, files, openRequest, on
   const [running, setRunning] = useState(false);
   const [status, setStatus] = useState("");
   const [attempts, setAttempts] = useState<Attempt[]>([]);
+  const [prepared, setPrepared] = useState<RunEvent[]>([]);
   const [nodes, setNodes] = useState<NodeEvent[]>([]);
   const [swarm, setSwarm] = useState<RunEvent[]>([]);
   const [spend, setSpend] = useState<{ usd: number; limit: number; estimated: boolean } | null>(null);
@@ -88,6 +89,7 @@ export function ProvePage({ problem, setProblem, project, files, openRequest, on
         if (e.type === "spend") setSpend(e);
         if (["start", "direction", "refused", "post", "turn", "report", "accepted"].includes(e.type)) setSwarm((s) => [...s, e]);
         if (e.type === "attempt") setAttempts((a) => [...a, e]);
+        if (e.type === "statementCheck" || e.type === "idea") setPrepared((p) => [...p, e]);
         if (e.type === "node") setNodes((n) => [...n, e]);
         if (e.type === "round") setRound(e.round);
         if (e.type === "solved") setSolved(e);
@@ -185,6 +187,7 @@ export function ProvePage({ problem, setProblem, project, files, openRequest, on
 
   const run = async () => {
     setAttempts([]);
+    setPrepared([]);
     setNodes([]);
     setSwarm([]);
     setSpend(null);
@@ -409,6 +412,7 @@ export function ProvePage({ problem, setProblem, project, files, openRequest, on
               </div>
             )}
 
+            <BeforeProving events={prepared} />
             {failure && !running && <div className="notice notice-bad">{failure}</div>}
             {solved && (
               <SolvedCard
