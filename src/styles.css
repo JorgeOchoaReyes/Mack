@@ -114,7 +114,8 @@ h1, h2, h3 { font-family: var(--display); margin: 0; letter-spacing: -0.01em; }
 .logo { width: 32px; height: 32px; border-radius: 9px; background: #121000; display: grid; place-items: center; box-shadow: var(--glow); flex: none; }
 .logo svg { width: 20px; height: 20px; }
 .brand-name { font: 700 15px var(--display); letter-spacing: 0.01em; }
-.brand-sub { font-size: 11.5px; color: var(--muted); }
+.brand-sub { font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.brand-text { min-width: 0; flex: 1; }
 nav { display: flex; flex-direction: column; gap: 2px; }
 .nav-group { margin: 14px 10px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--faint); }
 .project-picker { position: relative; }
@@ -852,3 +853,76 @@ body:has(.resizer.dragging) { cursor: col-resize; user-select: none; }
 .plan-saved-row { display: flex; align-items: center; gap: 6px; width: 100%; background: none; border: none; color: inherit; text-align: left; padding: 4px 6px; border-radius: 6px; cursor: pointer; font: inherit; }
 .plan-saved-row:hover { background: var(--sunken); }
 .plan-saved-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Before the first attempt: the statement check and the plan in words */
+.before-proving { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.before-row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.before-detail { white-space: pre-wrap; flex-basis: 100%; color: var(--muted); }
+.before-idea .link { display: inline-flex; align-items: center; gap: 4px; }
+.before-text { white-space: pre-wrap; margin-top: 6px; line-height: 1.55; }
+.rot90 { transform: rotate(90deg); }
+
+/* Walkthroughs */
+.wt-section { display: grid; gap: 10px; }
+.wt-section h2 { font-size: 16px; }
+.wt-head { justify-content: space-between; flex-wrap: wrap; }
+.wt-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
+.wt-card { display: grid; gap: 8px; align-content: start; justify-items: start; padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.wt-card p { margin: 0; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.wt-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.wt-filter { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+.wt-filter .input { width: 240px; }
+.wt-row .run-thm { display: grid; gap: 2px; }
+.wt-idea, .wt-file { color: var(--muted); font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Lean editor header: two rows that never wrap */
+.toolbar.stacked { flex-direction: column; align-items: stretch; gap: 10px; padding: 10px 18px; }
+.toolbar-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; }
+.toolbar-row .toolbar-title { min-width: 0; flex: 1; overflow: hidden; }
+.toolbar-row .toolbar-actions { flex: none; }
+.toolbar-sub { justify-content: flex-start; }
+.mode-hint { color: var(--muted); font-size: 12.5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.btn { white-space: nowrap; }
+.pane-head > span:first-child { white-space: nowrap; }
+
+/* Sidebar status: one line when ready */
+.health-model { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.health-bar { height: 3px; border-radius: 3px; background: var(--sunken); overflow: hidden; margin-top: 2px; }
+.health-bar span { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+
+/* Empty states: what the screen holds and how to start */
+.empty-state { display: grid; justify-items: center; text-align: center; gap: 10px; padding: 48px 24px; border: 1px dashed var(--border-strong, var(--border)); border-radius: 16px; background: var(--surface); }
+.empty-icon { width: 46px; height: 46px; border-radius: 14px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent-text); }
+.empty-state h3 { font-size: 16px; }
+.empty-state p { margin: 0; max-width: 520px; color: var(--muted); font-size: 13.5px; line-height: 1.55; }
+.empty-actions { margin-top: 4px; flex-wrap: wrap; justify-content: center; }
+
+/* Command palette (Ctrl+K) */
+.palette-open { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); color: var(--muted); cursor: pointer; font-size: 13px; }
+.palette-open:hover { color: var(--text); border-color: var(--border-strong, var(--border)); }
+.palette-open kbd { margin-left: auto; font-size: 11px; padding: 1px 6px; border-radius: 5px; background: var(--sunken); color: var(--muted); }
+.palette-backdrop { position: fixed; inset: 0; z-index: 100; background: color-mix(in srgb, #000 35%, transparent); display: grid; justify-items: center; align-items: start; padding-top: 12vh; }
+.palette { width: min(620px, calc(100vw - 32px)); background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow-lg); overflow: hidden; animation: palette-in 120ms ease-out; }
+@keyframes palette-in { from { opacity: 0; transform: translateY(-6px) scale(0.99); } to { opacity: 1; transform: none; } }
+.palette-input { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--border); color: var(--muted); }
+.palette-input input { flex: 1; border: 0; outline: none; background: transparent; color: var(--text); font: inherit; font-size: 15px; }
+.palette-input kbd { font-size: 11px; padding: 1px 6px; border-radius: 5px; background: var(--sunken); }
+.palette-list { list-style: none; margin: 0; padding: 6px; max-height: 50vh; overflow: auto; }
+.palette-list button { width: 100%; display: grid; grid-template-columns: 18px auto minmax(0, 1fr) 14px; align-items: center; gap: 10px; padding: 9px 10px; border: 0; border-radius: 8px; background: transparent; color: var(--text); cursor: pointer; text-align: left; font: inherit; }
+.palette-list button.active { background: var(--sunken); }
+.palette-list button.active svg:first-child { color: var(--accent-text); }
+.palette-label { font-weight: 560; white-space: nowrap; }
+.palette-hint { color: var(--muted); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.palette-enter { color: var(--muted); }
+.palette-none { padding: 14px; color: var(--muted); font-size: 13px; }
+.nav-collapsed .palette-open { justify-content: center; }
+
+/* Features named in the chat */
+.activity-features { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; }
+.feature-chip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border-radius: 99px; font-size: 11.5px; font-weight: 560; background: var(--accent-soft); color: var(--accent-text); white-space: nowrap; }
+
+/* Compact pages */
+.page { padding: 24px 24px 48px; gap: 14px; }
+.page-head h1 { font-size: 22px; }
+.page-head p { font-size: 13.5px; max-width: 760px; }
+.empty-state { padding: 36px 24px; }

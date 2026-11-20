@@ -5,6 +5,38 @@ import { CodeEditor } from "./CodeEditor";
 import { Badge, CopyButton, formatMs, OutcomeBadge, outcomeTone, Button } from "./ui";
 
 type Attempt = Extract<RunEvent, { type: "attempt" }>;
+type Prepared = Extract<RunEvent, { type: "statementCheck" } | { type: "idea" }>;
+
+const CHECK_LABEL = { counterexample: "Counterexample found", passed: "No counterexample found", untestable: "Not testable", unknown: "Not tested" } as const;
+const CHECK_TONE = { counterexample: "bad", passed: "ok", untestable: "neutral", unknown: "neutral" } as const;
+
+/** What happened before the first attempt: the random tester's verdict on the statement, and the plan in words. */
+export function BeforeProving({ events }: { events: RunEvent[] }) {
+  const prep = events.filter((e): e is Prepared => e.type === "statementCheck" || e.type === "idea");
+  const check = prep.find((e) => e.type === "statementCheck");
+  const idea = prep.find((e) => e.type === "idea");
+  const [open, setOpen] = useState(false);
+  if (!check && !idea) return null;
+  return (
+    <div className="before-proving">
+      {check?.type === "statementCheck" && (
+        <div className="before-row">
+          <span className="muted small">Statement check</span>
+          <Badge tone={CHECK_TONE[check.check.verdict]}>{CHECK_LABEL[check.check.verdict]}</Badge>
+          <span className="small before-detail">{check.check.detail}</span>
+        </div>
+      )}
+      {idea?.type === "idea" && (
+        <div className="before-idea">
+          <button className="link small" onClick={() => setOpen(!open)}>
+            <ChevronRight size={13} className={open ? "rot90" : ""} /> The plan in words, written before any Lean
+          </button>
+          {open && <div className="before-text small">{idea.text}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
 type Solved = Extract<RunEvent, { type: "solved" }>;
 
 export function SolvedCard({ solved, problem, where }: { solved: Solved; problem: string; where?: string }) {

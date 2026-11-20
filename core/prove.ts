@@ -7,6 +7,7 @@ import { checkFromRun, describeCheck, type LeanCheckRun } from "./lean/check";
 import { extractStatement, frozenObjection, protocolObjection } from "./lean/rules";
 import { describeRejection, excerpt, pristineType, verifyText, type LeanRun } from "./lean/verify";
 import type { ChatMessage, ModelProvider } from "./model/provider";
+import { prepare, type Lemma, type PrepareEvent } from "./prepare";
 
 export type AttemptOutcome = "refused" | "no verdict" | "errors" | "sorries" | "rejected" | "verified";
 
@@ -14,7 +15,8 @@ export type ProveEvent =
   | { type: "status"; message: string }
   | { type: "attempt"; n: number; candidate: string; outcome: AttemptOutcome; detail: string; ms: number; tokens: number }
   | { type: "solved"; n: number; proof: string; axioms: string[] }
-  | { type: "failed"; message: string };
+  | { type: "failed"; message: string }
+  | PrepareEvent;
 
 export type ProveOptions = {
   frozen: string;
@@ -24,6 +26,12 @@ export type ProveOptions = {
   /** The quick check (the resident REPL); a fresh `run` when absent. */
   check?: LeanCheckRun;
   maxAttempts: number;
+  /** Independent chains of attempts run at once, sharing the attempt budget; the first verified proof stops the others. */
+  parallel?: number;
+  /** The steps before the first attempt (core/prepare.ts); none when absent. */
+  prepare?: { checkStatement: boolean; idea: boolean };
+  /** Lemmas this project has already proved, offered to every attempt. */
+  lemmas?: Lemma[];
   signal?: AbortSignal;
   onEvent: (e: ProveEvent) => void;
 };
@@ -53,60 +61,87 @@ export async function prove(o: ProveOptions): Promise<void> {
   const pristine = await pristineType(o.frozen, o.run);
   if (!pristine.ok) return o.onEvent({ type: "failed", message: `Lean could not check the problem file:\n${pristine.reason}` });
 
-  const messages: ChatMessage[] = [
-    { role: "system", content: SYSTEM },
-    { role: "user", content: `Frozen file:\n\`\`\`lean\n${o.frozen}\`\`\`` },
-  ];
-  for (let n = 1; n <= o.maxAttempts; n++) {
-    if (o.signal?.aborted) return o.onEvent({ type: "failed", message: "Stopped." });
-    o.onEvent({ type: "status", message: `Attempt ${n} of ${o.maxAttempts}: the model is writing a proof…` });
-    const started = Date.now();
-    let reply: string;
-    let tokens = 0;
-    try {
-      const r = await o.provider.chat({ model: o.model, messages, maxTokens: 8192, temperature: 0.6, signal: o.signal });
-      reply = r.content;
-      tokens = r.usage?.completionTokens ?? 0;
-    } catch (e) {
-      if (o.signal?.aborted) return o.onEvent({ type: "failed", message: "Stopped." });
-      return o.onEvent({ type: "failed", message: `Model call failed: ${(e as Error).message}` });
+  const quick: LeanCheckRun = o.check ?? (async (src) => checkFromRun(await o.run(src)));
+  const prep = await prepare({ frozen: o.frozen, provider: o.provider, model: o.model, check: quick, checkStatement: !!o.prepare?.checkStatement, idea: !!o.prepare?.idea, lemmas: o.lemmas, signal: o.signal, onEvent: o.onEvent });
+  if (o.signal?.aborted) return o.onEvent({ type: "failed", message: "Stopped." });
+  if (prep.stop) return o.onEvent({ type: "failed", message: prep.stop });
+
+  // The attempt budget is shared by every chain; the first verified proof stops the others.
+  const chains = Math.max(1, Math.min(Math.floor(o.parallel ?? 1), 8, o.maxAttempts));
+  const done = new AbortController();
+  const signal = o.signal ? AbortSignal.any([o.signal, done.signal]) : done.signal;
+  let started = 0;
+  let solved = false;
+  let modelError = "";
+  const emit = (e: ProveEvent) => {
+    if (!solved) o.onEvent(e);
+  };
+  const label = (n: number) => `Attempt ${n} of ${o.maxAttempts}${chains > 1 ? ` (${chains} at once)` : ""}`;
+
+  const chain = async () => {
+    const messages: ChatMessage[] = [
+      { role: "system", content: SYSTEM },
+      { role: "user", content: `Frozen file:\n\`\`\`lean\n${o.frozen}\`\`\`${prep.notes ? `\n\n${prep.notes}` : ""}` },
+    ];
+    while (!signal.aborted && started < o.maxAttempts) {
+      const n = ++started;
+      emit({ type: "status", message: `${label(n)}: the model is writing a proof…` });
+      const t0 = Date.now();
+      let reply: string;
+      let tokens = 0;
+      try {
+        const r = await o.provider.chat({ model: o.model, messages, maxTokens: 8192, temperature: 0.6, signal });
+        reply = r.content;
+        tokens = r.usage?.completionTokens ?? 0;
+      } catch (e) {
+        if (!signal.aborted) modelError = (e as Error).message;
+        return;
+      }
+      if (solved) return;
+      messages.push({ role: "assistant", content: reply });
+      const candidate = extractLean(reply);
+      const attempt = (outcome: AttemptOutcome, detail: string) => emit({ type: "attempt", n, candidate, outcome, detail, ms: Date.now() - t0, tokens });
+
+      const feedback = async (): Promise<string | null> => {
+        const textual = protocolObjection(statement, candidate);
+        if (textual) {
+          attempt("refused", textual);
+          return `The checker refused the file before running Lean: ${textual}`;
+        }
+        emit({ type: "status", message: `${label(n)}: Lean is checking the proof…` });
+        const check = await quick(candidate);
+        if (check.status === "noVerdict") {
+          attempt("no verdict", check.output);
+          return `Lean gave no verdict (${excerpt(check.output)}). Try a simpler or faster proof.`;
+        }
+        if (check.status === "errors" || check.status === "sorries") {
+          attempt(check.status, check.output);
+          return `The checker's verdict:\n${describeCheck(check)}`;
+        }
+        emit({ type: "status", message: `${label(n)}: Lean accepts it; running the strict verifier…` });
+        const verdict = await verifyText(o.frozen, pristine.type, candidate, o.run);
+        if (verdict.ok) {
+          if (solved) return null;
+          attempt("verified", "");
+          o.onEvent({ type: "solved", n, proof: candidate, axioms: verdict.axioms });
+          solved = true;
+          done.abort();
+          return null;
+        }
+        const why = describeRejection(verdict.rejection);
+        attempt("rejected", why);
+        return `The verifier rejected the proof: ${why}`;
+      };
+
+      const next = await feedback();
+      if (next === null) return;
+      messages.push({ role: "user", content: `${next}\n\nReply with the whole corrected file.` });
     }
-    messages.push({ role: "assistant", content: reply });
-    const candidate = extractLean(reply);
-    const attempt = (outcome: AttemptOutcome, detail: string) =>
-      o.onEvent({ type: "attempt", n, candidate, outcome, detail, ms: Date.now() - started, tokens });
+  };
 
-    const feedback = async (): Promise<string | null> => {
-      const textual = protocolObjection(statement, candidate);
-      if (textual) {
-        attempt("refused", textual);
-        return `The checker refused the file before running Lean: ${textual}`;
-      }
-      o.onEvent({ type: "status", message: `Attempt ${n} of ${o.maxAttempts}: Lean is checking the proof…` });
-      const check = o.check ? await o.check(candidate) : checkFromRun(await o.run(candidate));
-      if (check.status === "noVerdict") {
-        attempt("no verdict", check.output);
-        return `Lean gave no verdict (${excerpt(check.output)}). Try a simpler or faster proof.`;
-      }
-      if (check.status === "errors" || check.status === "sorries") {
-        attempt(check.status, check.output);
-        return `The checker's verdict:\n${describeCheck(check)}`;
-      }
-      o.onEvent({ type: "status", message: `Attempt ${n} of ${o.maxAttempts}: Lean accepts it; running the strict verifier…` });
-      const verdict = await verifyText(o.frozen, pristine.type, candidate, o.run);
-      if (verdict.ok) {
-        attempt("verified", "");
-        o.onEvent({ type: "solved", n, proof: candidate, axioms: verdict.axioms });
-        return null;
-      }
-      const why = describeRejection(verdict.rejection);
-      attempt("rejected", why);
-      return `The verifier rejected the proof: ${why}`;
-    };
-
-    const next = await feedback();
-    if (next === null) return;
-    messages.push({ role: "user", content: `${next}\n\nReply with the whole corrected file.` });
-  }
-  o.onEvent({ type: "failed", message: `No verified proof after ${o.maxAttempts} attempts.` });
+  await Promise.all(Array.from({ length: chains }, chain));
+  if (solved) return;
+  if (o.signal?.aborted) return o.onEvent({ type: "failed", message: "Stopped." });
+  if (modelError && started <= chains) return o.onEvent({ type: "failed", message: `Model call failed: ${modelError}` });
+  o.onEvent({ type: "failed", message: `No verified proof after ${Math.min(started, o.maxAttempts)} attempts.${modelError ? ` The last model call failed: ${modelError}` : ""}` });
 }

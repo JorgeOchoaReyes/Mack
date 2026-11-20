@@ -1,15 +1,15 @@
-import { ArrowLeft, CircleAlert, History, RotateCcw, ShieldCheck, Trash2 } from "lucide-react";
+import { ArrowLeft, CircleAlert, FlaskConical, History, MessagesSquare, RotateCcw, ShieldCheck, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, type RunEvent, type RunRecord, type RunSummary } from "../api";
 import { CodeEditor } from "../components/CodeEditor";
-import { SolvedCard, Timeline } from "../components/RunView";
+import { BeforeProving, SolvedCard, Timeline } from "../components/RunView";
 import { TreeSummary, TreeView, type NodeEvent } from "../components/TreeView";
 import { AcceptedCard, UltramathView } from "../components/UltramathView";
-import { Button, formatMs, ScopeSwitch, timeAgo } from "../components/ui";
+import { Button, EmptyState, formatMs, ScopeSwitch, timeAgo } from "../components/ui";
 
-type Props = { refreshKey: number; projectId: string; projectName: string; onRerun: (problem: string) => void; openRequest?: { id: string; n: number } | null };
+type Props = { onGo?: (page: "prove" | "chat") => void; refreshKey: number; projectId: string; projectName: string; onRerun: (problem: string) => void; openRequest?: { id: string; n: number } | null };
 
-export function HistoryPage({ refreshKey, projectId, projectName, onRerun, openRequest }: Props) {
+export function HistoryPage({ onGo, refreshKey, projectId, projectName, onRerun, openRequest }: Props) {
   const [allRuns, setRuns] = useState<RunSummary[]>([]);
   const [all, setAll] = useState(!projectId);
   const runs = all || !projectId ? allRuns : allRuns.filter((r) => r.projectId === projectId);
@@ -38,7 +38,8 @@ export function HistoryPage({ refreshKey, projectId, projectName, onRerun, openR
           </button>
           <h1 className="mono-title">{/^theorem\s+(\S+)/m.exec(open.problem)?.[1] ?? "untitled"}</h1>
           <p className="muted">
-            {new Date(open.startedAt).toLocaleString()} · {open.model.split("/").pop()} · {formatMs(open.finishedAt - open.startedAt)}
+            {new Date(open.startedAt).toLocaleString()} · {open.model.split("/").pop()} ·{" "}
+            {open.via === "chat" ? "written in the chat and checked with the strict verifier" : formatMs(open.finishedAt - open.startedAt)}
           </p>
           <div className="row gap-sm">
             <Button variant="primary" icon={RotateCcw} onClick={() => onRerun(open.problem)}>
@@ -60,6 +61,7 @@ export function HistoryPage({ refreshKey, projectId, projectName, onRerun, openR
         <div className="code-frame">
           <CodeEditor value={open.problem} readOnly />
         </div>
+        <BeforeProving events={open.events} />
         {solved ? (
           <SolvedCard solved={solved} problem={open.problem} where={where} />
         ) : accepted ? (
@@ -84,15 +86,29 @@ export function HistoryPage({ refreshKey, projectId, projectName, onRerun, openR
   return (
     <div className="page">
       <div className="page-head">
-        <h1>History</h1>
-        <p className="muted">Every run is kept on this computer, with each attempt and what Lean said about it.</p>
+        <h1>Proof attempts</h1>
+        <p className="muted">Every proof of one statement, verified or not, from the Lean editor or the chat, with what Lean said. Searches over many statements are under Proof searches.</p>
         <ScopeSwitch projectName={projectName} all={all || !projectId} onChange={setAll} />
       </div>
       {runs.length === 0 ? (
-        <div className="empty">
-          <History size={28} />
-          <p>{allRuns.length && !all ? `No runs in ${projectName} yet.` : "No runs yet."}</p>
-        </div>
+        <EmptyState
+          icon={History}
+          title={allRuns.length && !all ? `No proof attempts in ${projectName} yet` : "No proof attempts yet"}
+          actions={
+            onGo && (
+              <>
+                <Button variant="primary" icon={FlaskConical} onClick={() => onGo("prove")}>
+                  Prove a statement
+                </Button>
+                <Button icon={MessagesSquare} onClick={() => onGo("chat")}>
+                  Ask in Chat
+                </Button>
+              </>
+            )
+          }
+        >
+          Each time a proof is tried, in the Lean editor or by the assistant in Chat, it is kept here with every attempt and what Lean said about it.
+        </EmptyState>
       ) : (
         <div className="run-list">
           {runs.map((r) => (
@@ -104,7 +120,9 @@ export function HistoryPage({ refreshKey, projectId, projectName, onRerun, openR
               </span>
               <span className="muted small">{r.outcome === "solved" ? "Verified" : r.message.split("\n")[0]}</span>
               <span className="run-meta muted small">
-                {r.mode === "search"
+                {r.via === "chat"
+                  ? "checked in the chat"
+                  : r.mode === "search"
                   ? `search tree, ${r.attempts} node${r.attempts === 1 ? "" : "s"}`
                   : r.mode === "ultramath"
                     ? `Ultramath, ${r.attempts} turn${r.attempts === 1 ? "" : "s"}`

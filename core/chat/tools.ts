@@ -41,6 +41,13 @@ export const TOOL_SPECS: ToolSpec[] = [
     protected: false,
   },
   {
+    name: "check_statement",
+    description:
+      "Before proving a statement, try to break it: Lean's random tester (plausible) looks for values that make it false. A counterexample means no proof exists; none found is evidence, not proof.",
+    args: { "source?": "a Lean file whose theorem is proved by sorry", "path?": "or a .lean file of the project" },
+    protected: false,
+  },
+  {
     name: "verify_lean",
     description: "Strictly verify a proof against a frozen statement, as the prover's verifier does.",
     args: { statement_path: "the frozen .lean file (theorem proved by sorry)", proof_path: "the candidate .lean file" },
@@ -104,7 +111,7 @@ export const TOOL_SPECS: ToolSpec[] = [
 ];
 
 /** Tools a sub-agent is offered: reading and checking, nothing that changes anything or spends budget. */
-export const SUB_AGENT_TOOLS = ["list_files", "read_file", "search_files", "check_lean", "verify_lean", "web_search", "fetch_url", "view_image"];
+export const SUB_AGENT_TOOLS = ["list_files", "read_file", "search_files", "check_lean", "check_statement", "verify_lean", "web_search", "fetch_url", "view_image"];
 
 /** Tools other features add to the chat (Ultramath, proof search, MCP servers); run through the same guard. */
 const EXTRA: ToolSpec[] = [];

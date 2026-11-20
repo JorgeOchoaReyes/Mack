@@ -23,6 +23,12 @@ and how Mack keeps up with upstream.
 - **Prove.** Write or open a Lean statement, press Prove, and watch each
   attempt: the model writes a proof, Lean's errors go back to it, and it
   revises until the strict verifier accepts or attempts run out.
+- **Before the first attempt.** Lean's random tester (`plausible`) tries to
+  break the statement, and a counterexample stops the run before any model
+  call, since no proof can exist. Then the model plans the proof in words, as
+  small steps, and every attempt is given that plan along with the lemmas the
+  project has already proved, to copy in. Several chains of attempts can run
+  at once (Settings), the first verified proof stopping the others.
 - **Proof search tree.** Switch Prove to *Search tree* and several workers
   branch out from the statement in parallel. Each hands back one file, which
   may keep `sorry` gaps; Lean scores it, and later rounds continue the most
@@ -42,6 +48,15 @@ and how Mack keeps up with upstream.
   statement the strict verifier decides first), and an interrupted swarm
   resumes from its records. The Prove screen also runs a quick in-place
   version.
+- **Construction search.** For a question whose answer is an object (a
+  configuration, a counterexample, a better bound): the chat writes an
+  evaluator, and the search evolves Python programs that build candidates,
+  each scored in a separate process so a program cannot reach its own score,
+  as FunSearch and AlphaEvolve do. The best program and construction are kept
+  in the project; a score is evidence, never proof.
+- **Walkthroughs.** Every proof Lean accepted can be explained step by step in
+  plain words; the Walkthroughs screen lists each proved result and every
+  walkthrough kept, earlier versions included.
 - **Research chat.** Projects are folders. The assistant reads and searches
   project files and PDFs, checks and verifies Lean, searches and reads the
   web, and, once you approve each exact call, writes files or starts proof

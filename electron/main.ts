@@ -15,6 +15,8 @@ import { OpenAICompatibleProvider } from "../core/model/openai-compatible";
 import { PROVIDERS, providerInfo, type ProviderId } from "../core/model/providers";
 import { ghCliToken, githubLogin, type GitHubTokenSource } from "../core/github";
 import { prove, type ProveEvent } from "../core/prove";
+import { lemmaSource, type Lemma } from "../core/prepare";
+import { readPlan } from "../core/chat/plan";
 import { search, type SearchEvent } from "../core/search/search";
 import { DEFAULT_LIMITS, type Limits } from "../core/search/tree";
 import { DEFAULT_ULTRAMATH, problemKind, ultramath, type UltramathEvent, type UltramathLimits } from "../core/ultramath/swarm";
@@ -29,6 +31,7 @@ import { RunManager, type Problem, type RunStatus } from "../core/search/runs";
 import { RUN_TOOLS } from "../core/search/run-tools";
 import { CHAT_TOOLS as SWARM_CHAT_TOOLS, SwarmService } from "../core/ultramath/service";
 import { confine, registerTools } from "../core/chat/tools";
+import { CONSTRUCT_TOOLS, ConstructionService } from "../core/construct/service";
 import { frozenObjection } from "../core/lean/rules";
 import { basename } from "node:path";
 import { statSync } from "node:fs";
@@ -60,6 +63,12 @@ export type Settings = {
   searchAnalysis: boolean;
   /** Problems a proof-search run explores at once. */
   runConcurrency: number;
+  /** Before proving: try to break the statement with Lean's random tester. */
+  checkStatement: boolean;
+  /** Before proving: have the model plan the proof in words, which every attempt is given. */
+  proofIdea: boolean;
+  /** Single mode: independent chains of attempts run at once, sharing the attempt budget. */
+  parallelAttempts: number;
   /** What the chat may do without asking, per protected tool; absent means ask. */
   approvals: Partial<Record<string, ApprovalPolicy>>;
   /** Models that read images: attachments and `view_image` reach only these. */
@@ -125,13 +134,15 @@ export type RunRecord = {
   provider?: ProviderId;
   /** Absent on runs recorded before the search tree: those were "single". */
   mode?: RunMode;
+  /** "chat": the chat wrote the proof itself and checked it with `verify_lean`; one attempt, no prover. */
+  via?: "chat";
   problem: string;
   outcome: "solved" | "failed";
   message: string;
   events: RunEvent[];
 };
 
-export type RunSummary = Pick<RunRecord, "id" | "projectId" | "file" | "startedAt" | "finishedAt" | "model" | "mode" | "outcome" | "message"> & {
+export type RunSummary = Pick<RunRecord, "id" | "projectId" | "file" | "startedAt" | "finishedAt" | "model" | "mode" | "via" | "outcome" | "message"> & {
   theorem: string;
   attempts: number;
 };
@@ -162,6 +173,9 @@ const DEFAULTS: Settings = {
   searchWorker: "fixed",
   searchAnalysis: true,
   runConcurrency: 1,
+  checkStatement: true,
+  proofIdea: true,
+  parallelAttempts: 1,
   upstreamCheck: true,
   upstreamDismissed: "",
   activeProject: "",
@@ -469,6 +483,36 @@ function newMeter(s: Settings, model: string, spent = 0, capped = true): { meter
 /** Where a proof run came from: its project and, when it proves a project file as saved, that file. */
 export type RunOrigin = { projectId?: string; file?: string };
 
+/**
+ * The lemmas a verifier accepted in a project, newest first, from its plan's Proved list: the
+ * accepted proof file for `verify_lean`, the run's proof for a proof run. `except` is the
+ * statement being proved now, which must not be offered its own proof.
+ */
+async function projectLemmas(projectId: string, except?: string): Promise<Lemma[]> {
+  let folder: string;
+  try {
+    folder = chat.project(projectId).folder;
+  } catch {
+    return [];
+  }
+  const plan = await readPlan(folder);
+  const out: Lemma[] = [];
+  for (const p of [...(plan.proved ?? [])].reverse()) {
+    if (p.file === except || !p.proof) continue;
+    try {
+      if (p.how === "verify_lean") out.push({ file: p.file, source: lemmaSource(readFileSync(await confine(folder, p.proof), "utf8")) });
+      else {
+        const r = JSON.parse(readFileSync(join(runsDir(), `${p.proof.replace(/[^0-9]/g, "")}.json`), "utf8")) as RunRecord;
+        const solved = r.events.find((e): e is Extract<RunEvent, { type: "solved" }> => e.type === "solved");
+        if (solved) out.push({ file: p.file, source: lemmaSource(solved.proof) });
+      }
+    } catch {
+      // A proof file or run that is gone is simply not offered.
+    }
+  }
+  return out;
+}
+
 /** One proof run in the given mode, recorded in the run history. Shared by the Prove screen and the chat's `start_proof`. */
 async function runProof(problem: string, mode: RunMode, forward: (ev: RunEvent) => void, origin: RunOrigin = {}): Promise<RunRecord> {
   if (proving) throw new Error("a proof run is already in progress");
@@ -514,6 +558,7 @@ async function runProof(problem: string, mode: RunMode, forward: (ev: RunEvent) 
   };
   try {
     const run = leanRunner({ workspace: s.leanWorkspace, timeoutMs: s.timeoutMs });
+    const lemmas = origin.projectId ? await projectLemmas(origin.projectId, origin.file) : [];
     if (s.mode === "ultramath") {
       const lean = needsLean ? { run, check: quickCheck(s, 2) ?? (async (src: string) => checkFromRun(await run(src))) } : {};
       await ultramath({ problem, provider, model, ...lean, limits: s.ultramath, signal: proving.signal, onEvent: send });
@@ -526,6 +571,8 @@ async function runProof(problem: string, mode: RunMode, forward: (ev: RunEvent) 
         model,
         run,
         check,
+        prepare: { checkStatement: s.checkStatement, idea: s.proofIdea },
+        lemmas,
         limits: s.search,
         analysis: s.searchAnalysis,
         sketch: sketchFor(problem),
@@ -535,13 +582,17 @@ async function runProof(problem: string, mode: RunMode, forward: (ev: RunEvent) 
         onEvent: send,
       });
     } else {
+      const parallel = Math.max(1, Math.min(4, Math.floor(s.parallelAttempts) || 1));
       await prove({
         frozen: problem,
         provider,
         model,
         run,
-        check: quickCheck(s, 1),
+        check: quickCheck(s, parallel),
         maxAttempts: s.maxAttempts,
+        parallel,
+        prepare: { checkStatement: s.checkStatement, idea: s.proofIdea },
+        lemmas,
         signal: proving.signal,
         onEvent: send,
       });
@@ -725,6 +776,8 @@ const runs = new RunManager(
       run,
       check,
       limits: task.limits,
+      prepare: { checkStatement: s.checkStatement, idea: s.proofIdea },
+      lemmas: task.project ? await projectLemmas(task.project) : [],
       analysis: task.analysis,
       sketch: sketchFor(problem.frozen),
       worker: task.worker,
@@ -747,6 +800,17 @@ const runs = new RunManager(
 
 registerTools(RUN_TOOLS);
 registerTools(SWARM_CHAT_TOOLS);
+registerTools(CONSTRUCT_TOOLS);
+
+const constructions = new ConstructionService({
+  provider: () => {
+    const s = readSettings();
+    const model = s.models[s.provider];
+    const m = newMeter(s, model);
+    return { provider: metered(makeProvider(s, s.provider), m.price, m.meter), model };
+  },
+  wake: (projectId, sessionId, text) => chat.wake(projectId, sessionId, "job", text),
+});
 
 const swarmMeters = new Map<string, { meter: Meter; price: Price | undefined }>();
 
@@ -778,8 +842,33 @@ const chat = registerChat({
     return { run, check: quickCheck(s, 1) };
   },
   runProof,
+  recordChatAttempt: (a) => {
+    const id = `${a.at}`;
+    const record: RunRecord = {
+      id,
+      projectId: a.projectId,
+      file: a.file,
+      startedAt: a.at,
+      finishedAt: a.at,
+      model: a.model,
+      mode: "single",
+      via: "chat",
+      problem: a.problem,
+      outcome: a.accepted ? "solved" : "failed",
+      message: a.accepted ? "" : `The verifier rejected ${a.proofFile}: ${a.detail}`,
+      events: [
+        { type: "attempt", n: 1, candidate: a.proof, outcome: a.accepted ? "verified" : "rejected", detail: a.detail, ms: 0, tokens: 0 },
+        ...(a.accepted ? [{ type: "solved" as const, n: 1, proof: a.proof, axioms: a.axioms }] : []),
+      ],
+    };
+    try {
+      writeFileSync(join(runsDir(), `${id}.json`), JSON.stringify(record));
+    } catch {
+      // The attempt still stands in the chat; only its copy here is lost.
+    }
+  },
   githubToken: async () => (await githubAuth()).token,
-  extraTools: ({ projectId, root, sessionId }) => (call) => runTool(call, { projectId, root, sessionId }) ?? swarmTool(call, { projectId, root, sessionId }),
+  extraTools: ({ projectId, root, sessionId }) => (call) => runTool(call, { projectId, root, sessionId }) ?? swarmTool(call, { projectId, root, sessionId }) ?? constructTool(call, { projectId, root, sessionId }),
 });
 
 // The folder an older Prove page had open becomes a project, so it is listed as before.
@@ -815,6 +904,20 @@ function swarmTool(call: { name: string; args: Record<string, unknown> }, ctx: {
       return now(() => swarms.stop(ctx.sessionId, a.swarm));
     case "ultramath_resume":
       return now(() => swarms.resume(ctx.projectId, ctx.root, ctx.sessionId, a));
+    default:
+      return undefined;
+  }
+}
+
+/** The chat's `construction_*` tools; a search is the chat's, named by the session. */
+function constructTool(call: { name: string; args: Record<string, unknown> }, ctx: { projectId: string; root: string; sessionId: string }): Promise<string> | undefined {
+  switch (call.name) {
+    case "construction_search":
+      return constructions.start(ctx.projectId, ctx.root, ctx.sessionId, call.args);
+    case "construction_status":
+      return (async () => constructions.status(ctx.sessionId, call.args.name))();
+    case "construction_stop":
+      return (async () => constructions.stop(ctx.sessionId, call.args.name))();
     default:
       return undefined;
   }
@@ -905,6 +1008,7 @@ app.on("window-all-closed", () => app.quit());
 app.on("will-quit", () => {
   runs.stopAll();
   swarms.stopAll();
+  constructions.stopAll();
   repl?.pool.stop();
   chat.stopAll();
 });
