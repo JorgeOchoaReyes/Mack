@@ -478,15 +478,13 @@ I am new to this. Explain the problem in plain words, tell me honestly how hard 
                 <Logo />
               </div>
               <h2>{project.name}</h2>
-              <p className="muted">Hand it the whole problem, or work through it together. Only what Lean accepts counts as proved.</p>
               <div className={`autopilot-card ${ready ? "" : "disabled"}`}>
                 <div className="ap-icon">
                   <Rocket size={20} />
                 </div>
                 <div className="ap-text">
                   <div className="ap-title">Solve it on Autopilot</div>
-                  <div className="ap-sub">Works end to end on its own, without asking. Stops when done or at your spending limit.</div>
-                  <div className="ap-stages">Research · Formalize · Prove · Verify</div>
+                  <div className="ap-sub">Works on its own until it is done or reaches your spending limit.</div>
                 </div>
                 <Button
                   variant="primary"
@@ -504,17 +502,16 @@ I am new to this. Explain the problem in plain words, tell me honestly how hard 
                   Start
                 </Button>
               </div>
-              <div className="welcome-or">or start smaller</div>
-              <div className="starters">
+              <div className="welcome-or">or start with</div>
+              <div className="starter-chips">
                 {[
-                  ["Explain it to me", `Explain "${project.name}" in plain words, as if I had no maths background. What is the question, and why do people care?`],
+                  ["Explain it", `Explain "${project.name}" in plain words, as if I had no maths background. What is the question, and why do people care?`],
                   ["What is known?", "What have mathematicians already proved about this problem? Find the key results and papers, save them here, and summarize each in plain words."],
                   ["Make a plan", "Make a plan for this problem: tell me honestly how hard it is, and break the work into steps we can really do."],
                   ["Prove a first piece", "Pick a small, known fact about this problem, state it in Lean, and try to prove it, explaining each step."],
                 ].map(([t, q]) => (
-                  <button key={t} className="starter" onClick={() => setDraft(q)}>
-                    <b>{t}</b>
-                    <span>{q}</span>
+                  <button key={t} className="starter-chip" title={q} onClick={() => setDraft(q)}>
+                    {t}
                   </button>
                 ))}
               </div>
