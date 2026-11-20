@@ -64,7 +64,7 @@ type Deps = {
 export const PROJECTS_ROOT = join(homedir(), "MackProjects");
 export const UPLOADS = "uploads";
 /** Auto mode starts at most this many turns in a row before it waits for the person. */
-const MAX_AUTO_TURNS = 30;
+const MAX_AUTO_TURNS = 60;
 /** Every protected tool allowed: auto mode's approval policy. */
 const ALLOW_ALL = new Proxy({}, { get: () => "allow" }) as Partial<Record<string, "allow">>;
 

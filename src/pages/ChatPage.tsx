@@ -80,7 +80,7 @@ export function ChatPage({ project, hasProjects, onCreateProject, incomingDraft,
   const [secretMarks, setSecretMarks] = useState<Record<number, Finding[]>>({});
   const [planOpen, setPlanOpenState] = useState(planOpenAtStart);
   /** Auto mode for the chat the next message starts, before it exists. */
-  const [newChatAuto, setNewChatAuto] = useState(false);
+  const [newChatAuto, setNewChatAuto] = useState(settings.autopilotNewChats);
   /** Why auto mode last paused, shown until the person acts. */
   const [autoNote, setAutoNote] = useState("");
   const [sideWidth, setSideWidth] = usePanelWidth("mack.chatSideWidth", 240, 160, 420);
@@ -254,7 +254,7 @@ export function ChatPage({ project, hasProjects, onCreateProject, incomingDraft,
     onFirstMessageUsed?.();
     const opening = `${firstMessage}
 
-I am new to this. Explain the problem in plain words, tell me honestly how hard it is and what is already known, then make a plan.`;
+I am new to this. Explain the problem in plain words, tell me honestly how hard it is and what is already known, then make a plan and start working through it.`;
     if (ready) void sendMessage(false, opening);
     else setDraft(opening);
     // eslint-disable-next-line react-hooks/exhaustive-deps

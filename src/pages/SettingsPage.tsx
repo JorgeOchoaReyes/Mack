@@ -36,6 +36,15 @@ export function SettingsPage({ settings, saveSettings, onGo }: Props) {
       </div>
 
       <section className="settings-group">
+        <h2>Chat</h2>
+        <Toggle
+          checked={settings.autopilotNewChats}
+          onChange={(v) => void saveSettings({ autopilotNewChats: v })}
+          label="Start new chats on Autopilot: tell the assistant what to solve and it works end to end on its own, using whichever features it needs. Its file writes, proof runs and commands then run without asking, until the work is done or your spending limit is reached. Each chat's Autopilot button turns it off."
+        />
+      </section>
+
+      <section className="settings-group">
         <h2>Prover</h2>
         <div className="grid-2">
           <Field label="Attempts per run" hint="How many times the model may revise its proof. Each attempt is one billed model call.">
