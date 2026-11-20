@@ -393,6 +393,7 @@ export function App() {
               onGoSetup={() => setPage("setup")}
               firstMessage={firstMessage && firstMessage.projectId === projectId ? firstMessage.text : undefined}
               onFirstMessageUsed={() => setFirstMessage(null)}
+              onOpenWalkthroughs={() => setPage("walkthroughs")}
             />
           </div>
           {!welcome && page === "runs" && <RunsPage projectId={projectId} projectName={project?.name ?? ""} onGo={setPage} />}

@@ -49,6 +49,8 @@ type Props = {
   onGoSetup: () => void;
   /** The problem as the person first described it: sent as the first message of a new problem. */
   firstMessage?: string;
+  /** Go to the Walkthroughs screen. */
+  onOpenWalkthroughs?: () => void;
   onFirstMessageUsed?: () => void;
 };
 
@@ -64,7 +66,7 @@ function planOpenAtStart(): boolean {
 
 const EFFORTS: ReasoningEffort[] = ["off", "on", "low", "medium", "high", "xhigh"];
 
-export function ChatPage({ project, hasProjects, onCreateProject, incomingDraft, onOpenInProve, onOpenRun, health, settings, saveSettings, onGoSetup, firstMessage, onFirstMessageUsed }: Props) {
+export function ChatPage({ project, hasProjects, onCreateProject, incomingDraft, onOpenInProve, onOpenRun, health, settings, saveSettings, onGoSetup, firstMessage, onFirstMessageUsed, onOpenWalkthroughs }: Props) {
   const projectId = project?.id ?? "";
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [session, setSession] = useState<ChatSession | null>(null);
@@ -555,7 +557,7 @@ I am new to this. Explain the problem in plain words, tell me honestly how hard 
         />
       </section>
       {planOpen && <Resizer width={planShown} onWidth={setPlanWidth} side="right" defaultWidth={320} label="Resize the plan" />}
-      {planOpen && <PlanView projectId={projectId} onAsk={(q) => void sendMessage(false, q)} onClose={() => setPlanOpen(false)} onOpenInProve={onOpenInProve} onOpenRun={onOpenRun} onShowMe={setShowMe} savedKey={savedKey} />}
+      {planOpen && <PlanView projectId={projectId} onAsk={(q) => void sendMessage(false, q)} onClose={() => setPlanOpen(false)} onOpenInProve={onOpenInProve} onOpenRun={onOpenRun} onShowMe={setShowMe} savedKey={savedKey} onOpenWalkthroughs={onOpenWalkthroughs} />}
       {showMe && projectId && <ShowMe key={`${showMe.file}|${showMe.id ?? ""}`} projectId={projectId} file={showMe.file} savedId={showMe.id} onClose={() => (setShowMeState(null), setSavedKey((k) => k + 1))} onAsk={setDraft} />}
     </div>
   );

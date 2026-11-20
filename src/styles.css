@@ -933,3 +933,22 @@ body:has(.resizer.dragging) { cursor: col-resize; user-select: none; }
 .sidebar { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 .sidebar .health { flex: none; margin-top: auto; }
 .content-inner { overscroll-behavior: contain; }
+
+/* Plan panel: each proved result is one line until opened */
+.plan-proved-head { justify-content: flex-start; }
+.plan-proved-all { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; font-weight: 560; }
+.plan-proved ul { gap: 6px; }
+.plan-proved li + li { padding-top: 6px; }
+.plan-proved-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.plan-proved-toggle { display: flex; align-items: center; gap: 4px; min-width: 0; flex: 1; border: 0; background: transparent; padding: 0; color: var(--text); cursor: pointer; text-align: left; font: inherit; }
+.plan-proved-toggle code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; font-weight: 600; }
+.plan-proved-toggle .chev { flex: none; color: var(--muted); transition: transform 0.12s ease; }
+.plan-proved li.open .plan-proved-toggle .chev { transform: rotate(90deg); }
+.plan-proved-row .plan-showme { flex: none; display: inline-flex; align-items: center; gap: 3px; }
+.plan-proved-what { margin-top: 2px; padding-left: 16px; color: var(--muted); }
+.plan-proved-what.clamp { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plan-proved li.open .plan-proved-what { color: var(--text); }
+.plan-proved-meta, .plan-proved-actions { padding-left: 16px; }
+.plan-walkthroughs-link .plan-go { margin-left: auto; }
+.plan-proved, .plan-proved ul, .plan-proved li { min-width: 0; }
+.plan-proved li { overflow: hidden; }
