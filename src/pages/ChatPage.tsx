@@ -478,13 +478,20 @@ I am new to this. Explain the problem in plain words, tell me honestly how hard 
                 <Logo />
               </div>
               <h2>{project.name}</h2>
-              <p className="muted">Hand it the problem and it works on it by itself, or talk it through step by step. Only what Lean accepts counts as proved.</p>
-              <div className="solve-it">
+              <p className="muted">Hand it the whole problem, or work through it together. Only what Lean accepts counts as proved.</p>
+              <div className={`autopilot-card ${ready ? "" : "disabled"}`}>
+                <div className="ap-icon">
+                  <Rocket size={20} />
+                </div>
+                <div className="ap-text">
+                  <div className="ap-title">Solve it on Autopilot</div>
+                  <div className="ap-sub">Works end to end on its own, without asking. Stops when done or at your spending limit.</div>
+                  <div className="ap-stages">Research · Formalize · Prove · Verify</div>
+                </div>
                 <Button
                   variant="primary"
-                  icon={Rocket}
                   disabled={!ready}
-                  title={ready ? "" : "Finish setup first"}
+                  title={ready ? "Start; the Autopilot button under the message box stops it" : "Finish setup first"}
                   onClick={() => {
                     setNewChatAuto(true);
                     void sendMessage(
@@ -494,30 +501,10 @@ I am new to this. Explain the problem in plain words, tell me honestly how hard 
                     );
                   }}
                 >
-                  Solve it on Autopilot
+                  Start
                 </Button>
-                <span className="muted small">It reads, plans, states, checks and proves without stopping to ask, until it is done or your spending limit is reached. The Autopilot button below stops it.</span>
               </div>
-              <ol className="how-strip">
-                <li>
-                  <MessageSquarePlus size={15} />
-                  <span>
-                    <b>Talk</b> Describe the problem or ask a question.
-                  </span>
-                </li>
-                <li>
-                  <ListChecks size={15} />
-                  <span>
-                    <b>Plan</b> It breaks the work into steps, shown on the right.
-                  </span>
-                </li>
-                <li>
-                  <ShieldCheck size={15} />
-                  <span>
-                    <b>Check</b> Proofs go to Lean, a computer proof checker. Only what Lean accepts counts as proved.
-                  </span>
-                </li>
-              </ol>
+              <div className="welcome-or">or start smaller</div>
               <div className="starters">
                 {[
                   ["Explain it to me", `Explain "${project.name}" in plain words, as if I had no maths background. What is the question, and why do people care?`],

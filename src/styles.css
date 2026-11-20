@@ -961,6 +961,16 @@ body:has(.resizer.dragging) { cursor: col-resize; user-select: none; }
 .chat-rail { align-items: center; padding: 12px 6px; gap: 8px; }
 
 /* Solve it on Autopilot: the one big action of a new chat */
-.solve-it { display: grid; justify-items: center; gap: 6px; margin: 6px 0 4px; text-align: center; }
-.solve-it .btn { padding: 10px 20px; font-size: 15px; }
-.solve-it .muted { max-width: 440px; }
+.autopilot-card { width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 14px; margin-top: 10px; padding: 16px 18px; text-align: left; border-radius: 16px; border: 1px solid var(--accent-edge); background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 14%, var(--surface)), var(--surface) 70%); box-shadow: 0 10px 30px -18px color-mix(in srgb, var(--accent) 60%, transparent); }
+.autopilot-card.disabled { opacity: 0.65; }
+.ap-icon { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; background: var(--accent); color: var(--on-accent); box-shadow: var(--glow); }
+.ap-text { display: grid; gap: 4px; min-width: 0; }
+.ap-title { font-weight: 700; font-size: 15.5px; }
+.ap-sub { color: var(--muted); font-size: 13px; line-height: 1.45; }
+.ap-stages { margin-top: 2px; font-size: 11.5px; font-weight: 600; letter-spacing: 0.02em; color: var(--accent-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ap-stages span { display: inline-flex; align-items: center; gap: 4px; }
+.ap-stages svg { opacity: 0.5; }
+.autopilot-card .btn { padding: 9px 22px; font-size: 14px; }
+.welcome-or { display: flex; align-items: center; gap: 10px; width: 100%; margin: 10px 0 2px; color: var(--faint); font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.08em; }
+.welcome-or::before, .welcome-or::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+@media (max-width: 720px) { .autopilot-card { grid-template-columns: auto minmax(0, 1fr); } .autopilot-card .btn { grid-column: 1 / -1; justify-self: stretch; } }
