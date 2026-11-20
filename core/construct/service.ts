@@ -49,6 +49,9 @@ export type ConstructDeps = {
   wake: (projectId: string, sessionId: string, text: string) => void;
 };
 
+/** A path inside the project as the chat and the person see it: relative, with forward slashes on every system. */
+const shown = (root: string, p: string) => relative(root, p).replace(/\\/g, "/");
+
 const int = (v: unknown, def: number, min: number, max: number) => {
   const n = Math.floor(Number(v));
   return Number.isFinite(n) && v !== undefined && v !== null && v !== "" ? Math.max(min, Math.min(max, n)) : def;
@@ -112,7 +115,7 @@ export class ConstructionService {
         s.error = e.message;
       })
       .finally(() => this.deps.wake(projectId, sessionId, `Construction search ${name} ${s.state}.\n${this.describe(s)}`));
-    return `started construction search ${name}: up to ${s.budget} programs, kept in ${relative(root, s.dir)}. It runs on its own; this chat is told when it ends. Check construction_status meanwhile.`;
+    return `started construction search ${name}: up to ${s.budget} programs, kept in ${shown(root, s.dir)}. It runs on its own; this chat is told when it ends. Check construction_status meanwhile.`;
   }
 
   private mine(sessionId: string, name?: unknown): Search {
@@ -128,7 +131,7 @@ export class ConstructionService {
     const top = ranked(s.cands, 3);
     if (top.length) {
       const best = top[0];
-      lines.push(`Best: score ${best.score} from program ${best.id}${best.idea ? ` (${best.idea})` : ""}; the program is ${relative(s.root, join(s.dir, "best.py"))}.`);
+      lines.push(`Best: score ${best.score} from program ${best.id}${best.idea ? ` (${best.idea})` : ""}; the program is ${shown(s.root, join(s.dir, "best.py"))}.`);
       if (best.construction) lines.push(`Its construction: ${best.construction.slice(0, 600)}`);
       if (top.length > 1) lines.push(`Next best: ${top.slice(1).map((c) => `program ${c.id}, score ${c.score}`).join("; ")}.`);
     } else lines.push("No program has scored yet.");
@@ -147,7 +150,7 @@ export class ConstructionService {
     if (s.state !== "running") return `${s.name} has already ${s.state}`;
     s.state = "stopped";
     s.ctl.abort();
-    return `stopping ${s.name}; what it found is kept in ${relative(s.root, s.dir)}`;
+    return `stopping ${s.name}; what it found is kept in ${shown(s.root, s.dir)}`;
   }
 
   stopAll(): void {

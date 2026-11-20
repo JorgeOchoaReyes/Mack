@@ -110,20 +110,17 @@ describe("the chat's construction searches", async () => {
     writeFileSync(join(root, "evaluate.py"), EVALUATOR);
     writeFileSync(join(root, "nothing.py"), "x = 1\n");
     const { provider } = scripted([program("    return [0, 1, 2]")]);
-    let woke = "";
-    const done = new Promise<void>((resolve) => {
-      const svc = new ConstructionService({ provider: () => ({ provider, model: "m" }), wake: (_p, _s, text) => ((woke = text), resolve()) });
-      void (async () => {
-        await expect(svc.start("p", root, "s1", { name: "Bad Name", task: "t", evaluator: "evaluate.py" })).rejects.toThrow("lowercase");
-        await expect(svc.start("p", root, "s1", { name: "x", task: "t", evaluator: "nothing.py" })).rejects.toThrow("defines no evaluate");
-        await expect(svc.start("p", root, "s1", { name: "x", task: "t", evaluator: "../outside.py" })).rejects.toThrow("leaves the project");
-        expect(await svc.start("p", root, "s1", { name: "sum-free", task: "t", evaluator: "evaluate.py", programs: 2 })).toContain("constructions/sum-free");
-        expect(() => svc.status("other-chat")).toThrow("no construction search");
-      })();
-    });
-    await done;
-    expect(woke).toContain("Construction search sum-free finished");
-    expect(woke).toContain("Best: score 3 from program 1");
+    let wake: (text: string) => void = () => {};
+    const woke = new Promise<string>((resolve) => (wake = resolve));
+    const svc = new ConstructionService({ provider: () => ({ provider, model: "m" }), wake: (_p, _s, text) => wake(text) });
+    await expect(svc.start("p", root, "s1", { name: "Bad Name", task: "t", evaluator: "evaluate.py" })).rejects.toThrow("lowercase");
+    await expect(svc.start("p", root, "s1", { name: "x", task: "t", evaluator: "nothing.py" })).rejects.toThrow("defines no evaluate");
+    await expect(svc.start("p", root, "s1", { name: "x", task: "t", evaluator: "../outside.py" })).rejects.toThrow("leaves the project");
+    expect(await svc.start("p", root, "s1", { name: "sum-free", task: "t", evaluator: "evaluate.py", programs: 2 })).toContain("constructions/sum-free");
+    expect(() => svc.status("other-chat")).toThrow("no construction search");
+    const text = await woke;
+    expect(text).toContain("Construction search sum-free finished");
+    expect(text).toContain("Best: score 3 from program 1");
     expect(readFileSync(join(root, "constructions", "sum-free", "best.py"), "utf8")).toContain("def construct");
   }, 60_000);
 });
