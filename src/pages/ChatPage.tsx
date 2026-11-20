@@ -1,6 +1,6 @@
 import { UltramathView } from "../components/UltramathView";
 import type { Proved, RunEvent, SwarmRecord } from "../api";
-import { AlarmClock, Brain, Check, ChevronRight, Rocket, Users, Download, ExternalLink, GitCompare, GitPullRequest, KeyRound, FolderPlus, ListChecks, MessageSquarePlus, ShieldAlert, ShieldCheck, Terminal, Trash2, Wrench, X } from "lucide-react";
+import { AlarmClock, Brain, Check, ChevronRight, PanelLeftClose, PanelLeftOpen, Rocket, Users, Download, ExternalLink, GitCompare, GitPullRequest, KeyRound, FolderPlus, ListChecks, MessageSquarePlus, ShieldAlert, ShieldCheck, Terminal, Trash2, Wrench, X } from "lucide-react";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import {
   api,
@@ -56,6 +56,16 @@ type Props = {
 
 const PLAN_KEY = "mack.planOpen";
 
+const HISTORY_KEY = "mack.chatHistoryOpen";
+
+function historyOpenAtStart(): boolean {
+  try {
+    return localStorage.getItem(HISTORY_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
+
 function planOpenAtStart(): boolean {
   try {
     return localStorage.getItem(PLAN_KEY) !== "0";
@@ -81,6 +91,16 @@ export function ChatPage({ project, hasProjects, onCreateProject, incomingDraft,
   const [panel, setPanel] = useState<"none" | "memory" | "tools" | "review" | "swarms">("none");
   const [secretMarks, setSecretMarks] = useState<Record<number, Finding[]>>({});
   const [planOpen, setPlanOpenState] = useState(planOpenAtStart);
+  /** The list of chats at the left; folded to a narrow rail when closed. */
+  const [historyOpen, setHistoryOpenState] = useState(historyOpenAtStart);
+  const setHistoryOpen = (v: boolean) => {
+    setHistoryOpenState(v);
+    try {
+      localStorage.setItem(HISTORY_KEY, v ? "1" : "0");
+    } catch {
+      // Only a remembered layout.
+    }
+  };
   /** Auto mode for the chat the next message starts, before it exists. */
   const [newChatAuto, setNewChatAuto] = useState(settings.autopilotNewChats);
   /** Why auto mode last paused, shown until the person acts. */
@@ -98,7 +118,8 @@ export function ChatPage({ project, hasProjects, onCreateProject, incomingDraft,
     return () => ro.disconnect();
   }, []);
   const MAIN_MIN = 380;
-  let sideShown = sideWidth;
+  const RAIL = 48;
+  let sideShown = historyOpen ? sideWidth : RAIL;
   let planShown = planOpen ? planWidth : 0;
   if (boxWidth > 0) {
     let over = sideShown + planShown + MAIN_MIN - boxWidth;
@@ -107,7 +128,7 @@ export function ChatPage({ project, hasProjects, onCreateProject, incomingDraft,
       planShown -= Math.max(0, cut);
       over -= Math.max(0, cut);
     }
-    if (over > 0) sideShown = Math.max(160, sideShown - over);
+    if (over > 0 && historyOpen) sideShown = Math.max(160, sideShown - over);
   }
   const setPlanOpen = (v: boolean) => {
     setPlanOpenState(v);
@@ -313,14 +334,27 @@ I am new to this. Explain the problem in plain words, tell me honestly how hard 
 
   return (
     <div className="chat" ref={chatBox} style={{ gridTemplateColumns: `${sideShown}px 0 minmax(0, 1fr)${planOpen ? ` 0 ${planShown}px` : ""}` }}>
-      <aside className="chat-side">
-        {project && (
-          <div className="chat-side-head">
+      {!historyOpen && (
+        <aside className="chat-side chat-rail">
+          <button className="icon-btn" title="Show the chat history" aria-label="Show the chat history" onClick={() => setHistoryOpen(true)}>
+            <PanelLeftOpen size={16} />
+          </button>
+          <button className="icon-btn" title="New chat" aria-label="New chat" disabled={!projectId} onClick={() => void openSession(null)}>
+            <MessageSquarePlus size={16} />
+          </button>
+        </aside>
+      )}
+      <aside className="chat-side" hidden={!historyOpen}>
+        <div className="chat-side-head">
+          {project && (
             <code className="path small" title="The problem folder: the assistant works on the files here">
               {project.folder}
             </code>
-          </div>
-        )}
+          )}
+          <button className="icon-btn chat-side-fold" title="Hide the chat history" aria-label="Hide the chat history" onClick={() => setHistoryOpen(false)}>
+            <PanelLeftClose size={15} />
+          </button>
+        </div>
         <Button icon={MessageSquarePlus} disabled={!projectId} onClick={() => void openSession(null)}>
           New chat
         </Button>
@@ -376,7 +410,7 @@ I am new to this. Explain the problem in plain words, tell me honestly how hard 
         </div>
       </aside>
 
-      <Resizer width={sideShown} onWidth={setSideWidth} side="left" defaultWidth={240} label="Resize the chat list" />
+      {historyOpen ? <Resizer width={sideShown} onWidth={setSideWidth} side="left" defaultWidth={240} label="Resize the chat list" /> : <div />}
       <section className="chat-main">
         {panel === "memory" && <MemoryPanel projectId={projectId} onClose={() => setPanel("none")} />}
         {panel === "review" && <ReviewPanel projectId={projectId} sessionId={session?.id ?? null} chatTitle={session?.title ?? ""} onClose={() => setPanel("none")} />}

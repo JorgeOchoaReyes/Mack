@@ -952,3 +952,10 @@ body:has(.resizer.dragging) { cursor: col-resize; user-select: none; }
 .plan-walkthroughs-link .plan-go { margin-left: auto; }
 .plan-proved, .plan-proved ul, .plan-proved li { min-width: 0; }
 .plan-proved li { overflow: hidden; }
+
+/* Chat history: folds to a rail */
+.chat-side[hidden] { display: none; }
+.chat-side-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.chat-side-head .path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-side-fold { flex: none; margin-left: auto; }
+.chat-rail { align-items: center; padding: 12px 6px; gap: 8px; }
