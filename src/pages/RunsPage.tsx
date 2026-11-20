@@ -1,13 +1,13 @@
-import { ArrowLeft, Pause, Play, Plus, RefreshCw, Rows3 } from "lucide-react";
+import { ArrowLeft, MessagesSquare, Pause, Play, Plus, RefreshCw, Rows3 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { api, errorText, type RunStatus, type SearchNode } from "../api";
 import { TreeView, type NodeEvent } from "../components/TreeView";
-import { Badge, Button, ScopeSwitch, timeAgo } from "../components/ui";
+import { Badge, Button, EmptyState, ScopeSwitch, timeAgo } from "../components/ui";
 
 const TONE: Record<string, "ok" | "bad" | "warn" | "neutral"> = { solved: "ok", running: "warn", queued: "neutral", exhausted: "bad", stopped: "neutral", failed: "bad" };
 
 /** Proof-search runs over problem sets: started here or from a chat, shown from their journals. */
-export function RunsPage({ projectId, projectName }: { projectId: string; projectName: string }) {
+export function RunsPage({ projectId, projectName, onGo }: { projectId: string; projectName: string; onGo?: (page: "chat") => void }) {
   const [allRuns, setRuns] = useState<RunStatus[]>([]);
   const [all, setAll] = useState(!projectId);
   const runs = all || !projectId ? allRuns : allRuns.filter((r) => r.project === projectId);
@@ -117,10 +117,20 @@ export function RunsPage({ projectId, projectName }: { projectId: string; projec
       </div>
       {error && <div className="notice notice-bad">{error}</div>}
       {runs.length === 0 ? (
-        <div className="empty">
-          <Rows3 size={28} />
-          <p>{allRuns.length && !all ? `No runs in ${projectName} yet.` : "No runs yet."}</p>
-        </div>
+        <EmptyState
+          icon={Rows3}
+          title={allRuns.length && !all ? `No proof searches in ${projectName} yet` : "No proof searches yet"}
+          actions={
+            onGo && (
+              <Button icon={MessagesSquare} onClick={() => onGo("chat")}>
+                Ask the assistant to set one up
+              </Button>
+            )
+          }
+        >
+          A proof search works on several Lean statements at once, such as a chain of lemmas, and can run for a long time. Start one from your .lean files above, or
+          let the assistant in Chat break a result into lemmas and search for them all.
+        </EmptyState>
       ) : (
         <div className="run-list">
           {runs.map((r) => (

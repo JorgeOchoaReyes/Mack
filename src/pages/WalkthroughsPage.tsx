@@ -2,11 +2,11 @@
 // walkthrough (or a way to have one written), and every walkthrough kept in
 // the problem folder, earlier versions included, to watch again.
 
-import { BookOpenCheck, Clapperboard, Network, Search } from "lucide-react";
+import { BookOpenCheck, Clapperboard, MessagesSquare, Network, Search } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, type Plan, type SavedWalkthrough } from "../api";
 import { ShowMe } from "../components/ShowMe";
-import { Button, timeAgo } from "../components/ui";
+import { Button, EmptyState, timeAgo } from "../components/ui";
 
 type Props = { projectId: string; projectName: string; onAsk: (text: string) => void };
 
@@ -45,10 +45,17 @@ export function WalkthroughsPage({ projectId, projectName, onAsk }: Props) {
       <section className="wt-section">
         <h2>Proved results</h2>
         {proved.length === 0 ? (
-          <div className="empty small">
-            <BookOpenCheck size={24} />
-            <p>Nothing in this problem has a proof Lean accepted yet. When one does, it is listed here, ready to be walked through.</p>
-          </div>
+          <EmptyState
+            icon={BookOpenCheck}
+            title="Nothing proved yet"
+            actions={
+              <Button variant="primary" icon={MessagesSquare} onClick={() => onAsk("")}>
+                Work on it in Chat
+              </Button>
+            }
+          >
+            When Lean accepts a proof in this problem, it is listed here, and the model can walk you through it step by step in plain words.
+          </EmptyState>
         ) : (
           <div className="wt-grid">
             {proved.length > 1 && (

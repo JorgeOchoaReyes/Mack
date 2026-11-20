@@ -19,6 +19,13 @@ type Solved = Extract<RunEvent, { type: "solved" }>;
 /** Open a project file, or put a statement in the editor unattached to any file. */
 export type ProveRequest = ({ path: string } | { text: string }) & { n: number };
 
+/** What each way of proving does, and when to choose it. */
+const MODE_HINT: Record<Settings["mode"], string> = {
+  single: "One model writes a proof and fixes it from Lean's errors. Start here.",
+  search: "Several workers build on the most promising partial proofs. For harder statements.",
+  ultramath: "Several agents attack from different directions and share findings. For very hard or open-ended problems.",
+};
+
 type Props = {
   problem: string;
   setProblem: (p: string) => void;
@@ -213,7 +220,8 @@ export function ProvePage({ problem, setProblem, project, files, openRequest, on
 
   return (
     <div className="prove">
-      <div className="toolbar">
+      <div className="toolbar stacked">
+        <div className="toolbar-row">
         <div className="toolbar-title">
           <span className="crumb">{project ? project.name : "Problem"}</span>
           {openFile && (
@@ -225,17 +233,6 @@ export function ProvePage({ problem, setProblem, project, files, openRequest, on
           <span className="theorem">{theoremName(problem)}</span>
         </div>
         <div className="toolbar-actions">
-          <div className="mode-switch" title="Single: one agent revises one proof. Search tree: parallel workers extend the most promising partial proofs. Ultramath: several members attack the problem from different directions and share a board.">
-            <button className={settings.mode === "single" ? "active" : ""} disabled={running} onClick={() => void saveSettings({ mode: "single" })}>
-              <Repeat size={13} /> Single
-            </button>
-            <button className={settings.mode === "search" ? "active" : ""} disabled={running} onClick={() => void saveSettings({ mode: "search" })}>
-              <GitBranch size={13} /> Search tree
-            </button>
-            <button className={settings.mode === "ultramath" ? "active" : ""} disabled={running} onClick={() => void saveSettings({ mode: "ultramath" })}>
-              <Users size={13} /> Ultramath
-            </button>
-          </div>
           <div className="menu" ref={menu}>
             <Button icon={BookOpen} onClick={() => setExamplesOpen(!examplesOpen)}>
               Examples <ChevronDown size={14} />
@@ -291,6 +288,21 @@ export function ProvePage({ problem, setProblem, project, files, openRequest, on
             </Button>
           )}
         </div>
+        </div>
+        <div className="toolbar-row toolbar-sub">
+          <div className="mode-switch" role="radiogroup" aria-label="How to prove">
+            <button className={settings.mode === "single" ? "active" : ""} disabled={running} onClick={() => void saveSettings({ mode: "single" })}>
+              <Repeat size={13} /> Single
+            </button>
+            <button className={settings.mode === "search" ? "active" : ""} disabled={running} onClick={() => void saveSettings({ mode: "search" })}>
+              <GitBranch size={13} /> Search tree
+            </button>
+            <button className={settings.mode === "ultramath" ? "active" : ""} disabled={running} onClick={() => void saveSettings({ mode: "ultramath" })}>
+              <Users size={13} /> Ultramath
+            </button>
+          </div>
+          <span className="mode-hint">{MODE_HINT[settings.mode]}</span>
+        </div>
       </div>
 
       <div className="split" ref={splitBox} style={{ gridTemplateColumns: `${filesShown}px 0 ${editorShown}px 0 minmax(0, 1fr)` }}>
@@ -298,9 +310,8 @@ export function ProvePage({ problem, setProblem, project, files, openRequest, on
         <Resizer width={filesShown} onWidth={setFilesWidth} side="left" defaultWidth={240} label="Resize the file list" />
         <section className="pane editor-pane">
           <div className="pane-head">
-            <span>Frozen statement</span>
+            <span title="Frozen: a proof only counts if it proves exactly this statement, word for word">Statement to prove</span>
             <span className="row gap-sm">
-              <span className="muted small">Type \to, \forall, \R … for symbols</span>
               {project && (
                 <button
                   className="link small"
@@ -336,7 +347,7 @@ export function ProvePage({ problem, setProblem, project, files, openRequest, on
             <CodeEditor value={problem} onChange={setProblem} />
           </div>
           <div className="pane-foot">
-            The theorem must be proved by <code>sorry</code>. A proof only counts against this exact statement.
+            End the theorem with <code>sorry</code>; a proof only counts for this exact statement. Type <code>\to</code>, <code>\forall</code>, <code>\R</code> and a space for symbols.
           </div>
         </section>
 

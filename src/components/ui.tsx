@@ -19,6 +19,20 @@ export function Button({ variant = "secondary", icon: Icon, loading, size = "md"
   );
 }
 
+/** A screen with nothing on it yet: what it will hold, and how to get started. */
+export function EmptyState({ icon: Icon, title, children, actions }: { icon: LucideIcon; title: string; children?: ReactNode; actions?: ReactNode }) {
+  return (
+    <div className="empty-state">
+      <div className="empty-icon">
+        <Icon size={22} />
+      </div>
+      <h3>{title}</h3>
+      {children && <p>{children}</p>}
+      {actions && <div className="row gap-sm empty-actions">{actions}</div>}
+    </div>
+  );
+}
+
 export function Spinner({ size = 15 }: { size?: number }) {
   return <Loader2 className="spin" size={size} />;
 }

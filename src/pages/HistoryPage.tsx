@@ -1,15 +1,15 @@
-import { ArrowLeft, CircleAlert, History, RotateCcw, ShieldCheck, Trash2 } from "lucide-react";
+import { ArrowLeft, CircleAlert, FlaskConical, History, MessagesSquare, RotateCcw, ShieldCheck, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, type RunEvent, type RunRecord, type RunSummary } from "../api";
 import { CodeEditor } from "../components/CodeEditor";
 import { BeforeProving, SolvedCard, Timeline } from "../components/RunView";
 import { TreeSummary, TreeView, type NodeEvent } from "../components/TreeView";
 import { AcceptedCard, UltramathView } from "../components/UltramathView";
-import { Button, formatMs, ScopeSwitch, timeAgo } from "../components/ui";
+import { Button, EmptyState, formatMs, ScopeSwitch, timeAgo } from "../components/ui";
 
-type Props = { refreshKey: number; projectId: string; projectName: string; onRerun: (problem: string) => void; openRequest?: { id: string; n: number } | null };
+type Props = { onGo?: (page: "prove" | "chat") => void; refreshKey: number; projectId: string; projectName: string; onRerun: (problem: string) => void; openRequest?: { id: string; n: number } | null };
 
-export function HistoryPage({ refreshKey, projectId, projectName, onRerun, openRequest }: Props) {
+export function HistoryPage({ onGo, refreshKey, projectId, projectName, onRerun, openRequest }: Props) {
   const [allRuns, setRuns] = useState<RunSummary[]>([]);
   const [all, setAll] = useState(!projectId);
   const runs = all || !projectId ? allRuns : allRuns.filter((r) => r.projectId === projectId);
@@ -94,10 +94,24 @@ export function HistoryPage({ refreshKey, projectId, projectName, onRerun, openR
         <ScopeSwitch projectName={projectName} all={all || !projectId} onChange={setAll} />
       </div>
       {runs.length === 0 ? (
-        <div className="empty">
-          <History size={28} />
-          <p>{allRuns.length && !all ? `No runs in ${projectName} yet.` : "No runs yet."}</p>
-        </div>
+        <EmptyState
+          icon={History}
+          title={allRuns.length && !all ? `No proof attempts in ${projectName} yet` : "No proof attempts yet"}
+          actions={
+            onGo && (
+              <>
+                <Button variant="primary" icon={FlaskConical} onClick={() => onGo("prove")}>
+                  Prove a statement
+                </Button>
+                <Button icon={MessagesSquare} onClick={() => onGo("chat")}>
+                  Ask in Chat
+                </Button>
+              </>
+            )
+          }
+        >
+          Each time a proof is tried, in the Lean editor or by the assistant in Chat, it is kept here with every attempt and what Lean said about it.
+        </EmptyState>
       ) : (
         <div className="run-list">
           {runs.map((r) => (

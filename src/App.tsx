@@ -1,10 +1,11 @@
-import { BookOpen, CircleDollarSign, Clapperboard, Download, FlaskConical, Lightbulb, PanelLeftClose, PanelLeftOpen, Rows3, GitCompare, History, MessagesSquare, Settings as SettingsIcon, Wrench, X } from "lucide-react";
+import { BookOpen, CircleDollarSign, Clapperboard, Download, FlaskConical, Lightbulb, PanelLeftClose, PanelLeftOpen, Rows3, Search, GitCompare, History, MessagesSquare, Settings as SettingsIcon, Wrench, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { api, errorText, type Health, type LedgerState, type Project, type Settings, type UpdateState, type Upstream } from "./api";
 import { useProjectFiles } from "./project";
 import { formatUsd } from "../core/model/metered";
 import { Logo } from "./components/Logo";
 import { ProjectPicker } from "./components/ProjectPicker";
+import { CommandPalette, isMac, type Command } from "./components/CommandPalette";
 import { Button, Dot } from "./components/ui";
 import { EXAMPLES } from "./examples";
 import { ChatPage } from "./pages/ChatPage";
@@ -56,6 +57,19 @@ export function App() {
     } catch {
       // Only a remembered layout.
     }
+  }, []);
+
+  // Ctrl+K (⌘K) opens the command palette, from anywhere.
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
 
   // Ctrl+B folds the sidebar, as in most editors.
@@ -209,9 +223,15 @@ export function App() {
     </button>
   );
   const welcome = !!projects && !project && PROJECT_PAGES.includes(page);
+  const commands: Command[] = [
+    ...[...work, ...more].map((n) => ({ id: `go-${n.id}`, label: n.label, hint: n.hint, icon: n.icon, run: () => setPage(n.id) })),
+    { id: "new-chat", label: "Ask the assistant", hint: "Go to Chat and type a question about the problem", icon: MessagesSquare, run: () => setPage("chat") },
+    { id: "sidebar", label: navCollapsed ? "Expand the sidebar" : "Collapse the sidebar", hint: "Ctrl+B", icon: navCollapsed ? PanelLeftOpen : PanelLeftClose, run: () => setNavCollapsed(!navCollapsed) },
+  ];
 
   return (
     <div className={`shell ${navCollapsed ? "nav-collapsed" : ""}`}>
+      {paletteOpen && <CommandPalette commands={commands} onClose={() => setPaletteOpen(false)} />}
       <aside className="sidebar">
         <div className="brand">
           <div className="logo">
@@ -232,28 +252,50 @@ export function App() {
         ) : (
           <ProjectPicker projects={projects ?? []} current={project} onPick={chooseProject} onCreated={(p, d) => void projectCreated(p, d)} />
         )}
+        <button className="palette-open" title={`Go to any screen or action (${isMac ? "⌘K" : "Ctrl+K"})`} onClick={() => setPaletteOpen(true)}>
+          <Search size={15} />
+          <span className="nav-text">Go to…</span>
+          <kbd className="nav-text">{isMac ? "⌘K" : "Ctrl K"}</kbd>
+        </button>
         <nav>
           {work.map(navButton)}
           <div className="nav-group">Mack</div>
           {more.map(navButton)}
         </nav>
         <button className="health" onClick={() => setPage("setup")}>
-          <div className="health-row" title="Lean">
-            <Dot tone={health === null ? "neutral" : leanOk ? "ok" : "bad"} /> <span className="nav-text">Lean</span>
-          </div>
-          <div className="health-row" title="API key">
-            <Dot tone={health === null ? "neutral" : keyOk ? "ok" : "bad"} /> <span className="nav-text">API key</span>
-          </div>
-          <div className="health-row" title="Model">
-            <Dot tone={health === null ? "neutral" : modelOk ? "ok" : "bad"} /> <span className="nav-text">Model</span>
-          </div>
+          {health === null ? (
+            <div className="health-row">
+              <Dot tone="neutral" /> <span className="nav-text">Checking setup…</span>
+            </div>
+          ) : allReady ? (
+            <div className="health-row" title={`Lean, the API key and the model are ready. Model: ${health.model}`}>
+              <Dot tone="ok" /> <span className="nav-text health-model">Ready · {health.model.split("/").pop()}</span>
+            </div>
+          ) : (
+            [
+              [leanOk, "Lean not installed"],
+              [keyOk, "No API key yet"],
+              [modelOk, "No model chosen"],
+            ]
+              .filter(([ok]) => !ok)
+              .map(([, label]) => (
+                <div key={String(label)} className="health-row" title={`${label}: open Setup to fix it`}>
+                  <Dot tone="bad" /> <span className="nav-text">{label}</span>
+                </div>
+              ))
+          )}
           {spend && (
             <div className="health-row" title={`Spent ${formatUsd(spend.spent)}${spend.limit > 0 ? ` of ${formatUsd(spend.limit)}` : ""}: everything Mack has spent in this period, against the global limit (Settings → Spending)`}>
               <Dot tone={spend.limit > 0 && spend.spent >= spend.limit ? "bad" : spend.limit > 0 && spend.spent >= spend.limit * 0.8 ? "warn" : "ok"} />{" "}
               <span className="nav-text">
                 {formatUsd(spend.spent)}
-                {spend.limit > 0 ? ` / ${formatUsd(spend.limit)}` : ""}
+                {spend.limit > 0 ? ` of ${formatUsd(spend.limit)} ${spend.period === "total" ? "in total" : `this ${spend.period}`}` : " spent"}
               </span>
+            </div>
+          )}
+          {spend && spend.limit > 0 && (
+            <div className="health-bar nav-text" aria-hidden>
+              <span style={{ width: `${Math.min(100, (spend.spent / spend.limit) * 100)}%` }} />
             </div>
           )}
         </button>
@@ -353,10 +395,11 @@ export function App() {
               onFirstMessageUsed={() => setFirstMessage(null)}
             />
           </div>
-          {!welcome && page === "runs" && <RunsPage projectId={projectId} projectName={project?.name ?? ""} />}
+          {!welcome && page === "runs" && <RunsPage projectId={projectId} projectName={project?.name ?? ""} onGo={setPage} />}
           {page === "feedback" && <FeedbackPage />}
           {!welcome && page === "history" && (
             <HistoryPage
+              onGo={setPage}
               refreshKey={runsVersion}
               openRequest={runOpen}
               projectId={projectId}
