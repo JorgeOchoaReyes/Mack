@@ -17,6 +17,7 @@ import { ghCliToken, githubLogin, type GitHubTokenSource } from "../core/github"
 import { prove, type ProveEvent } from "../core/prove";
 import { lemmaSource, type Lemma } from "../core/prepare";
 import { describeDecls, MathlibIndex, mathlibSource, nameHints, searchDecls } from "../core/lean/mathlib-index";
+import { describeEnvironment, probeEnvironment } from "../core/environment";
 import { readPlan } from "../core/chat/plan";
 import { search, type SearchEvent } from "../core/search/search";
 import { DEFAULT_LIMITS, type Limits } from "../core/search/tree";
@@ -410,6 +411,8 @@ ipcMain.handle("github:clearToken", async () => {
 
 ipcMain.handle("health:get", async (): Promise<Health> => {
   const s = readSettings();
+  // Setup asks for health after it installs or moves the workspace: look at the computer again then.
+  void refreshEnvironment().catch(() => undefined);
   return {
     lake: await lakeVersion(s.leanWorkspace),
     workspace: s.leanWorkspace,
@@ -499,6 +502,16 @@ async function searchMathlib(query: string, limit: number): Promise<string> {
   const index = mathlibIndex(readSettings());
   if (!index) throw new Error("Mathlib's source is not in the Lean workspace; install Lean and Mathlib in Setup first");
   return describeDecls(searchDecls(await index.load(), query, limit), query);
+}
+
+/** What this computer has installed, for the chat's agent: looked at on launch and after Setup changes the workspace. */
+let environmentNote = "";
+let environmentOf = "";
+async function refreshEnvironment(): Promise<void> {
+  const workspace = readSettings().leanWorkspace;
+  environmentOf = workspace;
+  const note = describeEnvironment(await probeEnvironment(workspace));
+  if (environmentOf === workspace) environmentNote = note;
 }
 
 /** Real Mathlib names close to ones Lean did not know, for a prover's next attempt; empty without Mathlib's source. */
@@ -870,6 +883,7 @@ const chat = registerChat({
   },
   runProof,
   searchMathlib,
+  environment: () => environmentNote,
   recordChatAttempt: (a) => {
     const id = `${a.at}`;
     const record: RunRecord = {
@@ -1032,6 +1046,7 @@ ipcMain.handle("discovery:startFiles", async (e) => {
 
 loadDotEnv();
 void app.whenReady().then(createWindow);
+void app.whenReady().then(() => void refreshEnvironment().catch(() => undefined));
 // Build the Mathlib index in the background soon after launch, so the first search does not wait for it.
 void app.whenReady().then(() => setTimeout(() => void mathlibIndex(readSettings())?.load().catch(() => undefined), 20_000));
 app.on("window-all-closed", () => app.quit());

@@ -53,6 +53,8 @@ type Deps = {
   newMeter: (s: Settings, model: string, spent?: number, capped?: boolean) => { meter: Meter; price: Price | undefined };
   lean: (s: Settings) => { run: LeanRun; check?: LeanCheckRun } | undefined;
   runProof: (problem: string, mode: RunMode, forward: (ev: RunEvent) => void, origin?: RunOrigin) => Promise<RunRecord>;
+  /** What this computer has installed, as the agent reads it; empty until it has been looked at. */
+  environment?: () => string;
   /** Search Mathlib's declarations in the Lean workspace (undefined while Mathlib is not installed is reported by the call). */
   searchMathlib?: (query: string, limit: number) => Promise<string>;
   /** Keep a chat's own `verify_lean` verdict with the proof attempts, as one attempt. */
@@ -436,6 +438,7 @@ export function registerChat(d: Deps): ChatControl {
           memory: (await readMemory(memory)).index,
           plan: ((loaded: Plan) => () => planPrompt(plans.get(p.id) ?? loaded))(await planOf(p)),
           auto: () => session.auto === true,
+          environment: d.environment,
           skills: await listSkills(p.folder),
           tools: toolSpecs().map((t) => t.name),
           ownTools,
