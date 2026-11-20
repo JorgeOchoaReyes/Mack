@@ -478,11 +478,11 @@ export function registerChat(d: Deps): ChatControl {
       void afterTurn(p.id, session);
     };
     const n = (autoTurns.get(session.id) ?? 0) + 1;
-    if (n > MAX_AUTO_TURNS) return stop(`Auto mode paused after ${MAX_AUTO_TURNS} turns in a row. Send a message to keep going.`);
+    if (n > MAX_AUTO_TURNS) return stop(`Autopilot paused after ${MAX_AUTO_TURNS} turns in a row. Send a message to keep going.`);
     const plan = await planOf(p);
     const open = plan.steps.filter((x) => x.status === "todo" || x.status === "doing");
     // Without a plan yet, the first auto turn makes one; afterwards an empty list of open steps means the work is done.
-    if (plan.steps.length > 0 && open.length === 0) return stop("Auto mode: every plan step is done, stuck or dropped.");
+    if (plan.steps.length > 0 && open.length === 0) return stop("Autopilot: every plan step is done, stuck or dropped.");
     const fresh = loadSession(p.id, session.id);
     if (!fresh?.auto || live.has(session.id)) return;
     autoTurns.set(session.id, n);
@@ -500,7 +500,7 @@ export function registerChat(d: Deps): ChatControl {
     try {
       startTurn(p.id, fresh);
     } catch (err) {
-      send({ sessionId: session.id, event: { type: "error", message: `Auto mode stopped: ${(err as Error).message}` } });
+      send({ sessionId: session.id, event: { type: "error", message: `Autopilot stopped: ${(err as Error).message}` } });
     }
   }
 

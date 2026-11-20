@@ -87,10 +87,7 @@ export function HistoryPage({ onGo, refreshKey, projectId, projectName, onRerun,
     <div className="page">
       <div className="page-head">
         <h1>Proof attempts</h1>
-        <p className="muted">
-          Every proof of one statement, verified or not: runs from the Lean editor, runs the chat started, and proofs the chat wrote and checked itself. Each is kept on
-          this computer with what Lean said. Long searches over many statements at once are under Proof searches.
-        </p>
+        <p className="muted">Every proof of one statement, verified or not, from the Lean editor or the chat, with what Lean said. Searches over many statements are under Proof searches.</p>
         <ScopeSwitch projectName={projectName} all={all || !projectId} onChange={setAll} />
       </div>
       {runs.length === 0 ? (

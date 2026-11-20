@@ -173,12 +173,12 @@ export function Composer(p: Props) {
             aria-pressed={p.auto}
             title={
               p.auto
-                ? "Auto mode is on: the assistant works through the plan by itself, picks options itself, and its actions run without asking you. Click to turn it off."
-                : "Auto mode: let the assistant work through the plan by itself, without stopping to ask. File writes, proof runs and commands then run without your approval. It stops at your spending limit."
+                ? "Autopilot is on: the assistant works through the plan by itself, choosing and using whichever features each step needs (proof runs, searches, Ultramath, construction search…), and its actions run without asking you. Click to turn it off."
+                : "Autopilot: the assistant works through the plan by itself, using whichever features each step needs, without stopping to ask. File writes, proof runs and commands then run without your approval. It stops at your spending limit."
             }
             onClick={() => p.onAuto(!p.auto)}
           >
-            <Rocket size={14} /> Auto{p.auto ? " on" : ""}
+            <Rocket size={14} /> Autopilot{p.auto ? " on" : ""}
           </button>
           {p.spend && <span className="spend-chip" title="What this chat's model calls have cost, sub-agents and suggestions included">{p.spend}</span>}
           <span className="composer-hint">{p.busy ? "Enter sends now · it reaches the assistant between steps" : "Enter to send · Shift+Enter for a new line · / for commands"}</span>

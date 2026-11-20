@@ -101,10 +101,7 @@ export function RunsPage({ projectId, projectName, onGo }: { projectId: string; 
     <div className="page">
       <div className="page-head">
         <h1>Proof searches</h1>
-        <p className="muted">
-          A long search over a set of statements at once, each with its own search tree, that can be watched, stopped and resumed: for a chain of lemmas, or many
-          problems in one go. Start one here or ask the assistant in Chat; Search-tree settings apply. Proofs of one statement at a time are under Proof attempts.
-        </p>
+        <p className="muted">Long searches over several statements at once, such as a chain of lemmas, that you can stop and resume. Single statements are under Proof attempts.</p>
         <div className="row gap-sm">
           <Button variant="primary" icon={Plus} onClick={() => void act(() => api.startDiscoveryFromFiles())}>
             New run from .lean files

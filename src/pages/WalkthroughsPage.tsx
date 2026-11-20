@@ -36,10 +36,7 @@ export function WalkthroughsPage({ projectId, projectName, onAsk }: Props) {
     <div className="page walkthroughs">
       <div className="page-head">
         <h1>Walkthroughs</h1>
-        <p className="muted">
-          A walkthrough explains a proof Lean accepted, one step at a time, in plain words. Each is kept in {projectName || "the problem"}'s folder, earlier
-          versions too, so you can watch it again. The proof is what Lean checked; the walkthrough is the model's explanation of it.
-        </p>
+        <p className="muted">Step-by-step explanations, in plain words, of the proofs Lean accepted in {projectName || "this problem"}, earlier versions kept.</p>
       </div>
 
       <section className="wt-section">
@@ -74,6 +71,7 @@ export function WalkthroughsPage({ projectId, projectName, onAsk }: Props) {
         )}
       </section>
 
+      {(proved.length > 0 || (saved?.length ?? 0) > 0) && (
       <section className="wt-section">
         <div className="row gap-sm wt-head">
           <h2>All saved walkthroughs{saved ? ` (${saved.length})` : ""}</h2>
@@ -102,6 +100,7 @@ export function WalkthroughsPage({ projectId, projectName, onAsk }: Props) {
           ))}
         </div>
       </section>
+      )}
 
       {open && (
         <ShowMe

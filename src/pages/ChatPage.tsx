@@ -637,7 +637,7 @@ function Conversation({ messages, projectId, secretMarks, busy, onChoose, onOpen
             <div key={k} className="event-note fade-in">
               <Rocket size={13} />
               <span>
-                <b>Auto mode</b> {m.content.split("\n")[0].slice(0, 200)}
+                <b>Autopilot</b> {m.content.split("\n")[0].slice(0, 200)}
               </span>
             </div>
           );

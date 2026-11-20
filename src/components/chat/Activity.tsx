@@ -2,12 +2,35 @@
 // opens to every call: what it was, its arguments, whether the person
 // approved it, and what came back.
 
-import { AlarmClock, Bot, Check, ChevronRight, CircleAlert, FileCode, FileText, FlaskConical, Globe, Hammer, Lock, Search, Sigma, Terminal, Users, X } from "lucide-react";
+import { AlarmClock, Bot, Check, ChevronRight, CircleAlert, FileCode, FileText, FlaskConical, GitBranch, GitPullRequest, Globe, Hammer, ListChecks, Lock, Rows3, Search, ShieldCheck, Shapes, Sigma, Terminal, Users, X, Zap } from "lucide-react";
 import { useState, type ComponentType } from "react";
 import type { ToolOutcome } from "../../api";
 
+/** Mack's features, by the tools that use them: what the person sees named in the chat. */
+const FEATURES: [RegExp, { label: string; icon: ComponentType<{ size?: number }> }][] = [
+  [/^start_proof$/, { label: "Proof run", icon: FlaskConical }],
+  [/^discovery_/, { label: "Proof search", icon: Rows3 }],
+  [/^ultramath_/, { label: "Ultramath", icon: Users }],
+  [/^construction_/, { label: "Construction search", icon: Shapes }],
+  [/^check_statement$/, { label: "Statement check", icon: Zap }],
+  [/^verify_lean$/, { label: "Verifier", icon: ShieldCheck }],
+  [/^check_lean$/, { label: "Lean check", icon: Sigma }],
+  [/^(web_search|fetch_url|http_request)$/, { label: "Web", icon: Globe }],
+  [/^shell_/, { label: "Commands", icon: Terminal }],
+  [/^run_agent$/, { label: "Sub-agent", icon: Bot }],
+  [/^plan_update$/, { label: "Plan", icon: ListChecks }],
+  [/^open_pr$/, { label: "Pull request", icon: GitPullRequest }],
+  [/^conversation_/, { label: "Reminders", icon: AlarmClock }],
+];
+const featureOf = (name: string) => FEATURES.find(([re]) => re.test(name))?.[1];
+
 const ICONS: [RegExp, ComponentType<{ size?: number }>][] = [
-  [/lean|proof|discovery/, Sigma],
+  [/construction/, Shapes],
+  [/check_statement/, Zap],
+  [/discovery/, Rows3],
+  [/plan/, ListChecks],
+  [/pr$/, GitBranch],
+  [/lean|proof/, Sigma],
   [/file|skill/, FileText],
   [/web|fetch|http/, Globe],
   [/search/, Search],
@@ -28,7 +51,27 @@ const LABELS: Record<string, string> = {
   verify_lean: "Verified with Lean",
   web_search: "Searched the web",
   fetch_url: "Read a page",
-  start_proof: "Ran a proof search",
+  start_proof: "Ran a proof",
+  check_statement: "Tried to break the statement",
+  construction_search: "Started a construction search",
+  construction_status: "Checked the construction search",
+  construction_stop: "Stopped the construction search",
+  ultramath_start: "Started an Ultramath swarm",
+  ultramath_status: "Checked the swarm",
+  ultramath_verdict: "Judged a swarm submission",
+  ultramath_records: "Read the swarm's records",
+  ultramath_stop: "Stopped the swarm",
+  ultramath_resume: "Resumed the swarm",
+  discovery_start: "Started a proof search",
+  discovery_status: "Checked the proof search",
+  discovery_list: "Listed proof searches",
+  discovery_tree: "Read a search tree",
+  discovery_stop: "Stopped the proof search",
+  discovery_resume: "Resumed the proof search",
+  plan_update: "Updated the plan",
+  open_pr: "Opened a pull request",
+  http_request: "Made a web request",
+  shell_jobs: "Checked background commands",
   shell_exec: "Ran a command",
   view_image: "Looked at an image",
   run_agent: "Asked a sub-agent",
@@ -83,7 +126,9 @@ export function Activity({ results, running, onOpenInProve }: { results: ToolOut
   const [open, setOpen] = useState(false);
   const written = onOpenInProve ? leanWritten(results) : [];
   const failed = results.filter((r) => !r.ok).length;
-  const names = [...new Set(results.map((r) => LABELS[r.name] ?? r.name.replace(/_/g, " ")))];
+  // The features these calls used, each once, in order: the person sees what Mack did, not tool names.
+  const features = [...new Map(results.map((r) => featureOf(r.name)).filter((f) => !!f).map((f) => [f!.label, f!])).values()];
+  const others = results.filter((r) => !featureOf(r.name)).length;
   return (
     <div className={`activity fade-in ${open ? "open" : ""}`}>
       <button type="button" className="activity-head" onClick={() => setOpen(!open)}>
@@ -91,7 +136,14 @@ export function Activity({ results, running, onOpenInProve }: { results: ToolOut
         <span>
           {running ? "Working" : "Worked"} · {results.length} step{results.length === 1 ? "" : "s"}
         </span>
-        <span className="activity-names">{names.slice(0, 4).join(", ").toLowerCase()}{names.length > 4 ? "…" : ""}</span>
+        <span className="activity-features">
+          {features.map((f) => (
+            <span key={f.label} className="feature-chip">
+              <f.icon size={11} /> {f.label}
+            </span>
+          ))}
+          {others > 0 && <span className="muted small">{features.length ? `+ ${others} file and read step${others === 1 ? "" : "s"}` : "files and reading"}</span>}
+        </span>
         {failed > 0 && (
           <span className="act-tag bad">
             <CircleAlert size={10} /> {failed} failed

@@ -916,3 +916,13 @@ body:has(.resizer.dragging) { cursor: col-resize; user-select: none; }
 .palette-enter { color: var(--muted); }
 .palette-none { padding: 14px; color: var(--muted); font-size: 13px; }
 .nav-collapsed .palette-open { justify-content: center; }
+
+/* Features named in the chat */
+.activity-features { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; }
+.feature-chip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border-radius: 99px; font-size: 11.5px; font-weight: 560; background: var(--accent-soft); color: var(--accent-text); white-space: nowrap; }
+
+/* Compact pages */
+.page { padding: 24px 24px 48px; gap: 14px; }
+.page-head h1 { font-size: 22px; }
+.page-head p { font-size: 13.5px; max-width: 760px; }
+.empty-state { padding: 36px 24px; }
