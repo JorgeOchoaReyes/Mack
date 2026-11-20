@@ -162,17 +162,19 @@ export class OpenAICompatibleProvider implements ModelProvider {
     return { content, usage, ...(truncated ? { truncated } : {}) };
   }
 
-  /** Prices the catalogue publishes, USD per million tokens (OpenRouter and LiteLLM give them per token); empty when it gives none. */
+  /** Prices the catalogue publishes, USD per million tokens (OpenRouter and LiteLLM give them per token, Cheaper Inference per million); empty when it gives none. */
   async listPrices(): Promise<Record<string, { input: number; output: number }>> {
     if (this.opts.prices === "litellm") return this.litellmPrices();
     const res = await fetch(this.url("/models"), { headers: this.headers() });
     if (!res.ok) return {};
-    const json = (await res.json()) as { data?: { id?: string; pricing?: { prompt?: string | number; completion?: string | number } }[] };
+    type Pricing = { prompt?: string | number; completion?: string | number; input_per_million?: string | number; output_per_million?: string | number };
+    const json = (await res.json()) as { data?: { id?: string; pricing?: Pricing }[] };
     const out: Record<string, { input: number; output: number }> = {};
     for (const m of json.data ?? []) {
-      const input = Number(m.pricing?.prompt);
-      const output = Number(m.pricing?.completion);
-      if (m.id && Number.isFinite(input) && Number.isFinite(output) && input >= 0 && output >= 0) out[m.id] = { input: input * 1_000_000, output: output * 1_000_000 };
+      const perMillion = m.pricing?.input_per_million !== undefined;
+      const input = Number(perMillion ? m.pricing?.input_per_million : m.pricing?.prompt) * (perMillion ? 1 : 1_000_000);
+      const output = Number(perMillion ? m.pricing?.output_per_million : m.pricing?.completion) * (perMillion ? 1 : 1_000_000);
+      if (m.id && Number.isFinite(input) && Number.isFinite(output) && input >= 0 && output >= 0) out[m.id] = { input, output };
     }
     return out;
   }
@@ -196,7 +198,12 @@ export class OpenAICompatibleProvider implements ModelProvider {
   async listModels(): Promise<string[]> {
     const res = await fetch(this.url("/models"), { headers: this.headers() });
     if (!res.ok) throw new Error(`${this.name} returned ${res.status}: ${(await res.text()).slice(0, 500)}`);
-    const json = (await res.json()) as { data?: { id?: string }[] };
-    return (json.data ?? []).map((m) => m.id).filter((id): id is string => typeof id === "string").sort();
+    // A catalogue that also lists image, audio or video models marks each with its `type`; only chat models are offered.
+    const json = (await res.json()) as { data?: { id?: string; type?: string }[] };
+    return (json.data ?? [])
+      .filter((m) => m.type === undefined || m.type === "text")
+      .map((m) => m.id)
+      .filter((id): id is string => typeof id === "string")
+      .sort();
   }
 }

@@ -2,7 +2,7 @@
 // own key; Mack ships none. This file imports nothing from Node, so the
 // renderer can show the same list.
 
-export type ProviderId = "fireworks" | "openrouter" | "litellm" | "custom";
+export type ProviderId = "fireworks" | "openrouter" | "cheaperinference" | "litellm" | "custom";
 
 export type ProviderInfo = {
   id: ProviderId;
@@ -12,6 +12,8 @@ export type ProviderInfo = {
   endpointSetting?: "litellmBaseUrl" | "customBaseUrl";
   /** Where prices come from: a `pricing` field on `/models` (the default), or LiteLLM's `/model/info`. */
   prices?: "models" | "litellm";
+  /** Headers sent with every call. */
+  headers?: Record<string, string>;
   /** Read from the environment (or `.env`) before the key saved in the app. */
   keyEnv: string;
   keyRequired: boolean;
@@ -43,6 +45,19 @@ export const PROVIDERS: ProviderInfo[] = [
     keyUrl: "https://openrouter.ai/settings/keys",
     modelPlaceholder: "deepseek/deepseek-r1, qwen/…",
     blurb: "One key for models from many vendors (upstream's default provider).",
+  },
+  {
+    id: "cheaperinference",
+    label: "Cheaper Inference",
+    baseUrl: "https://api.cheaperinference.com/v1",
+    // Its gateway may otherwise route a request to another model or an experiment variant; a run must be served by the model it names.
+    headers: { "x-ci-model-lock": "1" },
+    keyEnv: "CHEAPER_INFERENCE_API_KEY",
+    keyRequired: true,
+    keyPlaceholder: "ci_live_…",
+    keyUrl: "https://platform.cheaperinference.com/",
+    modelPlaceholder: "deepseek-v4.1-flash, glm-5.3, …",
+    blurb: "A marketplace reselling many vendors' models below their list prices, funded from a prepaid balance.",
   },
   {
     id: "litellm",

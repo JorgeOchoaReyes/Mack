@@ -25,7 +25,7 @@ interface Transport {
 }
 
 /** Keys of model providers never reach a server's environment. */
-const SECRET_ENV = /^(FIREWORKS_API_KEY|OPENROUTER_API_KEY|CUSTOM_API_KEY|GH_TOKEN|GITHUB_TOKEN)$/i;
+const SECRET_ENV = /^(FIREWORKS_API_KEY|OPENROUTER_API_KEY|CHEAPER_INFERENCE_API_KEY|CUSTOM_API_KEY|GH_TOKEN|GITHUB_TOKEN)$/i;
 
 class StdioTransport implements Transport {
   private child: ChildProcessWithoutNullStreams;

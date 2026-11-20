@@ -63,8 +63,9 @@ const SHAPES: Shape[] = [
   { rule: "huggingface-token", prefix: "hf_", set: alnum, min: 30, max: 255, mixed: false },
   { rule: "npm-token", prefix: "npm_", set: alnum, min: 36, max: 36, mixed: false },
   { rule: "pypi-token", prefix: "pypi-AgEIcHlwaS5vcmc", set: urlSafe, min: 50, max: 4096, mixed: false },
-  // Mack's own: Fireworks keys.
+  // Mack's own: Fireworks and Cheaper Inference keys.
   { rule: "fireworks-key", prefix: "fw_", set: alnum, min: 20, max: 255, mixed: true },
+  { rule: "cheaper-inference-key", prefix: "ci_live_", set: urlSafe, min: 20, max: 255, mixed: true },
 ];
 
 function shapes(t: string, found: SecretMatch[]) {

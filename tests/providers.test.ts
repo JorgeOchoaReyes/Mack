@@ -15,9 +15,10 @@ function stubFetch(body: unknown, status = 200) {
 }
 
 describe("model providers", () => {
-  it("lists Fireworks, OpenRouter, LiteLLM and a custom endpoint, each with its own key variable", () => {
-    expect(PROVIDERS.map((p) => p.id)).toEqual(["fireworks", "openrouter", "litellm", "custom"]);
-    expect(new Set(PROVIDERS.map((p) => p.keyEnv)).size).toBe(4);
+  it("lists Fireworks, OpenRouter, Cheaper Inference, LiteLLM and a custom endpoint, each with its own key variable", () => {
+    expect(PROVIDERS.map((p) => p.id)).toEqual(["fireworks", "openrouter", "cheaperinference", "litellm", "custom"]);
+    expect(new Set(PROVIDERS.map((p) => p.keyEnv)).size).toBe(5);
+    expect(providerInfo("cheaperinference")).toMatchObject({ baseUrl: "https://api.cheaperinference.com/v1", keyRequired: true, headers: { "x-ci-model-lock": "1" } });
     expect(providerInfo("custom").keyRequired).toBe(false);
     expect(providerInfo("litellm")).toMatchObject({ keyRequired: false, endpointSetting: "litellmBaseUrl", prices: "litellm" });
   });
@@ -36,6 +37,25 @@ describe("model providers", () => {
     expect(Object.keys(prices)).toEqual(["deepseek-flash"]);
     expect(prices["deepseek-flash"].input).toBeCloseTo(0.22);
     expect(prices["deepseek-flash"].output).toBeCloseTo(0.66);
+  });
+
+  it("reads Cheaper Inference's per-million prices and offers only its chat models", async () => {
+    const calls = stubFetch({
+      object: "list",
+      data: [
+        { id: "glm-5.3", type: "text", pricing: { currency: "USD", input_per_million: "0.110000", output_per_million: "1.180000" } },
+        { id: "flux-pro", type: "image", pricing: { currency: "USD", input_per_million: "0", output_per_million: "0", media_unit_price: "0.04" } },
+        { id: "glyph-cluster", type: "text", pricing: { currency: "USD", input_per_million: "0.000000", output_per_million: "0.000000" } },
+      ],
+    });
+    const p = new OpenAICompatibleProvider("Cheaper Inference", "https://api.cheaperinference.com/v1", "ci_live_test", { extraHeaders: { "x-ci-model-lock": "1" } });
+    const prices = await p.listPrices();
+    expect(prices["glm-5.3"].input).toBeCloseTo(0.11);
+    expect(prices["glm-5.3"].output).toBeCloseTo(1.18);
+    expect(prices["glyph-cluster"]).toEqual({ input: 0, output: 0 });
+    expect(await p.listModels()).toEqual(["glm-5.3", "glyph-cluster"]);
+    expect(calls[0].url).toBe("https://api.cheaperinference.com/v1/models");
+    expect((calls[0].init?.headers as Record<string, string>)["x-ci-model-lock"]).toBe("1");
   });
 
   it("calls the chat endpoint with the key and extra headers, and reads usage", async () => {
