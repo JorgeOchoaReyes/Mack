@@ -321,7 +321,11 @@ function UpdatesSection({ settings, saveSettings }: { settings: Settings; saveSe
                 ? `Downloading Mack ${state.version}: ${state.percent}%`
                 : state.state === "ready"
                   ? `Mack ${state.version} is ready and installs when you quit Mack.`
-                  : `Could not check for updates: ${state.message}`;
+                  : state.state === "manual"
+                    ? state.newer
+                      ? `Mack ${state.latest} is out. This copy cannot update itself, since it was not installed from a Mack release installer (those are built for Windows): update it the way you installed it.`
+                      : `${state.latest ? `Mack ${state.latest} is the latest release, so this copy is current. ` : ""}This copy cannot update itself, since it was not installed from a Mack release installer (those are built for Windows).`
+                    : `Could not check for updates: ${state.message}`;
   return (
     <section className="settings-group">
       <h2>Updates</h2>
@@ -337,6 +341,11 @@ function UpdatesSection({ settings, saveSettings }: { settings: Settings; saveSe
         <Button size="sm" onClick={() => void api.checkUpdates().then(setState)}>
           Check now
         </Button>
+        {state?.state === "manual" && state.newer && (
+          <Button size="sm" variant="primary" onClick={() => void api.openExternal(state.url)}>
+            See Mack {state.latest}
+          </Button>
+        )}
         {state?.state === "ready" && (
           <Button size="sm" variant="primary" onClick={() => void api.installUpdate()}>
             Restart and update
