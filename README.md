@@ -1,7 +1,8 @@
 # Mack ⚡
 
 A Windows desktop app for Lean-checked math research. Open models (through
-[Fireworks](https://fireworks.ai), [OpenRouter](https://openrouter.ai), a
+[Fireworks](https://fireworks.ai), [OpenRouter](https://openrouter.ai),
+[Cheaper Inference](https://www.cheaperinference.com), a
 [LiteLLM](https://docs.litellm.ai) proxy or any OpenAI-compatible server) propose proofs; **Lean decides** whether they hold.
 
 Mack follows the methodology of
@@ -72,7 +73,9 @@ and how Mack keeps up with upstream.
   - Lean elaborates it;
   - it depends only on `propext`, `Classical.choice` and `Quot.sound`;
   - its fully elaborated type matches the original statement exactly.
-- **Your choice of model provider.** Fireworks, OpenRouter, a LiteLLM proxy
+- **Your choice of model provider.** Fireworks, OpenRouter, Cheaper Inference
+  (a marketplace reselling models below list price; Mack sends its model lock
+  so a run is always served by the model it names), a LiteLLM proxy
   (its configured prices are read for the spending limits), or any
   OpenAI-compatible endpoint (Ollama, LM Studio, vLLM), each with its own key
   and model, switchable per run from the Prove screen.
@@ -126,7 +129,7 @@ outside the project folder where no tool reaches.
 
 You need Windows 10 or 11, [Git](https://git-scm.com) (Lake fetches Mathlib
 with it), about 10 GB of free disk, and **your own model provider key**
-(Fireworks or OpenRouter), a LiteLLM proxy, or a local OpenAI-compatible
+(Fireworks, OpenRouter or Cheaper Inference), a LiteLLM proxy, or a local OpenAI-compatible
 server. No key or
 credential ships with Mack.
 
@@ -148,12 +151,13 @@ desktop shortcuts. Then open Mack and follow **Setup**:
 
 1. **Lean and Mathlib**: click *Install*. It takes 5–20 minutes and about
    5 GB, mostly Mathlib's prebuilt cache.
-2. **Model provider and key**: pick Fireworks, OpenRouter, LiteLLM (its
+2. **Model provider and key**: pick Fireworks, OpenRouter, Cheaper Inference, LiteLLM (its
    address, default `http://localhost:4000/v1`) or a custom endpoint and paste
    your key. It is encrypted with Windows' credential
    protection and only sent to that provider. For development you can instead
    copy `.env.example` to `.env` and set `FIREWORKS_API_KEY`,
-   `OPENROUTER_API_KEY` or `CUSTOM_API_KEY`; `.env` is gitignored.
+   `OPENROUTER_API_KEY`, `CHEAPER_INFERENCE_API_KEY` or `CUSTOM_API_KEY`;
+   `.env` is gitignored.
 3. **Model**: pick one from your account's list.
 
 ## Development

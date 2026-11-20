@@ -18,6 +18,7 @@ describe("secret scan rules v1", () => {
     const stripe = ["sk", "live", "4eC39HqLyjWDarjtT1zdp7dc"].join("_");
     const hf = ["hf", "AbCdEfGhIjKlMnOpQrStUvWxYzAbCdEfGh"].join("_");
     const fw = ["fw", "3x4mpl3K3yAbCdEfGh12345"].join("_");
+    const ci = ["ci", "live", "3x4mpl3K3y-AbCdEfGh12345"].join("_");
     const table: [string, string, string][] = [
       [pem, "private-key", body],
       ["aws_id AKIAIOSFODNN7ABCDEFG here", "aws-access-key", "AKIAIOSFODNN7ABCDEFG"],
@@ -45,6 +46,7 @@ describe("secret scan rules v1", () => {
       ["auth_token: 3f2a9c1b7d4e5f60718293a4", "secret-assignment", "3f2a9c1b7d4e5f60718293a4"],
       ["export API-KEY := 'q7w8e9r0t1y2'", "secret-assignment", "q7w8e9r0t1y2"],
       [`FIREWORKS_API_KEY=${fw}`, "fireworks-key", fw],
+      [`base_url and key ${ci} in one line`, "cheaper-inference-key", ci],
     ];
     for (const [text, rule, secret] of table) expect(found(text), `${rule} in ${text}`).toContainEqual([rule, secret]);
   });

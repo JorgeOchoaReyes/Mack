@@ -56,4 +56,4 @@ upstream module.
 | `interfaces/approvals` + `program-files/approvals` (guard runs the recorded call) | `core/chat/executor.ts` | Adapted: per-tool ask/allow policy; approvals are single-use and bound to the recorded call |
 | `program-files/memory` + `memories/write` and `memories/read` templates (extract, consolidate, read path) | `core/chat/memory.ts` | Adapted: extraction and consolidation are model calls returning files |
 | `kernel/` + `platform/` (capability microkernel, bubblewrap confinement) | — | Not ported: Linux-only. Mack restricts each agent's tools in-process instead, which is weaker. |
-| `program-files/openrouter` | `core/model/openai-compatible.ts` behind `core/model/provider.ts`; `core/model/providers.ts` lists Fireworks, OpenRouter and a custom endpoint | Adapted: any OpenAI-compatible provider, OpenRouter among them |
+| `program-files/openrouter` | `core/model/openai-compatible.ts` behind `core/model/provider.ts`; `core/model/providers.ts` lists Fireworks, OpenRouter, Cheaper Inference, LiteLLM and a custom endpoint | Adapted: any OpenAI-compatible provider, OpenRouter among them |

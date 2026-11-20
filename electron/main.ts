@@ -138,7 +138,7 @@ export type RunSummary = Pick<RunRecord, "id" | "projectId" | "file" | "startedA
 
 const DEFAULTS: Settings = {
   provider: "fireworks",
-  models: { fireworks: "", openrouter: "", litellm: "", custom: "" },
+  models: { fireworks: "", openrouter: "", cheaperinference: "", litellm: "", custom: "" },
   customBaseUrl: "http://localhost:11434/v1",
   litellmBaseUrl: "http://localhost:4000/v1",
   leanWorkspace: DEFAULT_WORKSPACE,
@@ -247,7 +247,7 @@ function makeBaseProvider(s: Settings, id: ProviderId): OpenAICompatibleProvider
   const info = providerInfo(id);
   const key = readKey(id);
   if (info.keyRequired && !key) throw new Error(`Add your ${info.label} API key in Setup first.`);
-  const headers: Record<string, string> = id === "openrouter" ? { "HTTP-Referer": "https://github.com/JorgeOchoaReyes/Mack", "X-Title": "Mack" } : {};
+  const headers: Record<string, string> = { ...info.headers, ...(id === "openrouter" ? { "HTTP-Referer": "https://github.com/JorgeOchoaReyes/Mack", "X-Title": "Mack" } : {}) };
   return new OpenAICompatibleProvider(info.label, info.baseUrl ?? s[info.endpointSetting ?? "customBaseUrl"], key, {
     extraHeaders: headers,
     reasoning: id === "openrouter" ? "openrouter" : "openai",
@@ -441,7 +441,7 @@ ipcMain.handle("upstream:check", async () => {
 });
 
 ipcMain.handle("open:external", (_e, url: string) => {
-  if (!/^https:\/\/(github\.com|fireworks\.ai|app\.fireworks\.ai|openrouter\.ai|leanprover-community\.github\.io)\//.test(url)) {
+  if (!/^https:\/\/(github\.com|fireworks\.ai|app\.fireworks\.ai|openrouter\.ai|platform\.cheaperinference\.com|www\.cheaperinference\.com|leanprover-community\.github\.io)\//.test(url)) {
     throw new Error("Mack only opens known links");
   }
   return shell.openExternal(url);
