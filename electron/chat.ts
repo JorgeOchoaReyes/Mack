@@ -53,6 +53,8 @@ type Deps = {
   newMeter: (s: Settings, model: string, spent?: number, capped?: boolean) => { meter: Meter; price: Price | undefined };
   lean: (s: Settings) => { run: LeanRun; check?: LeanCheckRun } | undefined;
   runProof: (problem: string, mode: RunMode, forward: (ev: RunEvent) => void, origin?: RunOrigin) => Promise<RunRecord>;
+  /** Search Mathlib's declarations in the Lean workspace (undefined while Mathlib is not installed is reported by the call). */
+  searchMathlib?: (query: string, limit: number) => Promise<string>;
   /** Keep a chat's own `verify_lean` verdict with the proof attempts, as one attempt. */
   recordChatAttempt: (a: ChatAttempt) => void;
   /** The GitHub token for project pull requests, or "" when none is set up. */
@@ -389,6 +391,7 @@ export function registerChat(d: Deps): ChatControl {
               list: () => plugins.list(session.id),
             },
         lean,
+        searchMathlib: d.searchMathlib,
         // Auto mode, read at each call: switching it on lets protected calls through without asking.
         policy: sub ? {} : session.auto ? ALLOW_ALL : s.approvals,
         signal: ctl.signal,

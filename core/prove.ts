@@ -8,6 +8,7 @@ import { extractStatement, frozenObjection, protocolObjection } from "./lean/rul
 import { describeRejection, excerpt, pristineType, verifyText, type LeanRun } from "./lean/verify";
 import type { ChatMessage, ModelProvider } from "./model/provider";
 import { prepare, type Lemma, type PrepareEvent } from "./prepare";
+import { unknownNames } from "./lean/mathlib-index";
 
 export type AttemptOutcome = "refused" | "no verdict" | "errors" | "sorries" | "rejected" | "verified";
 
@@ -32,6 +33,8 @@ export type ProveOptions = {
   prepare?: { checkStatement: boolean; idea: boolean };
   /** Lemmas this project has already proved, offered to every attempt. */
   lemmas?: Lemma[];
+  /** Real Mathlib names close to ones Lean did not know, as a note for the next attempt. */
+  lookup?: (unknown: string[]) => Promise<string>;
   signal?: AbortSignal;
   onEvent: (e: ProveEvent) => void;
 };
@@ -116,7 +119,8 @@ export async function prove(o: ProveOptions): Promise<void> {
         }
         if (check.status === "errors" || check.status === "sorries") {
           attempt(check.status, check.output);
-          return `The checker's verdict:\n${describeCheck(check)}`;
+          const hint = o.lookup ? await o.lookup(unknownNames(check.errors.map((e) => e.message).join("\n"))).catch(() => "") : "";
+          return `The checker's verdict:\n${describeCheck(check)}${hint ? `\n\n${hint}` : ""}`;
         }
         emit({ type: "status", message: `${label(n)}: Lean accepts it; running the strict verifier…` });
         const verdict = await verifyText(o.frozen, pristine.type, candidate, o.run);

@@ -16,6 +16,7 @@ import { PROVIDERS, providerInfo, type ProviderId } from "../core/model/provider
 import { ghCliToken, githubLogin, type GitHubTokenSource } from "../core/github";
 import { prove, type ProveEvent } from "../core/prove";
 import { lemmaSource, type Lemma } from "../core/prepare";
+import { describeDecls, MathlibIndex, mathlibSource, nameHints, searchDecls } from "../core/lean/mathlib-index";
 import { readPlan } from "../core/chat/plan";
 import { search, type SearchEvent } from "../core/search/search";
 import { DEFAULT_LIMITS, type Limits } from "../core/search/tree";
@@ -486,6 +487,26 @@ function newMeter(s: Settings, model: string, spent = 0, capped = true): { meter
 /** Where a proof run came from: its project and, when it proves a project file as saved, that file. */
 export type RunOrigin = { projectId?: string; file?: string };
 
+/** The index of the Lean workspace's Mathlib, one per workspace, built on first use and cached per Mathlib version. */
+let mathlib: { workspace: string; index: MathlibIndex } | null = null;
+function mathlibIndex(s: Settings): MathlibIndex | undefined {
+  if (!mathlibSource(s.leanWorkspace)) return undefined;
+  if (mathlib?.workspace !== s.leanWorkspace) mathlib = { workspace: s.leanWorkspace, index: new MathlibIndex(s.leanWorkspace, userData("mathlib-index.json")) };
+  return mathlib.index;
+}
+
+async function searchMathlib(query: string, limit: number): Promise<string> {
+  const index = mathlibIndex(readSettings());
+  if (!index) throw new Error("Mathlib's source is not in the Lean workspace; install Lean and Mathlib in Setup first");
+  return describeDecls(searchDecls(await index.load(), query, limit), query);
+}
+
+/** Real Mathlib names close to ones Lean did not know, for a prover's next attempt; empty without Mathlib's source. */
+async function mathlibHints(names: string[]): Promise<string> {
+  const index = names.length ? mathlibIndex(readSettings()) : undefined;
+  return index ? nameHints(await index.load(), names) : "";
+}
+
 /**
  * The lemmas a verifier accepted in a project, newest first, from its plan's Proved list: the
  * accepted proof file for `verify_lean`, the run's proof for a proof run. `except` is the
@@ -576,6 +597,7 @@ async function runProof(problem: string, mode: RunMode, forward: (ev: RunEvent) 
         check,
         prepare: { checkStatement: s.checkStatement, idea: s.proofIdea },
         lemmas,
+        lookup: mathlibHints,
         limits: s.search,
         analysis: s.searchAnalysis,
         sketch: sketchFor(problem),
@@ -596,6 +618,7 @@ async function runProof(problem: string, mode: RunMode, forward: (ev: RunEvent) 
         parallel,
         prepare: { checkStatement: s.checkStatement, idea: s.proofIdea },
         lemmas,
+        lookup: mathlibHints,
         signal: proving.signal,
         onEvent: send,
       });
@@ -781,6 +804,7 @@ const runs = new RunManager(
       limits: task.limits,
       prepare: { checkStatement: s.checkStatement, idea: s.proofIdea },
       lemmas: task.project ? await projectLemmas(task.project) : [],
+      lookup: mathlibHints,
       analysis: task.analysis,
       sketch: sketchFor(problem.frozen),
       worker: task.worker,
@@ -845,6 +869,7 @@ const chat = registerChat({
     return { run, check: quickCheck(s, 1) };
   },
   runProof,
+  searchMathlib,
   recordChatAttempt: (a) => {
     const id = `${a.at}`;
     const record: RunRecord = {
@@ -1007,6 +1032,8 @@ ipcMain.handle("discovery:startFiles", async (e) => {
 
 loadDotEnv();
 void app.whenReady().then(createWindow);
+// Build the Mathlib index in the background soon after launch, so the first search does not wait for it.
+void app.whenReady().then(() => setTimeout(() => void mathlibIndex(readSettings())?.load().catch(() => undefined), 20_000));
 app.on("window-all-closed", () => app.quit());
 app.on("will-quit", () => {
   runs.stopAll();
