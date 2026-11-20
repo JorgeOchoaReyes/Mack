@@ -860,3 +860,16 @@ body:has(.resizer.dragging) { cursor: col-resize; user-select: none; }
 .before-idea .link { display: inline-flex; align-items: center; gap: 4px; }
 .before-text { white-space: pre-wrap; margin-top: 6px; line-height: 1.55; }
 .rot90 { transform: rotate(90deg); }
+
+/* Walkthroughs */
+.wt-section { display: grid; gap: 10px; }
+.wt-section h2 { font-size: 16px; }
+.wt-head { justify-content: space-between; flex-wrap: wrap; }
+.wt-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
+.wt-card { display: grid; gap: 8px; align-content: start; justify-items: start; padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.wt-card p { margin: 0; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.wt-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.wt-filter { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+.wt-filter .input { width: 240px; }
+.wt-row .run-thm { display: grid; gap: 2px; }
+.wt-idea, .wt-file { color: var(--muted); font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

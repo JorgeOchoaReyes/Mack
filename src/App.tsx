@@ -1,4 +1,4 @@
-import { BookOpen, CircleDollarSign, Download, FlaskConical, Lightbulb, PanelLeftClose, PanelLeftOpen, Rows3, GitCompare, History, MessagesSquare, Settings as SettingsIcon, Wrench, X } from "lucide-react";
+import { BookOpen, CircleDollarSign, Clapperboard, Download, FlaskConical, Lightbulb, PanelLeftClose, PanelLeftOpen, Rows3, GitCompare, History, MessagesSquare, Settings as SettingsIcon, Wrench, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { api, errorText, type Health, type LedgerState, type Project, type Settings, type UpdateState, type Upstream } from "./api";
 import { useProjectFiles } from "./project";
@@ -10,6 +10,7 @@ import { EXAMPLES } from "./examples";
 import { ChatPage } from "./pages/ChatPage";
 import { FeedbackPage } from "./pages/FeedbackPage";
 import { RunsPage } from "./pages/RunsPage";
+import { WalkthroughsPage } from "./pages/WalkthroughsPage";
 import { GuidePage } from "./pages/GuidePage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { ProvePage, type ProveRequest } from "./pages/ProvePage";
@@ -18,10 +19,10 @@ import { SetupPage } from "./pages/SetupPage";
 import { UpstreamPage } from "./pages/UpstreamPage";
 import { WelcomePage } from "./pages/WelcomePage";
 
-type Page = "prove" | "chat" | "runs" | "feedback" | "history" | "upstream" | "setup" | "settings" | "guide";
+type Page = "prove" | "chat" | "runs" | "feedback" | "history" | "walkthroughs" | "upstream" | "setup" | "settings" | "guide";
 
 /** Pages that work on the current problem; without one they show the welcome screen. */
-const PROJECT_PAGES: Page[] = ["chat", "prove", "runs", "history"];
+const PROJECT_PAGES: Page[] = ["chat", "prove", "runs", "history", "walkthroughs"];
 
 const DRAFT_KEY = "mack.draft";
 /** The chat's project before projects were shared by every screen. */
@@ -191,6 +192,7 @@ export function App() {
     },
     { id: "runs", label: "Proof searches", hint: "Long searches for proofs of many statements at once", icon: Rows3 },
     { id: "history", label: "Proof attempts", hint: "Every proof attempt, verified or not", icon: History },
+    { id: "walkthroughs", label: "Walkthroughs", hint: "Step-by-step explanations of the proofs Lean accepted, to watch again", icon: Clapperboard },
   ];
   const more: NavItem[] = [
     { id: "setup", label: "Setup", hint: "Lean, API keys and models", icon: Wrench, badge: health !== null && !allReady },
@@ -362,6 +364,16 @@ export function App() {
               onRerun={(p) => {
                 setProveOpen({ text: p, n: Date.now() });
                 setPage("prove");
+              }}
+            />
+          )}
+          {!welcome && page === "walkthroughs" && (
+            <WalkthroughsPage
+              projectId={projectId}
+              projectName={project?.name ?? ""}
+              onAsk={(text) => {
+                setChatDraft({ text, n: Date.now() });
+                setPage("chat");
               }}
             />
           )}
