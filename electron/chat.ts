@@ -464,7 +464,7 @@ export function registerChat(d: Deps): ChatControl {
         saveSession(session);
         send({ sessionId: session.id, event: { type: "done" } });
         if (next.length && !ctl.signal.aborted) startTurn(projectId, session);
-        else if (!failed && !ctl.signal.aborted && session.auto) void continueAuto(p, session);
+        else if (!ctl.signal.aborted && session.auto) void continueAuto(p, session, failed);
         else void afterTurn(p.id, session);
       }
     })();
@@ -472,32 +472,50 @@ export function registerChat(d: Deps): ChatControl {
 
   /** How many turns auto mode has started in a row for each chat; the person's own message resets it. */
   const autoTurns = new Map<string, number>();
+  /** Chats Autopilot has already asked to extend a plan with no open steps; asked again only after new steps appear. */
+  const autoExtendAsked = new Set<string>();
+  /** Turns in a row that failed (a model or network error) on Autopilot. */
+  const autoFailures = new Map<string, number>();
 
   /** Auto mode: after a turn, start the next one while the plan has open steps, within a bound. */
-  async function continueAuto(p: Project, session: ChatSession): Promise<void> {
+  async function continueAuto(p: Project, session: ChatSession, failed = false): Promise<void> {
     const stop = (why: string) => {
       autoTurns.delete(session.id);
+      autoExtendAsked.delete(session.id);
+      autoFailures.delete(session.id);
       send({ sessionId: session.id, autoStopped: why });
       void afterTurn(p.id, session);
     };
     const n = (autoTurns.get(session.id) ?? 0) + 1;
     if (n > MAX_AUTO_TURNS) return stop(`Autopilot paused after ${MAX_AUTO_TURNS} turns in a row. Send a message to keep going.`);
+    // A failed turn (a model or network error) is tried again after a pause, twice at most in a row.
+    const failures = failed ? (autoFailures.get(session.id) ?? 0) + 1 : 0;
+    autoFailures.set(session.id, failures);
+    if (failures > 2) return stop("Autopilot stopped: the last three turns failed (see the errors above). Send a message to try again.");
     const plan = await planOf(p);
     const open = plan.steps.filter((x) => x.status === "todo" || x.status === "doing");
-    // Without a plan yet, the first auto turn makes one; afterwards an empty list of open steps means the work is done.
-    if (plan.steps.length > 0 && open.length === 0) return stop("Autopilot: every plan step is done, stuck or dropped.");
+    // A finished plan is not finished work: a new request, or a goal not yet reached, needs new steps. Ask once;
+    // if the turn after that adds none, the work is done.
+    const exhausted = plan.steps.length > 0 && open.length === 0;
+    if (!exhausted) autoExtendAsked.delete(session.id);
+    else if (autoExtendAsked.has(session.id)) return stop("Autopilot: the work is done. Every plan step is done, stuck or dropped, and no new step was added.");
+    else autoExtendAsked.add(session.id);
     const fresh = loadSession(p.id, session.id);
     if (!fresh?.auto || live.has(session.id)) return;
     autoTurns.set(session.id, n);
-    await new Promise((r) => setTimeout(r, 1500));
+    await new Promise((r) => setTimeout(r, failed ? 20_000 : 1500));
     if (live.has(session.id) || !loadSession(p.id, session.id)?.auto) return;
     fresh.messages.push({
       role: "user",
       at: Date.now(),
       source: "auto",
-      content: plan.steps.length
-        ? `Continue with the plan: take the next open step (${open[0].id}: ${open[0].title}), or the most useful one, and report briefly.`
-        : "Make a plan for this problem with plan_update, then start on its first step.",
+      content: failed
+        ? "The last turn failed with an error (above). Continue from where it stopped: take the next step with your tools, working around the error if it was caused by a call you made."
+        : !plan.steps.length
+          ? "Make a plan for this problem with plan_update, then start on its first step with your tools in this same turn."
+          : exhausted
+            ? "Every step of the plan is done, stuck or dropped. If the person's latest request or the goal is not finished, add the next steps with plan_update now and start on the first one with your tools in this same turn. If it is finished, or nothing promising remains, say so plainly and add no steps."
+            : `Continue with the plan: take the next open step (${open[0].id}: ${open[0].title}), or the most useful one, with your tools in this turn, and report briefly.`,
     });
     saveSession(fresh);
     try {
@@ -814,7 +832,11 @@ export function registerChat(d: Deps): ChatControl {
     d.newMeter(st, md, pre?.costUsd ?? 0, false);
     const attachments = await Promise.all((opts.attachments ?? []).map((a) => attachment(p.folder, a)));
     const message: StoredMessage = { role: "user", content: text, at: Date.now(), source: "person", ...(attachments.length ? { attachments } : {}) };
-    if (sessionId) autoTurns.delete(sessionId);
+    if (sessionId) {
+      autoTurns.delete(sessionId);
+      autoExtendAsked.delete(sessionId);
+      autoFailures.delete(sessionId);
+    }
     const l = sessionId ? live.get(sessionId) : undefined;
     if (l) {
       // While the agent works: "send now" reaches it between steps; otherwise it waits for the turn's end.
