@@ -247,7 +247,8 @@ export function ChatPage({ project, hasProjects, onCreateProject, incomingDraft,
     setBusy(!!id && !!sessions.find((x) => x.id === id)?.busy);
   };
 
-  const sendMessage = async (sendNow = false, override?: string) => {
+  /** `autopilot` starts a new chat on Autopilot whatever the composer's toggle says (the Solve it button). */
+  const sendMessage = async (sendNow = false, override?: string, autopilot = false) => {
     const text = (override ?? draft).trim();
     if (!text && !files.length) return;
     setDraft("");
@@ -259,7 +260,7 @@ export function ChatPage({ project, hasProjects, onCreateProject, incomingDraft,
       setStatus("Thinking…");
     }
     try {
-      const id = await api.sendChat(projectId, session?.id ?? null, text, { sendNow, attachments: files, auto: !session && newChatAuto });
+      const id = await api.sendChat(projectId, session?.id ?? null, text, { sendNow, attachments: files, auto: !session && (autopilot || newChatAuto) });
       setAutoNote("");
       const s = await api.getSession(projectId, id);
       setSession(s);
@@ -477,7 +478,26 @@ I am new to this. Explain the problem in plain words, tell me honestly how hard 
                 <Logo />
               </div>
               <h2>{project.name}</h2>
-              <p className="muted">Talk it through in plain words. The assistant explains, plans the work, reads what is known and tries proofs; you decide what it may do.</p>
+              <p className="muted">Hand it the problem and it works on it by itself, or talk it through step by step. Only what Lean accepts counts as proved.</p>
+              <div className="solve-it">
+                <Button
+                  variant="primary"
+                  icon={Rocket}
+                  disabled={!ready}
+                  title={ready ? "" : "Finish setup first"}
+                  onClick={() => {
+                    setNewChatAuto(true);
+                    void sendMessage(
+                      false,
+                      `Solve this: ${project.name}.\n\nWork on it end to end on your own: find what is already known, state precise claims in Lean and check them, prove what you can with whichever of Mack's features fit, and keep going through the plan. Do not ask me questions; choose and act. Report honestly what is proved and what is still open.`,
+                      true,
+                    );
+                  }}
+                >
+                  Solve it on Autopilot
+                </Button>
+                <span className="muted small">It reads, plans, states, checks and proves without stopping to ask, until it is done or your spending limit is reached. The Autopilot button below stops it.</span>
+              </div>
               <ol className="how-strip">
                 <li>
                   <MessageSquarePlus size={15} />

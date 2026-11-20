@@ -959,3 +959,8 @@ body:has(.resizer.dragging) { cursor: col-resize; user-select: none; }
 .chat-side-head .path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-side-fold { flex: none; margin-left: auto; }
 .chat-rail { align-items: center; padding: 12px 6px; gap: 8px; }
+
+/* Solve it on Autopilot: the one big action of a new chat */
+.solve-it { display: grid; justify-items: center; gap: 6px; margin: 6px 0 4px; text-align: center; }
+.solve-it .btn { padding: 10px 20px; font-size: 15px; }
+.solve-it .muted { max-width: 440px; }
