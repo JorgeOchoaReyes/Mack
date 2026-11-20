@@ -672,6 +672,15 @@ function Conversation({ messages, projectId, secretMarks, busy, onChoose, onOpen
           );
         }
         const m = it.m;
+        if (m.source === "mack")
+          return (
+            <div key={k} className="event-note fade-in">
+              <Rocket size={13} />
+              <span>
+                <b>Mack</b> asked the assistant to act on what it said instead of only describing it.
+              </span>
+            </div>
+          );
         if (m.source === "auto")
           return (
             <div key={k} className="event-note fade-in">
