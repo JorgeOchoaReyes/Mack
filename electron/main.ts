@@ -77,6 +77,8 @@ export type Settings = {
   chatEffort: ReasoningEffort;
   /** Offer a likely next message in an empty composer, and title new chats. */
   suggestions: boolean;
+  /** New chats start on Autopilot: the assistant works end to end on what it is asked, without stopping to ask. */
+  autopilotNewChats: boolean;
   /** USD all of Mack may spend in `globalPeriod`, every session and background call together; 0 means no limit. */
   globalLimit: number;
   globalPeriod: Period;
@@ -163,6 +165,7 @@ const DEFAULTS: Settings = {
   visionModels: [],
   chatEffort: "medium",
   suggestions: true,
+  autopilotNewChats: true,
   autoUpdate: true,
   maxCostPerSession: 2,
   globalLimit: 10,

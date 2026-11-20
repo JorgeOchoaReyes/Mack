@@ -47,13 +47,22 @@ function firstSentence(text: string): string {
  * The problem's plan beside the chat, short by default: the goal, a one-line outlook and one line per step.
  * Everything else (the full outlook, why a step matters, what came of it) opens on a click.
  */
-export function PlanView({ projectId, onAsk, onClose, onOpenInProve, onOpenRun, onShowMe, savedKey }: { projectId: string; onAsk: (text: string) => void; onClose: () => void; onOpenInProve?: (path: string) => void; onOpenRun?: (id: string) => void; onShowMe?: (file: string, savedId?: string) => void; savedKey?: number }) {
+export function PlanView({ projectId, onAsk, onClose, onOpenInProve, onOpenRun, onShowMe, savedKey, onOpenWalkthroughs }: { projectId: string; onAsk: (text: string) => void; onClose: () => void; onOpenInProve?: (path: string) => void; onOpenRun?: (id: string) => void; onShowMe?: (file: string, savedId?: string) => void; savedKey?: number; onOpenWalkthroughs?: () => void }) {
   const [plan, setPlan] = useState<Plan | null>(null);
   const [goalOpen, setGoalOpen] = useState(false);
   const [openSteps, setOpenSteps] = useState<Set<string>>(new Set());
   const [showFinished, setShowFinished] = useState(false);
   const [pathOf, setPathOf] = useState<Proved | null>(null);
   const [shareOf, setShareOf] = useState<Proved | null>(null);
+  // Each proved result is one line until opened: its statement, where it came from and the rest of its actions.
+  const [openProved, setOpenProved] = useState<Set<string>>(new Set());
+  const toggleProved = (file: string) =>
+    setOpenProved((prev) => {
+      const next = new Set(prev);
+      if (next.has(file)) next.delete(file);
+      else next.add(file);
+      return next;
+    });
   // Walkthroughs kept in the problem folder, to review again.
   const [saved, setSaved] = useState<SavedWalkthrough[]>([]);
   const [showSaved, setShowSaved] = useState(false);
@@ -148,48 +157,65 @@ export function PlanView({ projectId, onAsk, onClose, onOpenInProve, onOpenRun, 
             <section className="plan-proved" aria-label="Proved by Lean">
               <div className="plan-proved-head" title="A Lean verifier checked each of these proofs line by line. Mack records them from the verifier itself, not from the assistant's words.">
                 <ShieldCheck size={13} /> Proved by Lean ({proved.length})
+                {onShowMe && proved.length > 1 && (
+                  <button className="link small plan-proved-all" title="One guided walkthrough that connects every result here into the full answer, with a map of how they depend on each other" onClick={() => onShowMe("*")}>
+                    <BookOpenCheck size={12} /> Whole proof
+                  </button>
+                )}
               </div>
-              {onShowMe && proved.length > 1 && (
-                <button className="plan-showme-all" title="One guided walkthrough that connects every result here into the full answer, with a map of how they depend on each other" onClick={() => onShowMe("*")}>
-                  <BookOpenCheck size={13} /> Show me the whole proof
-                </button>
-              )}
               <ul>
-                {proved.map((x) => (
-                  <li key={x.file}>
-                    <div className="plan-proved-what">{x.summary ?? x.theorem ?? x.file}</div>
-                    <div className="plan-proved-meta">
-                      <code>{x.theorem ?? "theorem"}</code>
-                      <span className="muted">· {x.how === "proof_run" ? `proof run ${x.proof ?? ""}` : "checked in the chat"} · {timeAgo(x.at)}</span>
-                    </div>
-                    <div className="plan-proved-actions">
-                      {onShowMe && (
-                        <button className="link small plan-showme" title="A guided walk through the whole proof, step by step, with pictures" onClick={() => onShowMe(x.file)}>
-                          <BookOpenCheck size={11} /> Show me
+                {proved.map((x) => {
+                  const open = openProved.has(x.file);
+                  return (
+                    <li key={x.file} className={open ? "open" : ""}>
+                      <div className="plan-proved-row">
+                        <button className="plan-proved-toggle" aria-expanded={open} title={open ? "Show less" : "Show the statement, where it came from, and more actions"} onClick={() => toggleProved(x.file)}>
+                          <ChevronRight size={12} className="chev" />
+                          <code>{x.theorem ?? x.file.split("/").pop()}</code>
                         </button>
+                        {onShowMe && (
+                          <button className="link small plan-showme" title="A guided walk through the whole proof, step by step, with pictures" onClick={() => onShowMe(x.file)}>
+                            <BookOpenCheck size={11} /> Show me
+                          </button>
+                        )}
+                      </div>
+                      <div className={`plan-proved-what ${open ? "" : "clamp"}`}>{x.summary ?? x.file}</div>
+                      {open && (
+                        <>
+                          <div className="plan-proved-meta muted">
+                            {x.file} · {x.how === "proof_run" ? `proof run ${x.proof ?? ""}` : "checked in the chat"} · {timeAgo(x.at)}
+                          </div>
+                          <div className="plan-proved-actions">
+                            {onOpenInProve && (
+                              <button className="link small" title={`Open ${x.file} in the Lean editor`} onClick={() => onOpenInProve(x.file)}>
+                                <FileCode size={11} /> Open
+                              </button>
+                            )}
+                            <button className="link small" title="See every attempt, Lean check and verdict on the way to this proof" onClick={() => setPathOf(x)}>
+                              <Route size={11} /> How it got there
+                            </button>
+                            <button className="link small" onClick={() => onAsk(`Explain in plain words what ${x.theorem ?? x.file} (in ${x.file}) proves: what it says with a small example, how it answers my question, how the proof works, and what is still not proved.`)}>
+                              <MessagesSquare size={11} /> Explain
+                            </button>
+                            <button className="link small" title="Open a pull request that adds this proof to the community proofs in the Mack repo" onClick={() => setShareOf(x)}>
+                              <Users size={11} /> Share
+                            </button>
+                          </div>
+                        </>
                       )}
-                      {onOpenInProve && (
-                        <button className="link small" title={`Open ${x.file} on the Prove screen`} onClick={() => onOpenInProve(x.file)}>
-                          <FileCode size={11} /> Open {x.file.split("/").pop()}
-                        </button>
-                      )}
-                      <button className="link small" title="See every attempt, Lean check and verdict on the way to this proof" onClick={() => setPathOf(x)}>
-                        <Route size={11} /> How it got there
-                      </button>
-                      <button className="link small" title="Open a pull request that adds this proof to the community proofs in the Mack repo" onClick={() => setShareOf(x)}>
-                        <Users size={11} /> Share
-                      </button>
-                      <button className="link small" onClick={() => onAsk(`Explain in plain words what ${x.theorem ?? x.file} (in ${x.file}) proves: what it says with a small example, how it answers my question, how the proof works, and what is still not proved.`)}>
-                        <MessagesSquare size={11} /> Explain this
-                      </button>
-                    </div>
-                  </li>
-                ))}
+                    </li>
+                  );
+                })}
               </ul>
             </section>
           )}
 
-          {onShowMe && saved.length > 0 && (
+          {onOpenWalkthroughs && saved.length > 0 ? (
+            <button className="plan-group plan-walkthroughs-link" title="Every walkthrough written for this problem, earlier versions included, on the Walkthroughs screen" onClick={onOpenWalkthroughs}>
+              <History size={12} /> Saved walkthroughs ({saved.length})
+              <ChevronRight size={12} className="plan-go" />
+            </button>
+          ) : onShowMe && saved.length > 0 && (
             <section className="plan-saved" aria-label="Saved walkthroughs">
               <button className="plan-group" onClick={() => setShowSaved(!showSaved)} title="Every Show me walkthrough written for this problem is kept in its folder (.mack/showme/), including earlier versions">
                 <ChevronRight size={12} style={{ transform: showSaved ? "rotate(90deg)" : undefined }} />

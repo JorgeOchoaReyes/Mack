@@ -87,6 +87,8 @@
 
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; }
+/* The app is the window: panes scroll inside it, never the page itself (and no rubber-band past its edges on a Mac). */
+html, body { overflow: hidden; overscroll-behavior: none; }
 body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 var(--sans); -webkit-font-smoothing: antialiased; }
 button { font: inherit; color: inherit; }
 code, .mono { font-family: var(--mono); font-size: 0.92em; }
@@ -108,7 +110,7 @@ h1, h2, h3 { font-family: var(--display); margin: 0; letter-spacing: -0.01em; }
 ::-webkit-scrollbar-track { background: transparent; }
 
 /* Shell */
-.shell { display: grid; grid-template-columns: 228px minmax(0, 1fr); height: 100%; overflow: hidden; }
+.shell { display: grid; grid-template-columns: 228px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); height: 100%; overflow: hidden; }
 .sidebar { background: var(--sidebar); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 16px 12px; gap: 18px; }
 .brand { display: flex; align-items: center; gap: 10px; padding: 4px 6px; }
 .logo { width: 32px; height: 32px; border-radius: 9px; background: #121000; display: grid; place-items: center; box-shadow: var(--glow); flex: none; }
@@ -926,3 +928,57 @@ body:has(.resizer.dragging) { cursor: col-resize; user-select: none; }
 .page-head h1 { font-size: 22px; }
 .page-head p { font-size: 13.5px; max-width: 760px; }
 .empty-state { padding: 36px 24px; }
+
+/* A short window: the sidebar scrolls on its own, the status stays at its foot. */
+.sidebar { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.sidebar .health { flex: none; margin-top: auto; }
+.content-inner { overscroll-behavior: contain; }
+
+/* Plan panel: each proved result is one line until opened */
+.plan-proved-head { justify-content: flex-start; }
+.plan-proved-all { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; font-weight: 560; }
+.plan-proved ul { gap: 6px; }
+.plan-proved li + li { padding-top: 6px; }
+.plan-proved-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.plan-proved-toggle { display: flex; align-items: center; gap: 4px; min-width: 0; flex: 1; border: 0; background: transparent; padding: 0; color: var(--text); cursor: pointer; text-align: left; font: inherit; }
+.plan-proved-toggle code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; font-weight: 600; }
+.plan-proved-toggle .chev { flex: none; color: var(--muted); transition: transform 0.12s ease; }
+.plan-proved li.open .plan-proved-toggle .chev { transform: rotate(90deg); }
+.plan-proved-row .plan-showme { flex: none; display: inline-flex; align-items: center; gap: 3px; }
+.plan-proved-what { margin-top: 2px; padding-left: 16px; color: var(--muted); }
+.plan-proved-what.clamp { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plan-proved li.open .plan-proved-what { color: var(--text); }
+.plan-proved-meta, .plan-proved-actions { padding-left: 16px; }
+.plan-walkthroughs-link .plan-go { margin-left: auto; }
+.plan-proved, .plan-proved ul, .plan-proved li { min-width: 0; }
+.plan-proved li { overflow: hidden; }
+
+/* Chat history: folds to a rail */
+.chat-side[hidden] { display: none; }
+.chat-side-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.chat-side-head .path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-side-fold { flex: none; margin-left: auto; }
+.chat-rail { align-items: center; padding: 12px 6px; gap: 8px; }
+
+/* Solve it on Autopilot: the one big action of a new chat */
+.autopilot-card { width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 14px; margin-top: 10px; padding: 16px 18px; text-align: left; border-radius: 16px; border: 1px solid var(--accent-edge); background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 14%, var(--surface)), var(--surface) 70%); box-shadow: 0 10px 30px -18px color-mix(in srgb, var(--accent) 60%, transparent); }
+.autopilot-card.disabled { opacity: 0.65; }
+.ap-icon { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; background: var(--accent); color: var(--on-accent); box-shadow: var(--glow); }
+.ap-text { display: grid; gap: 4px; min-width: 0; }
+.ap-title { font-weight: 700; font-size: 15.5px; }
+.ap-sub { color: var(--muted); font-size: 13px; line-height: 1.45; }
+.ap-stages { margin-top: 2px; font-size: 11.5px; font-weight: 600; letter-spacing: 0.02em; color: var(--accent-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ap-stages span { display: inline-flex; align-items: center; gap: 4px; }
+.ap-stages svg { opacity: 0.5; }
+.autopilot-card .btn { padding: 9px 22px; font-size: 14px; }
+.welcome-or { display: flex; align-items: center; gap: 10px; width: 100%; margin: 10px 0 2px; color: var(--faint); font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.08em; }
+.welcome-or::before, .welcome-or::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+@media (max-width: 720px) { .autopilot-card { grid-template-columns: auto minmax(0, 1fr); } .autopilot-card .btn { grid-column: 1 / -1; justify-self: stretch; } }
+
+/* A calm new-chat page: the problem, Autopilot, and small starting points */
+.autopilot-card { padding: 14px 16px; margin-top: 14px; }
+.ap-icon { width: 38px; height: 38px; }
+.welcome-or { margin: 14px 0 4px; }
+.starter-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.starter-chip { padding: 6px 12px; border-radius: 99px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font: inherit; font-size: 13px; cursor: pointer; transition: border-color 120ms, background 120ms; }
+.starter-chip:hover { border-color: var(--accent-edge); background: var(--surface-2); }

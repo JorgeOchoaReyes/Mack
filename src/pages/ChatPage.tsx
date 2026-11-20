@@ -1,6 +1,6 @@
 import { UltramathView } from "../components/UltramathView";
 import type { Proved, RunEvent, SwarmRecord } from "../api";
-import { AlarmClock, Brain, Check, ChevronRight, Rocket, Users, Download, ExternalLink, GitCompare, GitPullRequest, KeyRound, FolderPlus, ListChecks, MessageSquarePlus, ShieldAlert, ShieldCheck, Terminal, Trash2, Wrench, X } from "lucide-react";
+import { AlarmClock, Brain, Check, ChevronRight, PanelLeftClose, PanelLeftOpen, Rocket, Users, Download, ExternalLink, GitCompare, GitPullRequest, KeyRound, FolderPlus, ListChecks, MessageSquarePlus, ShieldAlert, ShieldCheck, Terminal, Trash2, Wrench, X } from "lucide-react";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import {
   api,
@@ -49,10 +49,22 @@ type Props = {
   onGoSetup: () => void;
   /** The problem as the person first described it: sent as the first message of a new problem. */
   firstMessage?: string;
+  /** Go to the Walkthroughs screen. */
+  onOpenWalkthroughs?: () => void;
   onFirstMessageUsed?: () => void;
 };
 
 const PLAN_KEY = "mack.planOpen";
+
+const HISTORY_KEY = "mack.chatHistoryOpen";
+
+function historyOpenAtStart(): boolean {
+  try {
+    return localStorage.getItem(HISTORY_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
 
 function planOpenAtStart(): boolean {
   try {
@@ -64,7 +76,7 @@ function planOpenAtStart(): boolean {
 
 const EFFORTS: ReasoningEffort[] = ["off", "on", "low", "medium", "high", "xhigh"];
 
-export function ChatPage({ project, hasProjects, onCreateProject, incomingDraft, onOpenInProve, onOpenRun, health, settings, saveSettings, onGoSetup, firstMessage, onFirstMessageUsed }: Props) {
+export function ChatPage({ project, hasProjects, onCreateProject, incomingDraft, onOpenInProve, onOpenRun, health, settings, saveSettings, onGoSetup, firstMessage, onFirstMessageUsed, onOpenWalkthroughs }: Props) {
   const projectId = project?.id ?? "";
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [session, setSession] = useState<ChatSession | null>(null);
@@ -79,8 +91,18 @@ export function ChatPage({ project, hasProjects, onCreateProject, incomingDraft,
   const [panel, setPanel] = useState<"none" | "memory" | "tools" | "review" | "swarms">("none");
   const [secretMarks, setSecretMarks] = useState<Record<number, Finding[]>>({});
   const [planOpen, setPlanOpenState] = useState(planOpenAtStart);
+  /** The list of chats at the left; folded to a narrow rail when closed. */
+  const [historyOpen, setHistoryOpenState] = useState(historyOpenAtStart);
+  const setHistoryOpen = (v: boolean) => {
+    setHistoryOpenState(v);
+    try {
+      localStorage.setItem(HISTORY_KEY, v ? "1" : "0");
+    } catch {
+      // Only a remembered layout.
+    }
+  };
   /** Auto mode for the chat the next message starts, before it exists. */
-  const [newChatAuto, setNewChatAuto] = useState(false);
+  const [newChatAuto, setNewChatAuto] = useState(settings.autopilotNewChats);
   /** Why auto mode last paused, shown until the person acts. */
   const [autoNote, setAutoNote] = useState("");
   const [sideWidth, setSideWidth] = usePanelWidth("mack.chatSideWidth", 240, 160, 420);
@@ -96,7 +118,8 @@ export function ChatPage({ project, hasProjects, onCreateProject, incomingDraft,
     return () => ro.disconnect();
   }, []);
   const MAIN_MIN = 380;
-  let sideShown = sideWidth;
+  const RAIL = 48;
+  let sideShown = historyOpen ? sideWidth : RAIL;
   let planShown = planOpen ? planWidth : 0;
   if (boxWidth > 0) {
     let over = sideShown + planShown + MAIN_MIN - boxWidth;
@@ -105,7 +128,7 @@ export function ChatPage({ project, hasProjects, onCreateProject, incomingDraft,
       planShown -= Math.max(0, cut);
       over -= Math.max(0, cut);
     }
-    if (over > 0) sideShown = Math.max(160, sideShown - over);
+    if (over > 0 && historyOpen) sideShown = Math.max(160, sideShown - over);
   }
   const setPlanOpen = (v: boolean) => {
     setPlanOpenState(v);
@@ -224,7 +247,8 @@ export function ChatPage({ project, hasProjects, onCreateProject, incomingDraft,
     setBusy(!!id && !!sessions.find((x) => x.id === id)?.busy);
   };
 
-  const sendMessage = async (sendNow = false, override?: string) => {
+  /** `autopilot` starts a new chat on Autopilot whatever the composer's toggle says (the Solve it button). */
+  const sendMessage = async (sendNow = false, override?: string, autopilot = false) => {
     const text = (override ?? draft).trim();
     if (!text && !files.length) return;
     setDraft("");
@@ -236,7 +260,7 @@ export function ChatPage({ project, hasProjects, onCreateProject, incomingDraft,
       setStatus("Thinking…");
     }
     try {
-      const id = await api.sendChat(projectId, session?.id ?? null, text, { sendNow, attachments: files, auto: !session && newChatAuto });
+      const id = await api.sendChat(projectId, session?.id ?? null, text, { sendNow, attachments: files, auto: !session && (autopilot || newChatAuto) });
       setAutoNote("");
       const s = await api.getSession(projectId, id);
       setSession(s);
@@ -254,7 +278,7 @@ export function ChatPage({ project, hasProjects, onCreateProject, incomingDraft,
     onFirstMessageUsed?.();
     const opening = `${firstMessage}
 
-I am new to this. Explain the problem in plain words, tell me honestly how hard it is and what is already known, then make a plan.`;
+I am new to this. Explain the problem in plain words, tell me honestly how hard it is and what is already known, then make a plan and start working through it.`;
     if (ready) void sendMessage(false, opening);
     else setDraft(opening);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -311,14 +335,27 @@ I am new to this. Explain the problem in plain words, tell me honestly how hard 
 
   return (
     <div className="chat" ref={chatBox} style={{ gridTemplateColumns: `${sideShown}px 0 minmax(0, 1fr)${planOpen ? ` 0 ${planShown}px` : ""}` }}>
-      <aside className="chat-side">
-        {project && (
-          <div className="chat-side-head">
+      {!historyOpen && (
+        <aside className="chat-side chat-rail">
+          <button className="icon-btn" title="Show the chat history" aria-label="Show the chat history" onClick={() => setHistoryOpen(true)}>
+            <PanelLeftOpen size={16} />
+          </button>
+          <button className="icon-btn" title="New chat" aria-label="New chat" disabled={!projectId} onClick={() => void openSession(null)}>
+            <MessageSquarePlus size={16} />
+          </button>
+        </aside>
+      )}
+      <aside className="chat-side" hidden={!historyOpen}>
+        <div className="chat-side-head">
+          {project && (
             <code className="path small" title="The problem folder: the assistant works on the files here">
               {project.folder}
             </code>
-          </div>
-        )}
+          )}
+          <button className="icon-btn chat-side-fold" title="Hide the chat history" aria-label="Hide the chat history" onClick={() => setHistoryOpen(false)}>
+            <PanelLeftClose size={15} />
+          </button>
+        </div>
         <Button icon={MessageSquarePlus} disabled={!projectId} onClick={() => void openSession(null)}>
           New chat
         </Button>
@@ -374,7 +411,7 @@ I am new to this. Explain the problem in plain words, tell me honestly how hard 
         </div>
       </aside>
 
-      <Resizer width={sideShown} onWidth={setSideWidth} side="left" defaultWidth={240} label="Resize the chat list" />
+      {historyOpen ? <Resizer width={sideShown} onWidth={setSideWidth} side="left" defaultWidth={240} label="Resize the chat list" /> : <div />}
       <section className="chat-main">
         {panel === "memory" && <MemoryPanel projectId={projectId} onClose={() => setPanel("none")} />}
         {panel === "review" && <ReviewPanel projectId={projectId} sessionId={session?.id ?? null} chatTitle={session?.title ?? ""} onClose={() => setPanel("none")} />}
@@ -441,37 +478,40 @@ I am new to this. Explain the problem in plain words, tell me honestly how hard 
                 <Logo />
               </div>
               <h2>{project.name}</h2>
-              <p className="muted">Talk it through in plain words. The assistant explains, plans the work, reads what is known and tries proofs; you decide what it may do.</p>
-              <ol className="how-strip">
-                <li>
-                  <MessageSquarePlus size={15} />
-                  <span>
-                    <b>Talk</b> Describe the problem or ask a question.
-                  </span>
-                </li>
-                <li>
-                  <ListChecks size={15} />
-                  <span>
-                    <b>Plan</b> It breaks the work into steps, shown on the right.
-                  </span>
-                </li>
-                <li>
-                  <ShieldCheck size={15} />
-                  <span>
-                    <b>Check</b> Proofs go to Lean, a computer proof checker. Only what Lean accepts counts as proved.
-                  </span>
-                </li>
-              </ol>
-              <div className="starters">
+              <div className={`autopilot-card ${ready ? "" : "disabled"}`}>
+                <div className="ap-icon">
+                  <Rocket size={20} />
+                </div>
+                <div className="ap-text">
+                  <div className="ap-title">Solve it on Autopilot</div>
+                  <div className="ap-sub">Works on its own until it is done or reaches your spending limit.</div>
+                </div>
+                <Button
+                  variant="primary"
+                  disabled={!ready}
+                  title={ready ? "Start; the Autopilot button under the message box stops it" : "Finish setup first"}
+                  onClick={() => {
+                    setNewChatAuto(true);
+                    void sendMessage(
+                      false,
+                      `Solve this: ${project.name}.\n\nWork on it end to end on your own: find what is already known, state precise claims in Lean and check them, prove what you can with whichever of Mack's features fit, and keep going through the plan. Do not ask me questions; choose and act. Report honestly what is proved and what is still open.`,
+                      true,
+                    );
+                  }}
+                >
+                  Start
+                </Button>
+              </div>
+              <div className="welcome-or">or start with</div>
+              <div className="starter-chips">
                 {[
-                  ["Explain it to me", `Explain "${project.name}" in plain words, as if I had no maths background. What is the question, and why do people care?`],
+                  ["Explain it", `Explain "${project.name}" in plain words, as if I had no maths background. What is the question, and why do people care?`],
                   ["What is known?", "What have mathematicians already proved about this problem? Find the key results and papers, save them here, and summarize each in plain words."],
                   ["Make a plan", "Make a plan for this problem: tell me honestly how hard it is, and break the work into steps we can really do."],
                   ["Prove a first piece", "Pick a small, known fact about this problem, state it in Lean, and try to prove it, explaining each step."],
                 ].map(([t, q]) => (
-                  <button key={t} className="starter" onClick={() => setDraft(q)}>
-                    <b>{t}</b>
-                    <span>{q}</span>
+                  <button key={t} className="starter-chip" title={q} onClick={() => setDraft(q)}>
+                    {t}
                   </button>
                 ))}
               </div>
@@ -555,7 +595,7 @@ I am new to this. Explain the problem in plain words, tell me honestly how hard 
         />
       </section>
       {planOpen && <Resizer width={planShown} onWidth={setPlanWidth} side="right" defaultWidth={320} label="Resize the plan" />}
-      {planOpen && <PlanView projectId={projectId} onAsk={(q) => void sendMessage(false, q)} onClose={() => setPlanOpen(false)} onOpenInProve={onOpenInProve} onOpenRun={onOpenRun} onShowMe={setShowMe} savedKey={savedKey} />}
+      {planOpen && <PlanView projectId={projectId} onAsk={(q) => void sendMessage(false, q)} onClose={() => setPlanOpen(false)} onOpenInProve={onOpenInProve} onOpenRun={onOpenRun} onShowMe={setShowMe} savedKey={savedKey} onOpenWalkthroughs={onOpenWalkthroughs} />}
       {showMe && projectId && <ShowMe key={`${showMe.file}|${showMe.id ?? ""}`} projectId={projectId} file={showMe.file} savedId={showMe.id} onClose={() => (setShowMeState(null), setSavedKey((k) => k + 1))} onAsk={setDraft} />}
     </div>
   );

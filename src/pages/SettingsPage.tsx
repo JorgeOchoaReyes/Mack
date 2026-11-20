@@ -36,6 +36,15 @@ export function SettingsPage({ settings, saveSettings, onGo }: Props) {
       </div>
 
       <section className="settings-group">
+        <h2>Chat</h2>
+        <Toggle
+          checked={settings.autopilotNewChats}
+          onChange={(v) => void saveSettings({ autopilotNewChats: v })}
+          label="Start new chats on Autopilot: tell the assistant what to solve and it works end to end on its own, using whichever features it needs. Its file writes, proof runs and commands then run without asking, until the work is done or your spending limit is reached. Each chat's Autopilot button turns it off."
+        />
+      </section>
+
+      <section className="settings-group">
         <h2>Prover</h2>
         <div className="grid-2">
           <Field label="Attempts per run" hint="How many times the model may revise its proof. Each attempt is one billed model call.">
@@ -321,7 +330,11 @@ function UpdatesSection({ settings, saveSettings }: { settings: Settings; saveSe
                 ? `Downloading Mack ${state.version}: ${state.percent}%`
                 : state.state === "ready"
                   ? `Mack ${state.version} is ready and installs when you quit Mack.`
-                  : `Could not check for updates: ${state.message}`;
+                  : state.state === "manual"
+                    ? state.newer
+                      ? `Mack ${state.latest} is out. This copy cannot update itself, since it was not installed from a Mack release installer (those are built for Windows): update it the way you installed it.`
+                      : `${state.latest ? `Mack ${state.latest} is the latest release, so this copy is current. ` : ""}This copy cannot update itself, since it was not installed from a Mack release installer (those are built for Windows).`
+                    : `Could not check for updates: ${state.message}`;
   return (
     <section className="settings-group">
       <h2>Updates</h2>
@@ -337,6 +350,11 @@ function UpdatesSection({ settings, saveSettings }: { settings: Settings; saveSe
         <Button size="sm" onClick={() => void api.checkUpdates().then(setState)}>
           Check now
         </Button>
+        {state?.state === "manual" && state.newer && (
+          <Button size="sm" variant="primary" onClick={() => void api.openExternal(state.url)}>
+            See Mack {state.latest}
+          </Button>
+        )}
         {state?.state === "ready" && (
           <Button size="sm" variant="primary" onClick={() => void api.installUpdate()}>
             Restart and update

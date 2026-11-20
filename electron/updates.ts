@@ -4,6 +4,9 @@
 // when Mack quits, or at once when the person chooses to restart.
 
 import { app, ipcMain, type WebContents } from "electron";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import { compareVersions } from "../core/upstream";
 import { autoUpdater } from "electron-updater";
 
 export type UpdateState =
@@ -14,7 +17,29 @@ export type UpdateState =
   | { state: "available"; version: string }
   | { state: "downloading"; version: string; percent: number }
   | { state: "ready"; version: string }
-  | { state: "error"; message: string };
+  | { state: "error"; message: string }
+  /** This copy cannot update itself (not installed from a Mack release installer, e.g. on a Mac); `latest` is the newest release, when GitHub answered. */
+  | { state: "manual"; latest?: string; newer: boolean; url: string };
+
+const RELEASES = "https://github.com/JorgeOchoaReyes/Mack/releases";
+
+/** Whether this copy came with what electron-updater needs: only Mack's release installers (Windows) do. */
+export function canSelfUpdate(resources = process.resourcesPath): boolean {
+  return existsSync(join(resources, "app-update.yml"));
+}
+
+/** The newest release on GitHub, for a copy that cannot update itself. */
+async function latestRelease(): Promise<UpdateState> {
+  try {
+    const res = await fetch("https://api.github.com/repos/JorgeOchoaReyes/Mack/releases/latest", { headers: { Accept: "application/vnd.github+json", "User-Agent": "Mack" } });
+    if (!res.ok) return { state: "manual", newer: false, url: RELEASES };
+    const r = (await res.json()) as { tag_name?: string; html_url?: string };
+    const latest = (r.tag_name ?? "").replace(/^v/, "");
+    return { state: "manual", latest: latest || undefined, newer: !!latest && compareVersions(latest, app.getVersion()) > 0, url: r.html_url ?? RELEASES };
+  } catch {
+    return { state: "manual", newer: false, url: RELEASES };
+  }
+}
 
 let current: UpdateState = { state: "idle" };
 const listeners = new Set<WebContents>();
@@ -39,6 +64,12 @@ export function registerUpdates(enabled: () => boolean): void {
   const check = async (): Promise<UpdateState> => {
     if (!app.isPackaged) {
       set({ state: "dev" });
+      return current;
+    }
+    // A copy built by hand (or on a Mac, where releases do not build) has nothing for the updater to read.
+    if (!canSelfUpdate()) {
+      set({ state: "checking" });
+      set(await latestRelease());
       return current;
     }
     try {
