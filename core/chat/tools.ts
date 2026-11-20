@@ -13,7 +13,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { TOOL_BLOCK } from "./tool-block";
+import { JSON_BLOCK, TOOL_BLOCK } from "./tool-block";
 
 export type ToolSpec = {
   name: string;
@@ -252,20 +252,41 @@ export async function writeProjectFile(root: string, p: string, content: string)
   return `wrote ${relative(await realpath(root), file)} (${Buffer.byteLength(content, "utf8")} bytes)`;
 }
 
-/** Parse the tool blocks of a reply: each holds one JSON object {"name", "args"}. */
+/** A call's arguments: `args`, or `arguments` as OpenAI-style models write it (an object, or JSON in a string). */
+function argsOf(v: { args?: unknown; arguments?: unknown; parameters?: unknown }): Record<string, unknown> {
+  let a = v.args ?? v.arguments ?? v.parameters;
+  if (typeof a === "string") {
+    try {
+      a = JSON.parse(a);
+    } catch {
+      return {};
+    }
+  }
+  return a && typeof a === "object" && !Array.isArray(a) ? (a as Record<string, unknown>) : {};
+}
+
+/** Parse the tool blocks of a reply: each holds one JSON object {"name", "args"}. A ```json block counts only when it names one of the tools. */
 export function parseToolCalls(reply: string, allowed?: string[], own: ToolSpec[] = []): { calls: ToolCall[]; errors: string[] } {
   const text = reply.replace(/<think>[\s\S]*?<\/think>/g, "");
   const calls: ToolCall[] = [];
   const errors: string[] = [];
+  const known = (name: unknown) => typeof name === "string" && toolSpecs(allowed, own).some((t) => t.name === name);
   for (const m of text.matchAll(TOOL_BLOCK)) {
     try {
-      const v = JSON.parse(m[1].trim()) as { name?: unknown; args?: unknown };
+      const v = JSON.parse(m[1].trim()) as { name?: unknown; args?: unknown; arguments?: unknown };
       if (typeof v.name !== "string") throw new Error("missing \"name\"");
-      if (!toolSpecs(allowed, own).some((t) => t.name === v.name)) throw new Error(`\`${v.name}\` is not one of your tools`);
-      const args = v.args && typeof v.args === "object" && !Array.isArray(v.args) ? (v.args as Record<string, unknown>) : {};
-      calls.push({ name: v.name, args });
+      if (!known(v.name)) throw new Error(`\`${v.name}\` is not one of your tools`);
+      calls.push({ name: v.name, args: argsOf(v) });
     } catch (e) {
       errors.push(`A tool block could not be read: ${(e as Error).message}`);
+    }
+  }
+  for (const m of text.matchAll(JSON_BLOCK)) {
+    try {
+      const v = JSON.parse(m[1].trim()) as { name?: unknown; args?: unknown; arguments?: unknown };
+      if (v && typeof v === "object" && known(v.name)) calls.push({ name: v.name as string, args: argsOf(v) });
+    } catch {
+      // Ordinary JSON shown to the person, not a call.
     }
   }
   return { calls, errors };

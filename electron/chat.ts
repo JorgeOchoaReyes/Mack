@@ -501,7 +501,7 @@ export function registerChat(d: Deps): ChatControl {
     // if the turn after that adds none, the work is done.
     const exhausted = plan.steps.length > 0 && open.length === 0;
     if (!exhausted) autoExtendAsked.delete(session.id);
-    else if (autoExtendAsked.has(session.id)) return stop("Autopilot: the work is done. Every plan step is done, stuck or dropped, and no new step was added.");
+    else if (autoExtendAsked.has(session.id)) return stop("Autopilot paused: every plan step is done, stuck or dropped, and the assistant added no new step when asked. If the work is not finished, send a message saying what to do next.");
     else autoExtendAsked.add(session.id);
     const fresh = loadSession(p.id, session.id);
     if (!fresh?.auto || live.has(session.id)) return;
@@ -961,7 +961,7 @@ export function registerChat(d: Deps): ChatControl {
     const md = [`# ${sess.title}`, "", `${new Date(sess.startedAt).toLocaleString()}`, ""];
     for (const m of sess.messages) {
       if (m.role === "tool") md.push(...m.results.map((r) => `> **${r.name}** ${r.ok ? "ok" : "failed"}\n>\n> \`\`\`\n${r.output.slice(0, 3000).replace(/^/gm, "> ")}\n> \`\`\``), "");
-      else md.push(`## ${m.role === "user" ? (m.source === "reminder" ? "Reminder" : m.source === "job" ? "Background command" : "Person") : "Assistant"}`, "", m.content, "");
+      else md.push(`## ${m.role === "user" ? (m.source === "reminder" ? "Reminder" : m.source === "job" ? "Background command" : m.source === "auto" ? "Autopilot" : m.source === "mack" ? "Mack" : "Person") : "Assistant"}`, "", m.content, "");
     }
     const win = BrowserWindow.fromWebContents(e.sender);
     const r = await dialog.showSaveDialog(win!, { defaultPath: `${sess.title.replace(/[<>:"/\\|?*]/g, "").slice(0, 60) || "chat"}.md`, filters: [{ name: "Markdown", extensions: ["md"] }] });
