@@ -206,15 +206,29 @@ export type ReplSession = {
 export type ReplPool = { check: LeanCheckRun; session: <T>(header: string, fn: (s: ReplSession) => Promise<T>) => Promise<T>; stop: () => void };
 
 /** `size` REPL processes sharing a queue; each check goes to the next free one. */
-export function replPool(opts: { workspace: string; size: number; timeoutMs: number; importTimeoutMs?: number; recycleAfter?: number }): ReplPool {
+export function replPool(opts: { workspace: string; size: number; timeoutMs: number; importTimeoutMs?: number; recycleAfter?: number; idleMs?: number }): ReplPool {
   const procs = Array.from({ length: Math.max(1, opts.size) }, () => new ReplProcess(opts.workspace, opts.recycleAfter ?? 40));
   const free = [...procs];
   const queue: ((p: ReplProcess) => void)[] = [];
-  const acquire = () => new Promise<ReplProcess>((resolve) => (free.length ? resolve(free.pop()!) : queue.push(resolve)));
+  // A REPL holds Mathlib in memory (gigabytes) for as long as it lives: one idle this long is stopped, and the next check starts it again.
+  const idle = new Map<ReplProcess, ReturnType<typeof setTimeout>>();
+  const acquire = () =>
+    new Promise<ReplProcess>((resolve) => {
+      const take = (p: ReplProcess) => {
+        clearTimeout(idle.get(p));
+        idle.delete(p);
+        resolve(p);
+      };
+      if (free.length) take(free.pop()!);
+      else queue.push(take);
+    });
   const release = (p: ReplProcess) => {
     const next = queue.shift();
-    if (next) next(p);
-    else free.push(p);
+    if (next) return next(p);
+    free.push(p);
+    const t = setTimeout(() => p.stop(), opts.idleMs ?? 5 * 60_000);
+    t.unref?.();
+    idle.set(p, t);
   };
   return {
     check: async (source) => {
@@ -233,6 +247,9 @@ export function replPool(opts: { workspace: string; size: number; timeoutMs: num
         release(p);
       }
     },
-    stop: () => procs.forEach((p) => p.stop()),
+    stop: () => {
+      for (const t of idle.values()) clearTimeout(t);
+      procs.forEach((p) => p.stop());
+    },
   };
 }

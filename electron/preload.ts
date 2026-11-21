@@ -71,6 +71,7 @@ const api = {
   openPr: (projectId: string, sessionId: string | null, title: string) => ipcRenderer.invoke("github:pr", projectId, sessionId, title),
   swarmRecords: (projectId: string, sessionId: string) => ipcRenderer.invoke("swarms:records", projectId, sessionId),
   feedbackDiagnostics: () => ipcRenderer.invoke("feedback:diagnostics") as Promise<string>,
+  leanMemory: () => ipcRenderer.invoke("lean:memory"),
   openFeedback: (kind: string, title: string, body: string) => ipcRenderer.invoke("feedback:open", kind, title, body),
   feedbackIssues: () => ipcRenderer.invoke("feedback:issues"),
   globalSpend: () => ipcRenderer.invoke("spend:get"),

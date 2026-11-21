@@ -174,6 +174,7 @@ export function SettingsPage({ settings, saveSettings, onGo }: Props) {
           onChange={(v) => void saveSettings({ useRepl: v })}
           label="Use the resident Lean REPL for quick checks (keeps Mathlib loaded between checks; the final verification always uses a fresh Lean)"
         />
+        <LeanLimit value={settings.maxLeanProcesses ?? 0} onChange={(n) => void saveSettings({ maxLeanProcesses: n })} />
       </section>
 
       <section className="settings-group">
@@ -400,5 +401,22 @@ function GlobalSpend({ settings, saveSettings }: { settings: Settings; saveSetti
         </div>
       )}
     </div>
+  );
+}
+
+/** How many Lean processes may run at once: each holds Mathlib in memory, so this caps how much of the computer Mack takes. */
+function LeanLimit({ value, onChange }: { value: number; onChange: (n: number) => void }) {
+  const [mem, setMem] = useState<{ totalGb: number; auto: number } | null>(null);
+  useEffect(() => {
+    void api.leanMemory().then(setMem).catch(() => undefined);
+  }, []);
+  const n = value > 0 ? value : (mem?.auto ?? 0);
+  return (
+    <Field
+      label="Lean processes at once (0 = automatic)"
+      hint={`Each Lean process with Mathlib uses about 5–6 GB of memory, so this caps Mack at about ${n ? `${n * 6} GB` : "half your memory"}${mem ? ` of this computer's ${mem.totalGb} GB` : ""}. Checks beyond it wait their turn. Automatic uses about half the memory${mem ? ` (${mem.auto} here)` : ""}; an idle Lean REPL is closed after 5 minutes.`}
+    >
+      <input className="input" type="number" min={0} max={16} value={value} onChange={(e) => onChange(Math.max(0, Math.min(16, Math.floor(Number(e.target.value)) || 0)))} />
+    </Field>
   );
 }
