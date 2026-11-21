@@ -8,7 +8,7 @@ import { dirname, join } from "node:path";
 import { checkFromRun } from "../core/lean/check";
 import { hasRepl, replPool, splitHeader, type ReplPool } from "../core/lean/repl";
 import { analyzeSketch, type Analysis } from "../core/lean/sketch";
-import { leanRunner } from "../core/lean/runner";
+import { leanBudget, leanRunner, setLeanSlots, splitBudget } from "../core/lean/runner";
 import { DEFAULT_WORKSPACE, hasMathlib, hasProject, runSetup, verifyWorkspace, type SetupEvent } from "../core/lean/setup";
 import { lakeVersion } from "../core/lean/toolchain";
 import { OpenAICompatibleProvider } from "../core/model/openai-compatible";
@@ -81,6 +81,8 @@ export type Settings = {
   suggestions: boolean;
   /** New chats start on Autopilot: the assistant works end to end on what it is asked, without stopping to ask. */
   autopilotNewChats: boolean;
+  /** How many Lean processes (each holds Mathlib, about 5–6 GB) may run at once; 0 picks from this computer's memory. */
+  maxLeanProcesses: number;
   /** USD all of Mack may spend in `globalPeriod`, every session and background call together; 0 means no limit. */
   globalLimit: number;
   globalPeriod: Period;
@@ -168,6 +170,7 @@ const DEFAULTS: Settings = {
   chatEffort: "medium",
   suggestions: true,
   autopilotNewChats: true,
+  maxLeanProcesses: 0,
   autoUpdate: true,
   maxCostPerSession: 2,
   globalLimit: 10,
@@ -292,7 +295,11 @@ function sketchFor(frozen: string): ((file: string) => Promise<Analysis>) | unde
 
 /** The quick check for a run: a REPL pool kept alive between runs (Mathlib stays loaded), or none. */
 function quickCheck(s: Settings, size: number) {
-  if (!s.useRepl || !hasRepl(s.leanWorkspace)) {
+  // Every Lean process holds Mathlib in memory, so all of them, resident REPLs and fresh runs, share one budget.
+  const { repls, fresh } = splitBudget(leanBudget(s.maxLeanProcesses, os.totalmem()), size);
+  setLeanSlots(fresh);
+  size = repls;
+  if (!size || !s.useRepl || !hasRepl(s.leanWorkspace)) {
     repl?.pool.stop();
     repl = null;
     return undefined;
@@ -327,6 +334,7 @@ function createWindow(): void {
 }
 
 ipcMain.handle("settings:get", () => readSettings());
+ipcMain.handle("lean:memory", () => ({ totalGb: Math.round(os.totalmem() / 1024 ** 3), auto: leanBudget(0, os.totalmem()) }));
 
 function writeSettings(patch: Partial<Settings>): Settings {
   const next = { ...readSettings(), ...patch };
@@ -334,8 +342,17 @@ function writeSettings(patch: Partial<Settings>): Settings {
   return next;
 }
 
+/** Before any REPL is wanted, every Lean slot goes to fresh runs; a changed limit drops the REPLs, which restart within it. */
+function applyLeanBudget(s: Settings): void {
+  repl?.pool.stop();
+  repl = null;
+  setLeanSlots(leanBudget(s.maxLeanProcesses, os.totalmem()));
+}
+
 ipcMain.handle("settings:set", (_e, s: Partial<Settings>) => {
+  const before = readSettings().maxLeanProcesses;
   const next = writeSettings(s);
+  if (next.maxLeanProcesses !== before) applyLeanBudget(next);
   broadcastSpend();
   return next;
 });
@@ -1046,6 +1063,7 @@ ipcMain.handle("discovery:startFiles", async (e) => {
 
 loadDotEnv();
 void app.whenReady().then(createWindow);
+void app.whenReady().then(() => applyLeanBudget(readSettings()));
 void app.whenReady().then(() => void refreshEnvironment().catch(() => undefined));
 // Build the Mathlib index in the background soon after launch, so the first search does not wait for it.
 void app.whenReady().then(() => setTimeout(() => void mathlibIndex(readSettings())?.load().catch(() => undefined), 20_000));

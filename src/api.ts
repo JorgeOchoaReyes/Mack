@@ -108,6 +108,7 @@ export const api = {
   listPlugins: (sessionId: string) => m().listPlugins(sessionId),
   swarmRecords: (projectId: string, sessionId: string) => m().swarmRecords(projectId, sessionId) as Promise<{ id: string; records: SwarmRecord[] }[]>,
   feedbackDiagnostics: () => m().feedbackDiagnostics(),
+  leanMemory: () => m().leanMemory() as Promise<{ totalGb: number; auto: number }>,
   openFeedback: (kind: "bug" | "idea", title: string, body: string) => m().openFeedback(kind, title, body) as Promise<void>,
   feedbackIssues: () => m().feedbackIssues() as Promise<Issue[]>,
   globalSpend: () => m().globalSpend() as Promise<LedgerState>,
