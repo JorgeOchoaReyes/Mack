@@ -7,6 +7,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { killTree, lakeCommand, leanEnv } from "./toolchain";
+import { freshRunScript, remoteLean, sshArgs, type RemoteLean } from "./remote";
 import type { LeanRun, RunResult } from "./verify";
 
 /**
@@ -75,7 +76,45 @@ export function leanRunner(config: LeanConfig): LeanRun {
   return (source: string): Promise<RunResult> => withLeanSlot(() => runOnce(config, source));
 }
 
+/** One run on the remote machine: the source goes over stdin, and only Lean's own exit is a verdict. */
+function runRemote(r: RemoteLean, config: LeanConfig, source: string): Promise<RunResult> {
+  return new Promise<RunResult>((resolve) => {
+    let output = "";
+    let settled = false;
+    const done = (x: RunResult) => {
+      if (!settled) {
+        settled = true;
+        resolve(x);
+      }
+    };
+    const child = spawn("ssh", sshArgs(r, freshRunScript(config.timeoutMs / 1000)), { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
+    // The remote `timeout` ends Lean; this one ends a connection that hangs, with a margin for the network.
+    const timer = setTimeout(() => {
+      killTree(child);
+      done({ kind: "noVerdict", reason: `the remote Lean run on ${r.host} exceeded the ${config.timeoutMs} ms deadline` });
+    }, config.timeoutMs + 30_000);
+    child.stdout.on("data", (d: Buffer) => (output += d.toString("utf8")));
+    child.stderr.on("data", (d: Buffer) => (output += d.toString("utf8")));
+    child.on("error", (e) => {
+      clearTimeout(timer);
+      done({ kind: "noVerdict", reason: `could not start ssh: ${e.message}` });
+    });
+    child.on("close", (code, signal) => {
+      clearTimeout(timer);
+      if (code === 0) done({ kind: "ok", output });
+      // 124 is `timeout` ending Lean; 255 is ssh failing to connect: neither is Lean's verdict.
+      else if (code === 124) done({ kind: "noVerdict", reason: `lean exceeded the ${config.timeoutMs} ms deadline on ${r.host}` });
+      else if (code === 255) done({ kind: "noVerdict", reason: `ssh could not reach ${r.host}:\n${output}` });
+      else if (code !== null) done({ kind: "refused", output: `lean exited with ${code}:\n${output}` });
+      else done({ kind: "noVerdict", reason: `the remote run was ended by ${signal}:\n${output}` });
+    });
+    child.stdin.end(source);
+  });
+}
+
 async function runOnce(config: LeanConfig, source: string): Promise<RunResult> {
+  const r = remoteLean();
+  if (r) return runRemote(r, config, source);
   const dir = await mkdtemp(join(tmpdir(), "mack-lean-"));
   const file = join(dir, "Probe.lean");
   try {

@@ -1,4 +1,4 @@
-import { BookOpen, CircleDollarSign, Clapperboard, Download, FlaskConical, Lightbulb, PanelLeftClose, PanelLeftOpen, Rows3, Search, GitCompare, History, MessagesSquare, Settings as SettingsIcon, Wrench, X } from "lucide-react";
+import { BookOpen, CircleDollarSign, Clapperboard, Download, FlaskConical, Gauge, Lightbulb, PanelLeftClose, PanelLeftOpen, Rows3, Search, GitCompare, History, MessagesSquare, Settings as SettingsIcon, Wrench, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { api, errorText, type Health, type LedgerState, type Project, type Settings, type UpdateState, type Upstream } from "./api";
 import { useProjectFiles } from "./project";
@@ -12,6 +12,7 @@ import { ChatPage } from "./pages/ChatPage";
 import { FeedbackPage } from "./pages/FeedbackPage";
 import { RunsPage } from "./pages/RunsPage";
 import { WalkthroughsPage } from "./pages/WalkthroughsPage";
+import { BenchmarkPage } from "./pages/BenchmarkPage";
 import { GuidePage } from "./pages/GuidePage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { ProvePage, type ProveRequest } from "./pages/ProvePage";
@@ -20,7 +21,7 @@ import { SetupPage } from "./pages/SetupPage";
 import { UpstreamPage } from "./pages/UpstreamPage";
 import { WelcomePage } from "./pages/WelcomePage";
 
-type Page = "prove" | "chat" | "runs" | "feedback" | "history" | "walkthroughs" | "upstream" | "setup" | "settings" | "guide";
+type Page = "prove" | "chat" | "runs" | "feedback" | "history" | "walkthroughs" | "benchmark" | "upstream" | "setup" | "settings" | "guide";
 
 /** Pages that work on the current problem; without one they show the welcome screen. */
 const PROJECT_PAGES: Page[] = ["chat", "prove", "runs", "history", "walkthroughs"];
@@ -209,6 +210,7 @@ export function App() {
     { id: "walkthroughs", label: "Walkthroughs", hint: "Step-by-step explanations of the proofs Lean accepted, to watch again", icon: Clapperboard },
   ];
   const more: NavItem[] = [
+    { id: "benchmark", label: "Benchmark", hint: "Measure the solve rate of your settings on competition problems in Lean", icon: Gauge },
     { id: "setup", label: "Setup", hint: "Lean, API keys and models", icon: Wrench, badge: health !== null && !allReady },
     { id: "settings", label: "Settings", hint: "Spending limits and how runs behave", icon: SettingsIcon },
     { id: "guide", label: "Guide", hint: "How Mack works", icon: BookOpen },
@@ -424,6 +426,7 @@ export function App() {
           {page === "setup" && <SetupPage health={health} settings={settings} onChanged={refreshHealth} saveSettings={saveSettings} />}
           {page === "upstream" && <UpstreamPage settings={settings} saveSettings={saveSettings} upstream={upstream} recheckUpstream={recheckUpstream} />}
           {page === "settings" && <SettingsPage settings={settings} saveSettings={saveSettings} onGo={setPage} />}
+          {page === "benchmark" && <BenchmarkPage settings={settings} onGo={setPage} />}
           {page === "guide" && <GuidePage onGo={setPage} />}
         </div>
       </main>

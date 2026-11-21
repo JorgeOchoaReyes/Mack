@@ -12,6 +12,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { LeanCheck, LeanCheckRun, LeanMessage, OpenGoal } from "./check";
 import { killTree, lakeCommand, leanEnv } from "./toolchain";
+import { REMOTE_REPL, remoteLean, sshArgs } from "./remote";
 
 export const REPL_DIR = (workspace: string) => join(workspace, ".mack", "repl");
 export const replBinary = (workspace: string) =>
@@ -80,12 +81,15 @@ class ReplProcess {
   ) {}
 
   private start(): ChildProcessWithoutNullStreams {
-    const child = spawn(lakeCommand(), ["env", replBinary(this.workspace)], {
-      cwd: this.workspace,
-      env: leanEnv(),
-      stdio: ["pipe", "pipe", "pipe"],
-      windowsHide: true,
-    });
+    const remote = remoteLean();
+    const child = remote
+      ? spawn("ssh", sshArgs(remote, REMOTE_REPL), { stdio: ["pipe", "pipe", "pipe"], windowsHide: true })
+      : spawn(lakeCommand(), ["env", replBinary(this.workspace)], {
+          cwd: this.workspace,
+          env: leanEnv(),
+          stdio: ["pipe", "pipe", "pipe"],
+          windowsHide: true,
+        });
     child.stdout.on("data", (d: Buffer) => {
       this.buffer += d.toString("utf8").replace(/\r\n/g, "\n");
       let i: number;

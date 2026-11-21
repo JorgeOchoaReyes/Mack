@@ -49,7 +49,7 @@ export function SolvedCard({ solved, problem, where }: { solved: Solved; problem
         <div>
           <div className="solved-title">Verified by Lean</div>
           <div className="solved-sub">
-            {where ?? `Attempt ${solved.n}`} · the statement is unchanged, nothing is assumed, and Lean's kernel accepts the proof.
+            {where ?? (solved.n === 0 ? "Lean's automation, no model call" : `Attempt ${solved.n}`)} · the statement is unchanged, nothing is assumed, and Lean's kernel accepts the proof.
           </div>
         </div>
       </div>
@@ -77,7 +77,7 @@ export function AttemptCard({ attempt, defaultOpen }: { attempt: Attempt; defaul
     <div className={`attempt tone-${outcomeTone(attempt.outcome)} ${open ? "open" : ""}`}>
       <button className="attempt-head" onClick={() => setOpen(!open)}>
         <ChevronRight size={15} className="chev" />
-        <span className="attempt-n">Attempt {attempt.n}</span>
+        <span className="attempt-n">{attempt.n === 0 ? "Automation" : `Attempt ${attempt.n}`}</span>
         <OutcomeBadge outcome={attempt.outcome} />
         <span className="attempt-meta">
           <Timer size={13} /> {formatMs(attempt.ms)}
