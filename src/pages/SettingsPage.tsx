@@ -1,4 +1,4 @@
-import { ArrowRight, Download, ExternalLink } from "lucide-react";
+import { Download, ExternalLink } from "lucide-react";
 import { UPSTREAM } from "../../core/upstream";
 import { PROVIDERS, type ProviderId } from "../../core/model/providers";
 import { api, errorText, type Settings } from "../api";
@@ -12,7 +12,6 @@ import type { UltramathLimits } from "../../core/ultramath/swarm";
 type Props = {
   settings: Settings;
   saveSettings: (s: Partial<Settings>) => Promise<void>;
-  onGo: (page: "upstream" | "setup") => void;
 };
 
 const SEARCH_FIELDS: { key: keyof Limits; label: string; hint: string; min: number; max: number }[] = [
@@ -29,13 +28,9 @@ const ULTRA_FIELDS: { key: keyof UltramathLimits; label: string; hint: string; m
   { key: "modelCalls", label: "Model-call budget", hint: "Most model calls in the whole swarm.", min: 1, max: 1000 },
 ];
 
-export function SettingsPage({ settings, saveSettings, onGo }: Props) {
+export function SettingsPage({ settings, saveSettings }: Props) {
   return (
-    <div className="page">
-      <div className="page-head">
-        <h1>Settings</h1>
-      </div>
-
+    <div className="page settings-page">
       <section className="settings-group">
         <h2>Chat</h2>
         <Toggle
@@ -241,27 +236,6 @@ export function SettingsPage({ settings, saveSettings, onGo }: Props) {
         </div>
       </section>
 
-      <section className="settings-group">
-        <h2>Lean, key and model</h2>
-        <p className="muted">The Lean workspace, your model provider keys and models are managed in Setup.</p>
-        <div className="row gap-sm">
-          <Button icon={ArrowRight} onClick={() => onGo("setup")}>
-            Open Setup
-          </Button>
-        </div>
-      </section>
-
-      <section className="settings-group">
-        <h2>Upstream methodology</h2>
-        <p className="muted">
-          Automatic checks of Open Math Harness are {settings.upstreamCheck ? "on" : "off"}. Change this and see what changed upstream in Harness updates.
-        </p>
-        <div className="row gap-sm">
-          <Button icon={ArrowRight} onClick={() => onGo("upstream")}>
-            Open Harness updates
-          </Button>
-        </div>
-      </section>
 
       <GitHubSection />
 

@@ -19,7 +19,6 @@ export function SetupPage({ health, settings, onChanged, saveSettings }: Props) 
   return (
     <div className="page">
       <div className="page-head">
-        <h1>Setup</h1>
         <p className="muted">Three things, once. Everything stays on this computer.</p>
         <div className="readiness">
           <div className="readiness-bar">
