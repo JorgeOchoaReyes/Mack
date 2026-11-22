@@ -412,7 +412,7 @@ export function registerChat(d: Deps): ChatControl {
             send({ sessionId: session.id, approval });
           }),
         startProof: async (problem, mode, path) => {
-          send({ sessionId: session.id, event: { type: "status", message: `A ${mode === "search" ? "search-tree" : "single-agent"} proof run is going…` } });
+          send({ sessionId: session.id, event: { type: "status", message: `A ${mode === "search" ? "search-tree" : mode === "decompose" ? "decompose" : "single-agent"} proof run is going…` } });
           const record = await d.runProof(
             problem,
             mode,

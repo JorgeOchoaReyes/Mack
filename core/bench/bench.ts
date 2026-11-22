@@ -5,6 +5,7 @@
 // verifier accepts the proof, as in every other Mack run.
 
 import { MINIF2F_TEST } from "./minif2f-test";
+import { PUTNAMBENCH } from "./putnambench";
 
 export type BenchProblem = { id: string; source: string };
 export type BenchSet = { id: string; label: string; blurb: string; problems: BenchProblem[] };
@@ -15,6 +16,12 @@ export const BENCH_SETS: BenchSet[] = [
     label: "miniF2F test",
     blurb: "244 competition problems (AIME, AMC, IMO, MATH) formalized in Lean 4: the set the labs' provers report on.",
     problems: MINIF2F_TEST,
+  },
+  {
+    id: "putnambench",
+    label: "PutnamBench",
+    blurb: `${PUTNAMBENCH.length} Putnam competition problems since 1962, formalized in Lean 4: much harder than miniF2F, and where the labs compete now. Answers are given; only the proofs are asked for.`,
+    problems: PUTNAMBENCH,
   },
 ];
 
@@ -40,6 +47,9 @@ export type BenchConfig = {
   parallel: number;
   automation: boolean;
   revisions: number;
+  /** "single": attempts only; "decompose": attempts, then the statement split into lemmas. */
+  method?: "single" | "decompose";
+  easierFirst?: boolean;
 };
 
 export type BenchRun = {

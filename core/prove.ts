@@ -36,8 +36,11 @@ export type ProveOptions = {
   lemmas?: Lemma[];
   /** Real Mathlib names close to ones Lean did not know, as a note for the next attempt. */
   lookup?: (unknown: string[]) => Promise<string>;
-  /** A model trained for Lean (DeepSeek-Prover, Kimina, Goedel) that writes the attempts; `model` then only plans. */
-  prover?: { provider: ModelProvider; model: string };
+  /**
+   * Models trained for Lean (DeepSeek-Prover, Kimina, Goedel) that write the attempts; `model` then only plans.
+   * With several, the chains take them in turn: different models fail on different problems, so a mix solves more.
+   */
+  provers?: { provider: ModelProvider; model: string }[];
   /** Feedback rounds one chain gets before it starts over from a clean conversation (0: never). Many short independent tries beat one long one. */
   revisions?: number;
   /** Verified proofs of similar statements, shown to every attempt as worked examples. */
@@ -58,7 +61,7 @@ Rules, enforced by a checker:
 If the checker reports errors, fix them and reply with the whole corrected file.`;
 
 /** The same task in the plain form prover models (DeepSeek-Prover, Kimina, Goedel) are trained on. */
-const PROVER_TASK = (frozen: string, notes: string) =>
+export const PROVER_TASK = (frozen: string, notes: string) =>
   `Complete the following Lean 4 code:\n\n\`\`\`lean4\n${frozen}\`\`\`\n\nKeep everything before \`:=\` exactly as given. Do not use \`axiom\` or \`native_decide\`. Before producing the Lean 4 code to formally prove the given theorem, provide a detailed proof plan outlining the main proof steps and strategies.${notes ? `\n\n${notes}` : ""}`;
 
 /** The last ```lean block of a reply, or the whole reply when it has none. */
@@ -98,7 +101,8 @@ export async function prove(o: ProveOptions): Promise<void> {
     }
   }
   const notes = [prep.notes, o.examples].filter(Boolean).join("\n\n");
-  const writer = o.prover ?? { provider: o.provider, model: o.model };
+  const provers = o.provers?.length ? o.provers : null;
+  let chainNo = 0;
 
   // The attempt budget is shared by every chain; the first verified proof stops the others.
   const chains = Math.max(1, Math.min(Math.floor(o.parallel ?? 1), 32, o.maxAttempts));
@@ -111,10 +115,14 @@ export async function prove(o: ProveOptions): Promise<void> {
     if (!solved) o.onEvent(e);
   };
   const label = (n: number) => `Attempt ${n} of ${o.maxAttempts}${chains > 1 ? ` (${chains} at once)` : ""}`;
+  // With several prover models, every one of them gets a chain.
+  const chainCount = provers ? Math.min(Math.max(chains, provers.length), o.maxAttempts) : chains;
 
   const chain = async () => {
+    const writer = provers ? provers[chainNo++ % provers.length] : { provider: o.provider, model: o.model };
+    const isProver = !!provers;
     const opening = (): ChatMessage[] =>
-      o.prover
+      isProver
         ? [{ role: "user", content: PROVER_TASK(o.frozen, notes) }]
         : [
             { role: "system", content: SYSTEM },
@@ -134,7 +142,7 @@ export async function prove(o: ProveOptions): Promise<void> {
       let reply: string;
       let tokens = 0;
       try {
-        const r = await writer.provider.chat({ model: writer.model, messages, maxTokens: o.prover ? 16384 : 8192, temperature: o.prover ? 0.9 : 0.6, signal });
+        const r = await writer.provider.chat({ model: writer.model, messages, maxTokens: isProver ? 16384 : 8192, temperature: isProver ? 0.9 : 0.6, signal });
         reply = r.content;
         tokens = r.usage?.completionTokens ?? 0;
       } catch (e) {
@@ -193,11 +201,11 @@ export async function prove(o: ProveOptions): Promise<void> {
       rounds++;
       messages.push({ role: "user", content: `${next}\n\nReply with the whole corrected file.` });
       // A prover model's replies are long reasoning: it revises its last attempt only, so the conversation fits its context.
-      if (o.prover) messages = [...opening(), ...messages.slice(-2)];
+      if (isProver) messages = [...opening(), ...messages.slice(-2)];
     }
   };
 
-  await Promise.all(Array.from({ length: chains }, chain));
+  await Promise.all(Array.from({ length: chainCount }, chain));
   if (solved) return;
   if (o.signal?.aborted) return o.onEvent({ type: "failed", message: "Stopped." });
   if (modelError && started <= chains) return o.onEvent({ type: "failed", message: `Model call failed: ${modelError}` });

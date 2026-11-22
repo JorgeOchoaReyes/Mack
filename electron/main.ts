@@ -39,7 +39,9 @@ import { basename } from "node:path";
 import { statSync } from "node:fs";
 import { registerUpdates } from "./updates";
 import { remoteLean, setRemoteLean } from "../core/lean/remote";
-import { describeExamples, ProofStore } from "../core/proof-store";
+import { describeExamples, ProofStore, trainingData } from "../core/proof-store";
+import { decompose } from "../core/decompose";
+import { easierVersions } from "../core/variants";
 import { BENCH_SETS, benchSet, pickSample, runBench, type BenchEvent, type BenchResult, type BenchRun } from "../core/bench/bench";
 import { newerMackRelease } from "../core/upstream";
 import type { ApprovalPolicy } from "../core/chat/executor";
@@ -95,6 +97,12 @@ export type Settings = {
   leanAutomation: boolean;
   /** Show attempts verified proofs of similar statements from earlier runs. */
   reuseProofs: boolean;
+  /** Decompose mode: how many levels a step may be split again, attempts per statement before splitting, and splits tried per statement. */
+  decomposeDepth: number;
+  decomposeAttempts: number;
+  decomposeRounds: number;
+  /** Before the attempts, prove easier versions of the statement and offer them as lemmas. */
+  easierFirst: boolean;
   /** Lean on another machine over SSH (empty host: Lean runs here). */
   remoteLean: { host: string; workspace: string; repl: boolean; processes: number };
   /** USD all of Mack may spend in `globalPeriod`, every session and background call together; 0 means no limit. */
@@ -118,7 +126,7 @@ export type Settings = {
   proveFolder: string;
 };
 
-export type RunMode = "single" | "search" | "ultramath";
+export type RunMode = "single" | "decompose" | "search" | "ultramath";
 
 /** What a session has spent, after each priced model call. */
 export type SpendEvent = { type: "spend"; usd: number; limit: number; estimated: boolean };
@@ -190,6 +198,10 @@ const DEFAULTS: Settings = {
   revisionsPerChain: 4,
   leanAutomation: true,
   reuseProofs: true,
+  decomposeDepth: 2,
+  decomposeAttempts: 16,
+  decomposeRounds: 2,
+  easierFirst: false,
   remoteLean: { host: "", workspace: "~/mack-lean", repl: true, processes: 8 },
   autoUpdate: true,
   maxCostPerSession: 2,
@@ -605,14 +617,83 @@ async function projectLemmas(projectId: string, except?: string): Promise<Lemma[
 let proofs: ProofStore | null = null;
 const proofStore = () => (proofs ??= new ProofStore(userData("proofs.jsonl")));
 
-/** The prover model's provider, priced into the same meter as the run's main model, or none when no prover is set. */
-function proverFor(s: Settings, meter: Meter, hooks: { onCharge?: (m: Meter) => void; onCap?: (why: string) => void }): { provider: ModelProvider; model: string } | undefined {
-  const model = s.proverModel.trim();
-  if (!model) return undefined;
-  return { provider: metered(makeProvider(s, s.proverProvider, model), priceFor(s.prices, model, s.assumedPrice).price, meter, hooks), model };
+/** The prover models named in Settings (comma-separated), each priced into the same meter as the run's main model; empty when none is set. */
+const proverModels = (s: Settings) =>
+  s.proverModel
+    .split(",")
+    .map((m) => m.trim())
+    .filter(Boolean);
+
+function proversFor(s: Settings, meter: Meter, hooks: { onCharge?: (m: Meter) => void; onCap?: (why: string) => void }): { provider: ModelProvider; model: string }[] {
+  return proverModels(s).map((model) => ({ provider: metered(makeProvider(s, s.proverProvider, model), priceFor(s.prices, model, s.assumedPrice).price, meter, hooks), model }));
 }
 
 const parallelOf = (s: Settings) => Math.max(1, Math.min(32, Math.floor(s.parallelAttempts) || 1));
+
+/**
+ * A single or decompose proof run of `problem` with the settings' attempts, prover models, automation and
+ * reuse of earlier proofs; with `easierFirst`, easier versions are proved first and offered as lemmas.
+ * Shared by proof runs and the benchmark.
+ */
+async function attemptProof(
+  s: Settings,
+  mode: "single" | "decompose",
+  problem: string,
+  o: {
+    provider: ModelProvider;
+    model: string;
+    meter: Meter;
+    hooks: { onCharge?: (m: Meter) => void; onCap?: (why: string) => void };
+    run: ReturnType<typeof leanRunner>;
+    prepare?: { checkStatement: boolean; idea: boolean };
+    lemmas?: Lemma[];
+    signal: AbortSignal;
+    onEvent: (e: ProveEvent) => void;
+  },
+): Promise<void> {
+  const parallel = parallelOf(s);
+  const base = {
+    provider: o.provider,
+    model: o.model,
+    run: o.run,
+    check: quickCheck(s, parallel),
+    parallel,
+    lookup: mathlibHints,
+    provers: proversFor(s, o.meter, o.hooks),
+    revisions: s.revisionsPerChain,
+    automation: s.leanAutomation,
+    signal: o.signal,
+  };
+  let lemmas = o.lemmas ?? [];
+  if (s.easierFirst) {
+    const check = base.check ?? (async (src: string) => checkFromRun(await o.run(src)));
+    const easier = await easierVersions({
+      frozen: problem,
+      provider: o.provider,
+      model: o.model,
+      check,
+      signal: o.signal,
+      onStatus: (message) => o.onEvent({ type: "status", message }),
+      prove: async (v) => {
+        let proof: string | null = null;
+        await prove({ ...base, frozen: v, maxAttempts: Math.max(2, Math.min(8, Math.floor(s.maxAttempts / 4))), onEvent: (e) => e.type === "solved" && (proof = e.proof) });
+        return proof;
+      },
+    });
+    lemmas = [...easier, ...lemmas];
+  }
+  const options = {
+    ...base,
+    frozen: problem,
+    maxAttempts: s.maxAttempts,
+    prepare: o.prepare,
+    lemmas,
+    examples: s.reuseProofs ? describeExamples(proofStore().similar(problem)) : "",
+    onEvent: o.onEvent,
+  };
+  if (mode === "decompose") await decompose({ ...options, maxDepth: s.decomposeDepth, lemmaAttempts: s.decomposeAttempts, rounds: s.decomposeRounds });
+  else await prove(options);
+}
 
 /** One proof run in the given mode, recorded in the run history. Shared by the Prove screen and the chat's `start_proof`. */
 async function runProof(problem: string, mode: RunMode, forward: (ev: RunEvent) => void, origin: RunOrigin = {}): Promise<RunRecord> {
@@ -685,28 +766,20 @@ async function runProof(problem: string, mode: RunMode, forward: (ev: RunEvent) 
         onEvent: send,
       });
     } else {
-      const parallel = parallelOf(s);
-      await prove({
-        frozen: problem,
+      await attemptProof(s, s.mode === "decompose" ? "decompose" : "single", problem, {
         provider,
         model,
-        run,
-        check: quickCheck(s, parallel),
-        maxAttempts: s.maxAttempts,
-        parallel,
-        prepare: { checkStatement: s.checkStatement, idea: s.proofIdea },
-        lemmas,
-        lookup: mathlibHints,
-        prover: proverFor(s, meter, {
+        meter,
+        hooks: {
           onCharge: (m) => send({ type: "spend", usd: m.spent, limit: m.limit, estimated: m.estimated }),
           onCap: (why) => {
             capped = why;
             ctl.abort();
           },
-        }),
-        revisions: s.revisionsPerChain,
-        automation: s.leanAutomation,
-        examples: s.reuseProofs ? describeExamples(proofStore().similar(problem)) : "",
+        },
+        run,
+        prepare: { checkStatement: s.checkStatement, idea: s.proofIdea },
+        lemmas,
         signal: proving.signal,
         onEvent: send,
       });
@@ -753,25 +826,17 @@ async function benchOne(s: Settings, p: { id: string; source: string }, bench: B
   const hooks = { onCap: () => ctl.abort() };
   const provider = metered(makeProvider(s, s.provider), priceFor(s.prices, model, s.assumedPrice).price, meter, hooks);
   const run = leanRunner({ workspace: s.leanWorkspace, timeoutMs: s.timeoutMs });
-  const parallel = parallelOf(s);
   let attempts = 0;
   let proof: string | undefined;
   let message = "";
-  await prove({
-    frozen: p.source,
+  await attemptProof(s, bench.config.method ?? "single", p.source, {
     provider,
     model,
+    meter,
+    hooks,
     run,
-    check: quickCheck(s, parallel),
-    maxAttempts: s.maxAttempts,
-    parallel,
     // Benchmark statements are known to be right; the random tester would only spend time.
     prepare: { checkStatement: false, idea: s.proofIdea },
-    lookup: mathlibHints,
-    prover: proverFor(s, meter, hooks),
-    revisions: s.revisionsPerChain,
-    automation: s.leanAutomation,
-    examples: s.reuseProofs ? describeExamples(proofStore().similar(p.source)) : "",
     signal: AbortSignal.any([signal, ctl.signal]),
     onEvent: (ev) => {
       if (ev.type === "attempt" && ev.n > 0) attempts++;
@@ -783,8 +848,19 @@ async function benchOne(s: Settings, p: { id: string; source: string }, bench: B
   return { id: p.id, outcome: proof ? "solved" : "failed", attempts, ms: Date.now() - t0, usd: meter.spent, ...(proof ? { proof } : { message }) };
 }
 
+ipcMain.handle("proofs:stats", () => ({ count: proofStore().all().length }));
+ipcMain.handle("proofs:export", async (e) => {
+  const proofs = proofStore().all();
+  if (!proofs.length) throw new Error("No verified proofs are kept yet: they are kept from proof runs once Lean verifies them.");
+  const win = BrowserWindow.fromWebContents(e.sender);
+  const opts = { title: "Export verified proofs as fine-tuning data", defaultPath: "mack-proofs.jsonl", filters: [{ name: "JSON Lines", extensions: ["jsonl"] }] };
+  const r = win ? await dialog.showSaveDialog(win, opts) : await dialog.showSaveDialog(opts);
+  if (r.canceled || !r.filePath) return null;
+  writeFileSync(r.filePath, `${trainingData(proofs)}\n`, "utf8");
+  return { path: r.filePath, count: proofs.length };
+});
 ipcMain.handle("bench:sets", () => BENCH_SETS.map(({ problems, ...rest }) => ({ ...rest, size: problems.length })));
-ipcMain.handle("bench:start", (e, setId: string, n: number, budget: number) => {
+ipcMain.handle("bench:start", (e, setId: string, n: number, budget: number, method?: string) => {
   if (benching) throw new Error("A benchmark is already running.");
   const s = readSettings();
   const set = benchSet(String(setId));
@@ -798,7 +874,7 @@ ipcMain.handle("bench:start", (e, setId: string, n: number, budget: number) => {
     startedAt: Date.now(),
     finishedAt: 0,
     status: "running",
-    config: { model, ...(s.proverModel.trim() ? { prover: s.proverModel.trim() } : {}), maxAttempts: s.maxAttempts, parallel: parallelOf(s), automation: s.leanAutomation, revisions: s.revisionsPerChain },
+    config: { model, ...(proverModels(s).length ? { prover: proverModels(s).join(", ") } : {}), maxAttempts: s.maxAttempts, parallel: parallelOf(s), automation: s.leanAutomation, revisions: s.revisionsPerChain, method: method === "decompose" ? "decompose" : "single", easierFirst: s.easierFirst },
     sample: pickSample(set, Math.floor(Number(n)) || 10),
     results: [],
     budget: Math.max(0, Number(budget) || 0),

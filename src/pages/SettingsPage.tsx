@@ -1,4 +1,4 @@
-import { ArrowRight, ExternalLink } from "lucide-react";
+import { ArrowRight, Download, ExternalLink } from "lucide-react";
 import { UPSTREAM } from "../../core/upstream";
 import { PROVIDERS, type ProviderId } from "../../core/model/providers";
 import { api, errorText, type Settings } from "../api";
@@ -99,6 +99,24 @@ export function SettingsPage({ settings, saveSettings, onGo }: Props) {
           onChange={(v) => void saveSettings({ reuseProofs: v })}
           label="Learn from earlier proofs: every proof Lean verifies is kept, and attempts on a new statement are shown the verified proofs of the most similar ones."
         />
+        <ProofExport />
+        <Toggle
+          checked={settings.easierFirst}
+          onChange={(v) => void saveSettings({ easierFirst: v })}
+          label="Prove easier versions first: the model proposes special cases, weaker forms and the key lemma, each is tried with a few attempts, and the ones Lean verifies are offered to every attempt on the real statement. Costs a few model calls more per run."
+        />
+        <h3 className="settings-sub">Decompose mode</h3>
+        <div className="grid-2">
+          <Field label="Attempts before splitting" hint="Attempts on the statement, and on every lemma, before it is split into smaller steps.">
+            <input className="input" type="number" min={1} max={200} value={settings.decomposeAttempts} onChange={(e) => void saveSettings({ decomposeAttempts: Math.max(1, Math.min(200, Math.floor(Number(e.target.value)) || 1)) })} />
+          </Field>
+          <Field label="Split depth" hint="How many times a step that fails may be split again. Each level multiplies the work.">
+            <input className="input" type="number" min={1} max={4} value={settings.decomposeDepth} onChange={(e) => void saveSettings({ decomposeDepth: Math.max(1, Math.min(4, Math.floor(Number(e.target.value)) || 1)) })} />
+          </Field>
+          <Field label="Splits per statement" hint="When a split's steps cannot all be proved, the planning model is told which failed and splits again, up to this many times.">
+            <input className="input" type="number" min={1} max={6} value={settings.decomposeRounds} onChange={(e) => void saveSettings({ decomposeRounds: Math.max(1, Math.min(6, Math.floor(Number(e.target.value)) || 1)) })} />
+          </Field>
+        </div>
         <Toggle
           checked={settings.checkStatement}
           onChange={(v) => void saveSettings({ checkStatement: v })}
@@ -444,16 +462,21 @@ function LeanLimit({ value, onChange }: { value: number; onChange: (n: number) =
   );
 }
 
-/** The model trained for Lean that writes the attempts, on any provider, with its price for the spending limits. */
+/** The models trained for Lean that write the attempts, on any provider, each with its price for the spending limits. */
 function ProverModel({ settings, saveSettings }: { settings: Settings; saveSettings: (p: Partial<Settings>) => Promise<unknown> }) {
-  const model = settings.proverModel.trim();
-  const price = settings.prices[model];
-  const setPrice = (k: "input" | "output", v: number) => void saveSettings({ prices: { ...settings.prices, [model]: { input: price?.input ?? 0, output: price?.output ?? 0, [k]: Math.max(0, v) } } });
+  const models = settings.proverModel
+    .split(",")
+    .map((m) => m.trim())
+    .filter(Boolean);
+  const setPrice = (model: string, k: "input" | "output", v: number) => {
+    const price = settings.prices[model];
+    void saveSettings({ prices: { ...settings.prices, [model]: { input: price?.input ?? 0, output: price?.output ?? 0, [k]: Math.max(0, v) } } });
+  };
   return (
-    <div className="grid-2">
+    <>
       <Field
-        label="Prover model (optional)"
-        hint="A model trained only to write Lean proofs (DeepSeek-Prover-V2, Kimina-Prover, Goedel-Prover-V2) proves far more competition problems per dollar than a general model. When set, it writes every attempt and your main model only plans. Its provider needs a key in Setup."
+        label="Prover models (optional)"
+        hint="Models trained only to write Lean proofs (DeepSeek-Prover-V2, Kimina-Prover, Goedel-Prover-V2) prove far more competition problems per dollar than a general model. When set, they write every attempt and your main model only plans. Name several, separated by commas, and the attempts take them in turn: different models fail on different problems, so a mix solves more. Their provider needs a key in Setup."
       >
         <div className="inline-fields">
           <select className="input" style={{ width: 150, flex: "none" }} value={settings.proverProvider} onChange={(e) => void saveSettings({ proverProvider: e.target.value as ProviderId })}>
@@ -463,18 +486,21 @@ function ProverModel({ settings, saveSettings }: { settings: Settings; saveSetti
               </option>
             ))}
           </select>
-          <input className="input" placeholder="e.g. deepseek/deepseek-prover-v2 (empty: off)" value={settings.proverModel} onChange={(e) => void saveSettings({ proverModel: e.target.value })} />
+          <input className="input" placeholder="e.g. deepseek/deepseek-prover-v2, another/prover (empty: off)" value={settings.proverModel} onChange={(e) => void saveSettings({ proverModel: e.target.value })} />
         </div>
       </Field>
-      {model && (
-        <Field label="Prover price ($ per million tokens, input / output)" hint={price ? "Counted against your spending limits." : "Not set: the high assumed price is counted, so limits stop early."}>
-          <div className="inline-fields">
-            <input className="input" type="number" min={0} step={0.1} value={price?.input ?? ""} placeholder="input" onChange={(e) => setPrice("input", Number(e.target.value) || 0)} />
-            <input className="input" type="number" min={0} step={0.1} value={price?.output ?? ""} placeholder="output" onChange={(e) => setPrice("output", Number(e.target.value) || 0)} />
-          </div>
-        </Field>
-      )}
-    </div>
+      {models.map((model) => {
+        const price = settings.prices[model];
+        return (
+          <Field key={model} label={`Price of ${model} ($ per million tokens, input / output)`} hint={price ? undefined : "Not set: the high assumed price is counted, so limits stop early."}>
+            <div className="inline-fields">
+              <input className="input" type="number" min={0} step={0.1} value={price?.input ?? ""} placeholder="input" onChange={(e) => setPrice(model, "input", Number(e.target.value) || 0)} />
+              <input className="input" type="number" min={0} step={0.1} value={price?.output ?? ""} placeholder="output" onChange={(e) => setPrice(model, "output", Number(e.target.value) || 0)} />
+            </div>
+          </Field>
+        );
+      })}
+    </>
   );
 }
 
@@ -501,5 +527,34 @@ function RemoteLeanFields({ settings, saveSettings }: { settings: Settings; save
       </div>
       <Toggle checked={r.repl} onChange={(v) => set({ repl: v })} label="That machine has Mack's REPL built (.mack/repl), for quick checks with Mathlib kept loaded" />
     </details>
+  );
+}
+
+/** How many verified proofs are kept, and an export of them as fine-tuning data. */
+function ProofExport() {
+  const [count, setCount] = useState<number | null>(null);
+  const [note, setNote] = useState("");
+  useEffect(() => {
+    void api.proofStats().then((x) => setCount(x.count)).catch(() => undefined);
+  }, []);
+  const run = async () => {
+    setNote("");
+    try {
+      const r = await api.exportProofs();
+      if (r) setNote(`Saved ${r.count} proofs to ${r.path}`);
+    } catch (e) {
+      setNote(errorText(e));
+    }
+  };
+  return (
+    <div className="proof-export muted small">
+      <span>
+        {count === null ? "" : `${count} verified proof${count === 1 ? "" : "s"} kept.`} Export them to fine-tune an open prover model on your own work: a JSON Lines file in the chat format that Fireworks, Together and other OpenAI-compatible fine-tuning services accept. Training pays off after a few thousand proofs.
+      </span>
+      <Button size="sm" icon={Download} onClick={() => void run()} disabled={!count}>
+        Export training data
+      </Button>
+      {note && <span>{note}</span>}
+    </div>
   );
 }
