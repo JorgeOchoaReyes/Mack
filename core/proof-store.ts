@@ -9,8 +9,9 @@ import { appendFile, mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import { words } from "./lean/mathlib-index";
 import { extractStatement } from "./lean/rules";
+import { PROVER_TASK } from "./prove";
 
-export type StoredProof = { statement: string; proof: string; at: number; source?: string };
+export type StoredProof = { statement: string; proof: string; at: number; source?: string; frozen?: string };
 
 const squash = (s: string) => s.replace(/\s+/g, " ").trim();
 const MAX_PROOF = 3000;
@@ -40,7 +41,7 @@ export class ProofStore {
     const statement = squash(extractStatement(frozen) ?? "");
     if (!statement) return;
     if (this.all().some((p) => p.statement === statement && p.proof === proof)) return;
-    const entry: StoredProof = { statement, proof, at: now, ...(source ? { source } : {}) };
+    const entry: StoredProof = { statement, proof, at: now, frozen, ...(source ? { source } : {}) };
     await mkdir(dirname(this.file), { recursive: true });
     await appendFile(this.file, `${JSON.stringify(entry)}\n`, "utf8");
     this.all().push(entry);
@@ -73,4 +74,19 @@ export function describeExamples(found: StoredProof[]): string {
   if (!found.length) return "";
   const parts = found.map((p, i) => `Example ${i + 1}, verified by Lean earlier:\n\`\`\`lean\n${p.proof.length > MAX_PROOF ? `${p.proof.slice(0, MAX_PROOF)}\n-- …` : p.proof.trimEnd()}\n\`\`\``);
   return `Proofs of similar statements that Lean accepted before. They are examples of what works in this Mathlib, not part of the problem:\n\n${parts.join("\n\n")}`;
+}
+
+/**
+ * The kept proofs as fine-tuning data: one JSON line per proof, a user turn
+ * with the problem in the form prover models are trained on and an assistant
+ * turn with the verified proof. The chat format that Fireworks, Together and
+ * OpenAI-compatible fine-tuning services accept.
+ */
+export function trainingData(proofs: StoredProof[]): string {
+  return proofs
+    .map((p) => {
+      const frozen = p.frozen ?? `import Mathlib\n\n${p.statement} by\n  sorry\n`;
+      return JSON.stringify({ messages: [{ role: "user", content: PROVER_TASK(frozen, "") }, { role: "assistant", content: `\`\`\`lean4\n${p.proof.trimEnd()}\n\`\`\`` }] });
+    })
+    .join("\n");
 }

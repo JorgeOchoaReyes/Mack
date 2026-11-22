@@ -1002,3 +1002,6 @@ body:has(.resizer.dragging) { cursor: col-resize; user-select: none; }
 .settings-details[open] > summary { margin-bottom: 8px; }
 .inline-fields { display: flex; gap: 8px; align-items: center; }
 .inline-fields > .input { min-width: 0; flex: 1; }
+.settings-sub { margin: 14px 0 4px; font-size: 13px; font-weight: 650; }
+.proof-export { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 2px 0 8px 50px; line-height: 1.45; }
+.proof-export > span:first-child { flex: 1 1 360px; }

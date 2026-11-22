@@ -12,7 +12,7 @@ import { summarize } from "../../core/bench/bench";
 
 type Props = { settings: Settings; onGo: (page: "settings" | "setup") => void };
 
-const SIZES = [10, 20, 50, 100, 244];
+const SIZES = [10, 20, 50, 100];
 
 const pct = (x: number) => `${(x * 100).toFixed(x > 0 && x < 0.1 ? 1 : 0)}%`;
 const secs = (ms: number) => (ms < 60_000 ? `${Math.round(ms / 1000)}s` : `${Math.round(ms / 60_000)} min`);
@@ -22,6 +22,7 @@ export function BenchmarkPage({ settings, onGo }: Props) {
   const [setId, setSetId] = useState("minif2f-test");
   const [size, setSize] = useState(20);
   const [budget, setBudget] = useState(5);
+  const [method, setMethod] = useState<"single" | "decompose">("single");
   const [runs, setRuns] = useState<BenchRun[]>([]);
   const [live, setLive] = useState<BenchRun | null>(null);
   const [status, setStatus] = useState<{ id: string; message: string } | null>(null);
@@ -47,19 +48,21 @@ export function BenchmarkPage({ settings, onGo }: Props) {
   const start = async () => {
     setError("");
     try {
-      setLive(await api.benchStart(setId, size, budget));
+      setLive(await api.benchStart(setId, size, budget, method));
     } catch (e) {
       setError(errorText(e));
     }
   };
 
+  const total = sets.find((s) => s.id === setId)?.size ?? 244;
   const model = settings.models[settings.provider];
   const config = [
     `model ${model?.split("/").pop() ?? "not chosen"}`,
-    settings.proverModel.trim() ? `prover ${settings.proverModel.trim().split("/").pop()}` : "no prover model",
+    settings.proverModel.trim() ? `prover ${settings.proverModel.split(",").map((m) => m.trim().split("/").pop()).filter(Boolean).join(", ")}` : "no prover model",
     `${settings.maxAttempts} attempts`,
     `${settings.parallelAttempts} at once`,
     settings.leanAutomation ? "automation on" : "automation off",
+    ...(settings.easierFirst ? ["easier versions first"] : []),
   ];
   const past = runs.filter((r) => r.id !== live?.id);
   const best = past.filter((r) => r.set === setId && summarize(r).tried > 0).reduce<BenchRun | null>((b, r) => (!b || summarize(r).rate > summarize(b).rate ? r : b), null);
@@ -88,11 +91,17 @@ export function BenchmarkPage({ settings, onGo }: Props) {
             </Field>
             <Field label="Problems" hint="The same number always picks the same problems, and a smaller run is part of a larger one, so results compare.">
               <select className="input" value={size} onChange={(e) => setSize(Number(e.target.value))}>
-                {SIZES.map((n) => (
+                {[...SIZES.filter((n) => n < total), total].map((n) => (
                   <option key={n} value={n}>
-                    {n === 244 ? "All 244" : n}
+                    {n === total ? `All ${total}` : n}
                   </option>
                 ))}
+              </select>
+            </Field>
+            <Field label="Method" hint="Decompose tries each problem directly, then splits it into lemmas proved at once: slower and dearer, and stronger on hard problems. Compare the two on the same problems.">
+              <select className="input" value={method} onChange={(e) => setMethod(e.target.value as "single" | "decompose")}>
+                <option value="single">Attempts (single)</option>
+                <option value="decompose">Decompose into lemmas</option>
               </select>
             </Field>
             <Field label="Budget for the run (USD, 0 = no limit)" hint="When it is spent, the problems left are skipped. Your global spending limit applies as well.">
@@ -138,7 +147,7 @@ export function BenchmarkPage({ settings, onGo }: Props) {
                     </span>
                     <span className="muted small">
                       {r.config.model.split("/").pop()}
-                      {r.config.prover ? ` + ${r.config.prover.split("/").pop()}` : ""} · {r.config.maxAttempts} attempts, {r.config.parallel} at once{r.config.automation ? "" : ", no automation"}
+                      {r.config.prover ? ` + ${r.config.prover.split(",").map((m) => m.trim().split("/").pop()).join(", ")}` : ""} · {r.config.method === "decompose" ? "decompose · " : ""}{r.config.maxAttempts} attempts, {r.config.parallel} at once{r.config.automation ? "" : ", no automation"}
                     </span>
                     <span className="run-meta muted small">
                       {formatUsd(sum.usd)} · {secs(sum.ms)} · {timeAgo(r.startedAt)}
