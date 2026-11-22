@@ -211,14 +211,19 @@ export function App() {
   ];
   const more: NavItem[] = [
     { id: "benchmark", label: "Benchmark", hint: "Measure the solve rate of your settings on competition problems in Lean", icon: Gauge },
-    { id: "setup", label: "Setup", hint: "Lean, API keys and models", icon: Wrench, badge: health !== null && !allReady },
-    { id: "settings", label: "Settings", hint: "Spending limits and how runs behave", icon: SettingsIcon },
+    { id: "settings", label: "Settings", hint: "Setup (Lean, API keys, models), how runs behave, spending limits and harness updates", icon: SettingsIcon, badge: (health !== null && !allReady) || showBanner },
     { id: "guide", label: "Guide", hint: "How Mack works", icon: BookOpen },
-    { id: "upstream", label: "Harness updates", hint: "Changes in Open Math Harness, the methods Mack follows", icon: GitCompare, badge: showBanner },
     { id: "feedback", label: "Feedback", hint: "Report a bug or suggest an idea", icon: Lightbulb },
   ];
+  // Setup and Harness updates are tabs of Settings.
+  const inSettings = page === "settings" || page === "setup" || page === "upstream";
+  const settingsTabs: { id: Page; label: string; icon: typeof FlaskConical; badge?: boolean }[] = [
+    { id: "settings", label: "General", icon: SettingsIcon },
+    { id: "setup", label: "Setup", icon: Wrench, badge: health !== null && !allReady },
+    { id: "upstream", label: "Harness updates", icon: GitCompare, badge: showBanner },
+  ];
   const navButton = (n: NavItem) => (
-    <button key={n.id} className={`nav-item ${page === n.id ? "active" : ""}`} title={navCollapsed ? `${n.label}: ${n.hint}` : n.hint} onClick={() => setPage(n.id)}>
+    <button key={n.id} className={`nav-item ${page === n.id || (n.id === "settings" && inSettings) ? "active" : ""}`} title={navCollapsed ? `${n.label}: ${n.hint}` : n.hint} onClick={() => setPage(n.id)}>
       <n.icon size={17} />
       <span className="nav-text">{n.label}</span>
       {n.badge && <span className="nav-badge" />}
@@ -227,6 +232,8 @@ export function App() {
   const welcome = !!projects && !project && PROJECT_PAGES.includes(page);
   const commands: Command[] = [
     ...[...work, ...more].map((n) => ({ id: `go-${n.id}`, label: n.label, hint: n.hint, icon: n.icon, run: () => setPage(n.id) })),
+    { id: "go-setup", label: "Setup", hint: "Lean, API keys and models (Settings → Setup)", icon: Wrench, run: () => setPage("setup") },
+    { id: "go-upstream", label: "Harness updates", hint: "Changes in Open Math Harness, the methods Mack follows (Settings → Harness updates)", icon: GitCompare, run: () => setPage("upstream") },
     { id: "new-chat", label: "Ask the assistant", hint: "Go to Chat and type a question about the problem", icon: MessagesSquare, run: () => setPage("chat") },
     { id: "sidebar", label: navCollapsed ? "Expand the sidebar" : "Collapse the sidebar", hint: "Ctrl+B", icon: navCollapsed ? PanelLeftOpen : PanelLeftClose, run: () => setNavCollapsed(!navCollapsed) },
   ];
@@ -423,9 +430,23 @@ export function App() {
               }}
             />
           )}
+          {inSettings && (
+            <div className="settings-head">
+              <h1>Settings</h1>
+              <div className="settings-tabs" role="tablist" aria-label="Settings sections">
+                {settingsTabs.map((t) => (
+                  <button key={t.id} role="tab" aria-selected={page === t.id} className={`settings-tab ${page === t.id ? "active" : ""}`} onClick={() => setPage(t.id)}>
+                    <t.icon size={14} />
+                    {t.label}
+                    {t.badge && <span className="nav-badge" />}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           {page === "setup" && <SetupPage health={health} settings={settings} onChanged={refreshHealth} saveSettings={saveSettings} />}
           {page === "upstream" && <UpstreamPage settings={settings} saveSettings={saveSettings} upstream={upstream} recheckUpstream={recheckUpstream} />}
-          {page === "settings" && <SettingsPage settings={settings} saveSettings={saveSettings} onGo={setPage} />}
+          {page === "settings" && <SettingsPage settings={settings} saveSettings={saveSettings} />}
           {page === "benchmark" && <BenchmarkPage settings={settings} onGo={setPage} />}
           {page === "guide" && <GuidePage onGo={setPage} />}
         </div>
