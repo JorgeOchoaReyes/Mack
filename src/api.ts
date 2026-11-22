@@ -25,6 +25,9 @@ import type { UpdateState } from "../electron/updates";
 import type { UpstreamReport } from "../core/upstream";
 import type { Health, KeySource, ProjectFiles, RunEvent, RunMode, RunOrigin, RunRecord, RunSummary, Settings } from "../electron/main";
 import type { MackApi } from "../electron/preload";
+import type { BenchEvent, BenchResult, BenchRun, BenchSet } from "../core/bench/bench";
+export type { BenchEvent, BenchResult, BenchRun };
+export type BenchSetInfo = Omit<BenchSet, "problems"> & { size: number };
 
 declare global {
   interface Window {
@@ -63,6 +66,12 @@ export const api = {
   startProve: (problem: string, origin?: RunOrigin) => m().startProve(problem, origin),
   stopProve: () => m().stopProve(),
   onProveEvent: (cb: (e: RunEvent) => void) => m().onProveEvent((e) => cb(e as RunEvent)),
+  benchSets: () => m().benchSets() as Promise<BenchSetInfo[]>,
+  benchStart: (setId: string, n: number, budget: number) => m().benchStart(setId, n, budget) as Promise<BenchRun>,
+  benchStop: () => m().benchStop() as Promise<void>,
+  benchList: () => m().benchList() as Promise<BenchRun[]>,
+  benchDelete: (id: string) => m().benchDelete(id) as Promise<void>,
+  onBenchEvent: (cb: (e: BenchEvent) => void) => m().onBenchEvent((e) => cb(e as BenchEvent)),
   listRuns: () => m().listRuns() as Promise<RunSummary[]>,
   getRun: (id: string) => m().getRun(id) as Promise<RunRecord | null>,
   deleteRun: (id: string) => m().deleteRun(id) as Promise<void>,

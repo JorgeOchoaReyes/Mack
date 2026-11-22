@@ -1,0 +1,107 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+import { sweep, SWEEP_SUITE } from "../core/lean/analysis";
+import type { LeanCheck } from "../core/lean/check";
+import { describeExamples, ProofStore } from "../core/proof-store";
+import { BENCH_SETS, pickSample, runBench, summarize, type BenchRun } from "../core/bench/bench";
+import { freshRunScript, shq, sshArgs } from "../core/lean/remote";
+
+const check = async (src: string): Promise<LeanCheck> => {
+  // Only `aesop` closes `easy`; nothing closes `hard`; a probe `by sorry` put where a tactic goes, so it is an error.
+  const bad = /by by sorry/.test(src) || /first \||grind|exact\?/.test(src) || /hard : B := by (?!sorry)/.test(src);
+  if (bad) return { status: "errors", errors: [{ line: 1, col: 0, message: "no" }], sorries: [], output: "" };
+  const n = (src.match(/\bsorry\b/g) ?? []).length;
+  return { status: n ? "sorries" : "complete", errors: [], sorries: Array.from({ length: n }, () => ({ line: 1, col: 0, goal: "?" })), output: "" };
+};
+
+const FILE = `import Mathlib
+
+theorem t : C := by
+  have easy : A := by sorry
+  have hard : B := by sorry
+  exact foo easy hard
+`;
+
+describe("the automation sweep", () => {
+  it("puts in what closes each sorry and leaves the rest, going on past one it cannot close", async () => {
+    const r = await sweep(FILE, check);
+    expect(r).toMatchObject({ closed: 1, open: 1 });
+    expect(r.completed).toBeUndefined();
+    expect(r.current).toContain("have easy : A := by aesop");
+    expect(r.current).toContain("have hard : B := by sorry");
+  });
+
+  it("closes a file whose every sorry closes", async () => {
+    const r = await sweep(FILE.replace(/  have hard.*\n/, ""), check);
+    expect(r.completed).toContain("by aesop");
+    expect(r.open).toBe(0);
+  });
+
+  it("tries the cheap closers in one call, each required to finish its goal, before the slower ones", () => {
+    expect(SWEEP_SUITE[0]).toMatch(/^first \| \(rfl; done\) \| /);
+    expect(SWEEP_SUITE.slice(1)).toEqual(["aesop", "grind", "exact?"]);
+  });
+});
+
+describe("the store of verified proofs", () => {
+  const frozen = (stmt: string) => `import Mathlib\n\ntheorem ${stmt} := by sorry\n`;
+
+  it("offers the proofs of similar statements, never a statement's own", async () => {
+    const store = new ProofStore(join(mkdtempSync(join(tmpdir(), "mack-proofs-")), "proofs.jsonl"));
+    await store.add(frozen("sq_nonneg_add (a b : ℝ) : 0 ≤ a ^ 2 + b ^ 2"), "proof-1");
+    await store.add(frozen("prime_two : Nat.Prime 2"), "proof-2");
+    await store.add(frozen("prime_two : Nat.Prime 2"), "proof-2");
+    expect(store.all()).toHaveLength(2);
+    const near = store.similar(frozen("sq_nonneg_add3 (a b c : ℝ) : 0 ≤ a ^ 2 + b ^ 2 + c ^ 2"));
+    expect(near.map((p) => p.proof)).toEqual(["proof-1"]);
+    expect(store.similar(frozen("prime_two : Nat.Prime 2"))).toEqual([]);
+    // A new store on the same file reads what was kept.
+    expect(new ProofStore(store["file"]).all()).toHaveLength(2);
+    expect(describeExamples(near)).toContain("proof-1");
+    expect(describeExamples([])).toBe("");
+  });
+});
+
+describe("the benchmark", () => {
+  const set = BENCH_SETS[0];
+
+  it("ships miniF2F's 244 test problems, each a frozen file proved by sorry", () => {
+    expect(set.problems).toHaveLength(244);
+    expect(set.problems.every((p) => p.source.startsWith("import Mathlib") && /:= by sorry\n$/.test(p.source))).toBe(true);
+  });
+
+  it("picks the same problems for the same size, a smaller run inside a larger one", () => {
+    expect(pickSample(set, 20)).toEqual(pickSample(set, 20));
+    expect(pickSample(set, 50).slice(0, 20)).toEqual(pickSample(set, 20));
+    expect(new Set(pickSample(set, 244)).size).toBe(244);
+  });
+
+  it("runs each problem, skips the rest once the budget is spent, and counts the solve rate honestly", async () => {
+    const run: BenchRun = { id: "1", set: set.id, startedAt: 0, finishedAt: 0, status: "running", config: { model: "m", maxAttempts: 1, parallel: 1, automation: true, revisions: 0 }, sample: pickSample(set, 4), results: [], budget: 1 };
+    let k = 0;
+    const done = await runBench({
+      run,
+      set,
+      signal: new AbortController().signal,
+      onEvent: () => {},
+      proveOne: async (p) => (k++ === 0 ? { id: p.id, outcome: "solved", attempts: 0, ms: 5, usd: 0 } : { id: p.id, outcome: "failed", attempts: 3, ms: 5, usd: 1 }),
+    });
+    expect(done.results.map((r) => r.outcome)).toEqual(["solved", "failed", "skipped", "skipped"]);
+    expect(summarize(done)).toMatchObject({ tried: 2, solved: 1, rate: 0.5, usd: 1, byAutomation: 1 });
+    expect(done.status).toBe("done");
+  });
+});
+
+describe("Lean on another machine", () => {
+  it("quotes the workspace for the remote shell and bounds each run there", () => {
+    expect(shq("it's")).toBe(`'it'\\''s'`);
+    const args = sshArgs({ host: "me@box", workspace: "~/my ws" }, "true");
+    expect(args.slice(0, 2)).toEqual(["-T", "-o"]);
+    expect(args).toContain("BatchMode=yes");
+    expect(args[args.length - 2]).toBe("me@box");
+    expect(args[args.length - 1]).toContain(`cd '~/my ws' && PATH="$HOME/.elan/bin:$PATH" && true`);
+    expect(freshRunScript(29.2)).toContain("timeout 30 lake env lean");
+  });
+});

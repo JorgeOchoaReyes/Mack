@@ -38,6 +38,9 @@ import { frozenObjection } from "../core/lean/rules";
 import { basename } from "node:path";
 import { statSync } from "node:fs";
 import { registerUpdates } from "./updates";
+import { remoteLean, setRemoteLean } from "../core/lean/remote";
+import { describeExamples, ProofStore } from "../core/proof-store";
+import { BENCH_SETS, benchSet, pickSample, runBench, type BenchEvent, type BenchResult, type BenchRun } from "../core/bench/bench";
 import { newerMackRelease } from "../core/upstream";
 import type { ApprovalPolicy } from "../core/chat/executor";
 import type { ReasoningEffort } from "../core/model/provider";
@@ -83,6 +86,17 @@ export type Settings = {
   autopilotNewChats: boolean;
   /** How many Lean processes (each holds Mathlib, about 5–6 GB) may run at once; 0 picks from this computer's memory. */
   maxLeanProcesses: number;
+  /** A model trained for Lean that writes the proof attempts (empty: the main model writes them). */
+  proverProvider: ProviderId;
+  proverModel: string;
+  /** Feedback rounds an attempt chain gets before it starts over fresh (0: never). */
+  revisionsPerChain: number;
+  /** Try Lean's automation on the statement and on every `sorry` an attempt leaves. */
+  leanAutomation: boolean;
+  /** Show attempts verified proofs of similar statements from earlier runs. */
+  reuseProofs: boolean;
+  /** Lean on another machine over SSH (empty host: Lean runs here). */
+  remoteLean: { host: string; workspace: string; repl: boolean; processes: number };
   /** USD all of Mack may spend in `globalPeriod`, every session and background call together; 0 means no limit. */
   globalLimit: number;
   globalPeriod: Period;
@@ -171,6 +185,12 @@ const DEFAULTS: Settings = {
   suggestions: true,
   autopilotNewChats: true,
   maxLeanProcesses: 0,
+  proverProvider: "openrouter",
+  proverModel: "",
+  revisionsPerChain: 4,
+  leanAutomation: true,
+  reuseProofs: true,
+  remoteLean: { host: "", workspace: "~/mack-lean", repl: true, processes: 8 },
   autoUpdate: true,
   maxCostPerSession: 2,
   globalLimit: 10,
@@ -220,6 +240,7 @@ function readSettings(): Settings {
       ...rest,
       models,
       search: { ...DEFAULTS.search, ...saved.search },
+      remoteLean: { ...DEFAULTS.remoteLean, ...saved.remoteLean },
       ultramath: { ...DEFAULTS.ultramath, ...saved.ultramath },
       leanWorkspace: saved.leanWorkspace || DEFAULTS.leanWorkspace,
     };
@@ -260,9 +281,9 @@ const broadcastSpend = () => {
 };
 
 /** A provider for model calls: every call is priced into the global ledger, and refused once it reaches its limit. */
-function makeProvider(s: Settings, id: ProviderId): ModelProvider {
+function makeProvider(s: Settings, id: ProviderId, model = s.models[id]): ModelProvider {
   const base = makeBaseProvider(s, id);
-  return metered(base, priceFor(s.prices, s.models[id], s.assumedPrice).price, ledger, { scope: "global", onCharge: broadcastSpend, onCap: broadcastSpend });
+  return metered(base, priceFor(s.prices, model, s.assumedPrice).price, ledger, { scope: "global", onCharge: broadcastSpend, onCap: broadcastSpend });
 }
 
 function makeBaseProvider(s: Settings, id: ProviderId): OpenAICompatibleProvider {
@@ -294,17 +315,28 @@ function sketchFor(frozen: string): ((file: string) => Promise<Analysis>) | unde
 }
 
 /** The quick check for a run: a REPL pool kept alive between runs (Mathlib stays loaded), or none. */
+/** The Lean processes allowed at once: the remote machine's own number, or this computer's budget. */
+function leanProcesses(s: Settings): number {
+  return remoteOn(s) ? Math.max(1, Math.floor(s.remoteLean.processes) || 1) : leanBudget(s.maxLeanProcesses, os.totalmem());
+}
+
+const remoteOn = (s: Settings) => !!s.remoteLean.host.trim();
+
+/** Lean can run: installed here, or on the remote machine (which Mack cannot look at without a run). */
+const leanReady = (s: Settings) => remoteOn(s) || hasProject(s.leanWorkspace);
+
 function quickCheck(s: Settings, size: number) {
   // Every Lean process holds Mathlib in memory, so all of them, resident REPLs and fresh runs, share one budget.
-  const { repls, fresh } = splitBudget(leanBudget(s.maxLeanProcesses, os.totalmem()), size);
+  const { repls, fresh } = splitBudget(leanProcesses(s), size);
   setLeanSlots(fresh);
   size = repls;
-  if (!size || !s.useRepl || !hasRepl(s.leanWorkspace)) {
+  const replHere = remoteOn(s) ? s.remoteLean.repl : hasRepl(s.leanWorkspace);
+  if (!size || !s.useRepl || !replHere) {
     repl?.pool.stop();
     repl = null;
     return undefined;
   }
-  const key = `${s.leanWorkspace}|${size}|${s.timeoutMs}`;
+  const key = `${remoteOn(s) ? `${s.remoteLean.host}:${s.remoteLean.workspace}` : s.leanWorkspace}|${size}|${s.timeoutMs}`;
   if (repl?.key !== key) {
     repl?.pool.stop();
     repl = { pool: replPool({ workspace: s.leanWorkspace, size, timeoutMs: s.timeoutMs }), key };
@@ -346,13 +378,15 @@ function writeSettings(patch: Partial<Settings>): Settings {
 function applyLeanBudget(s: Settings): void {
   repl?.pool.stop();
   repl = null;
-  setLeanSlots(leanBudget(s.maxLeanProcesses, os.totalmem()));
+  setRemoteLean(remoteOn(s) ? { host: s.remoteLean.host, workspace: s.remoteLean.workspace } : null);
+  setLeanSlots(leanProcesses(s));
 }
 
 ipcMain.handle("settings:set", (_e, s: Partial<Settings>) => {
-  const before = readSettings().maxLeanProcesses;
+  const lean = (x: Settings) => JSON.stringify([x.maxLeanProcesses, x.remoteLean]);
+  const before = lean(readSettings());
   const next = writeSettings(s);
-  if (next.maxLeanProcesses !== before) applyLeanBudget(next);
+  if (lean(next) !== before) applyLeanBudget(next);
   broadcastSpend();
   return next;
 });
@@ -567,6 +601,19 @@ async function projectLemmas(projectId: string, except?: string): Promise<Lemma[
   return out;
 }
 
+/** Every proof the strict verifier accepted in a proof run, kept for later attempts to learn from. */
+let proofs: ProofStore | null = null;
+const proofStore = () => (proofs ??= new ProofStore(userData("proofs.jsonl")));
+
+/** The prover model's provider, priced into the same meter as the run's main model, or none when no prover is set. */
+function proverFor(s: Settings, meter: Meter, hooks: { onCharge?: (m: Meter) => void; onCap?: (why: string) => void }): { provider: ModelProvider; model: string } | undefined {
+  const model = s.proverModel.trim();
+  if (!model) return undefined;
+  return { provider: metered(makeProvider(s, s.proverProvider, model), priceFor(s.prices, model, s.assumedPrice).price, meter, hooks), model };
+}
+
+const parallelOf = (s: Settings) => Math.max(1, Math.min(32, Math.floor(s.parallelAttempts) || 1));
+
 /** One proof run in the given mode, recorded in the run history. Shared by the Prove screen and the chat's `start_proof`. */
 async function runProof(problem: string, mode: RunMode, forward: (ev: RunEvent) => void, origin: RunOrigin = {}): Promise<RunRecord> {
   if (proving) throw new Error("a proof run is already in progress");
@@ -574,7 +621,7 @@ async function runProof(problem: string, mode: RunMode, forward: (ev: RunEvent) 
   const model = s.models[s.provider];
   if (!model) throw new Error(`Choose a ${providerInfo(s.provider).label} model in Setup first.`);
   const needsLean = s.mode !== "ultramath" || problemKind(problem) === "lean";
-  if (needsLean && !hasProject(s.leanWorkspace)) throw new Error("Install Lean and Mathlib in Setup first.");
+  if (needsLean && !leanReady(s)) throw new Error("Install Lean and Mathlib in Setup first.");
   const { meter, price } = newMeter(s, model);
   const ctl = new AbortController();
   let capped = "";
@@ -608,6 +655,7 @@ async function runProof(problem: string, mode: RunMode, forward: (ev: RunEvent) 
       record.message = ev.message;
     }
     if (ev.type === "spend") record.spentUsd = ev.usd;
+    if (ev.type === "solved" && "proof" in ev && typeof ev.proof === "string") void proofStore().add(problem, ev.proof, `run ${record.id}`).catch(() => undefined);
     forward(ev);
   };
   try {
@@ -637,7 +685,7 @@ async function runProof(problem: string, mode: RunMode, forward: (ev: RunEvent) 
         onEvent: send,
       });
     } else {
-      const parallel = Math.max(1, Math.min(4, Math.floor(s.parallelAttempts) || 1));
+      const parallel = parallelOf(s);
       await prove({
         frozen: problem,
         provider,
@@ -649,6 +697,16 @@ async function runProof(problem: string, mode: RunMode, forward: (ev: RunEvent) 
         prepare: { checkStatement: s.checkStatement, idea: s.proofIdea },
         lemmas,
         lookup: mathlibHints,
+        prover: proverFor(s, meter, {
+          onCharge: (m) => send({ type: "spend", usd: m.spent, limit: m.limit, estimated: m.estimated }),
+          onCap: (why) => {
+            capped = why;
+            ctl.abort();
+          },
+        }),
+        revisions: s.revisionsPerChain,
+        automation: s.leanAutomation,
+        examples: s.reuseProofs ? describeExamples(proofStore().similar(problem)) : "",
         signal: proving.signal,
         onEvent: send,
       });
@@ -675,6 +733,113 @@ ipcMain.handle("prove:start", async (e, problem: string, origin?: RunOrigin) => 
 });
 
 ipcMain.handle("prove:stop", () => proving?.abort());
+
+// The benchmark: a fixed set of formal problems, run with the current settings, one problem at a time.
+let benching: AbortController | null = null;
+let benchingId = "";
+const benchDir = () => {
+  const d = userData("bench");
+  mkdirSync(d, { recursive: true });
+  return d;
+};
+const saveBench = (run: BenchRun) => writeFileSync(join(benchDir(), `${run.id}.json`), JSON.stringify(run));
+
+async function benchOne(s: Settings, p: { id: string; source: string }, bench: BenchRun, signal: AbortSignal, status: (m: string) => void): Promise<BenchResult> {
+  const t0 = Date.now();
+  const model = s.models[s.provider];
+  const left = bench.budget > 0 ? bench.budget - bench.results.reduce((a, r) => a + r.usd, 0) : 0;
+  const meter: Meter = { spent: 0, limit: Math.max(0, left), estimated: false };
+  const ctl = new AbortController();
+  const hooks = { onCap: () => ctl.abort() };
+  const provider = metered(makeProvider(s, s.provider), priceFor(s.prices, model, s.assumedPrice).price, meter, hooks);
+  const run = leanRunner({ workspace: s.leanWorkspace, timeoutMs: s.timeoutMs });
+  const parallel = parallelOf(s);
+  let attempts = 0;
+  let proof: string | undefined;
+  let message = "";
+  await prove({
+    frozen: p.source,
+    provider,
+    model,
+    run,
+    check: quickCheck(s, parallel),
+    maxAttempts: s.maxAttempts,
+    parallel,
+    // Benchmark statements are known to be right; the random tester would only spend time.
+    prepare: { checkStatement: false, idea: s.proofIdea },
+    lookup: mathlibHints,
+    prover: proverFor(s, meter, hooks),
+    revisions: s.revisionsPerChain,
+    automation: s.leanAutomation,
+    examples: s.reuseProofs ? describeExamples(proofStore().similar(p.source)) : "",
+    signal: AbortSignal.any([signal, ctl.signal]),
+    onEvent: (ev) => {
+      if (ev.type === "attempt" && ev.n > 0) attempts++;
+      if (ev.type === "solved") proof = ev.proof;
+      if (ev.type === "failed") message = ev.message;
+      if (ev.type === "status") status(ev.message);
+    },
+  });
+  return { id: p.id, outcome: proof ? "solved" : "failed", attempts, ms: Date.now() - t0, usd: meter.spent, ...(proof ? { proof } : { message }) };
+}
+
+ipcMain.handle("bench:sets", () => BENCH_SETS.map(({ problems, ...rest }) => ({ ...rest, size: problems.length })));
+ipcMain.handle("bench:start", (e, setId: string, n: number, budget: number) => {
+  if (benching) throw new Error("A benchmark is already running.");
+  const s = readSettings();
+  const set = benchSet(String(setId));
+  if (!set) throw new Error("unknown benchmark set");
+  const model = s.models[s.provider];
+  if (!model) throw new Error(`Choose a ${providerInfo(s.provider).label} model in Setup first.`);
+  if (!leanReady(s)) throw new Error("Install Lean and Mathlib in Setup first.");
+  const run: BenchRun = {
+    id: `${Date.now()}`,
+    set: set.id,
+    startedAt: Date.now(),
+    finishedAt: 0,
+    status: "running",
+    config: { model, ...(s.proverModel.trim() ? { prover: s.proverModel.trim() } : {}), maxAttempts: s.maxAttempts, parallel: parallelOf(s), automation: s.leanAutomation, revisions: s.revisionsPerChain },
+    sample: pickSample(set, Math.floor(Number(n)) || 10),
+    results: [],
+    budget: Math.max(0, Number(budget) || 0),
+  };
+  const ctl = new AbortController();
+  benching = ctl;
+  benchingId = run.id;
+  const send = (ev: BenchEvent) => {
+    if (!e.sender.isDestroyed()) e.sender.send("bench:event", ev);
+    if (ev.type !== "status") saveBench(run);
+  };
+  void runBench({ run, set, signal: ctl.signal, onEvent: send, proveOne: (p, signal) => benchOne(s, p, run, signal, (message) => send({ type: "status", id: p.id, message })) })
+    .catch((err: Error) => {
+      run.status = "stopped";
+      run.message = err.message;
+    })
+    .finally(() => {
+      benching = null;
+      saveBench(run);
+    });
+  return run;
+});
+ipcMain.handle("bench:stop", () => benching?.abort());
+ipcMain.handle("bench:list", (): BenchRun[] =>
+  readdirSync(benchDir())
+    .filter((f) => f.endsWith(".json"))
+    .flatMap((f) => {
+      try {
+        const r = JSON.parse(readFileSync(join(benchDir(), f), "utf8")) as BenchRun;
+        // A run that was going when Mack quit is not running now.
+        if (r.status === "running" && !(benching && r.id === benchingId)) r.status = "stopped";
+        return [r];
+      } catch {
+        return [];
+      }
+    })
+    .sort((a, b) => b.startedAt - a.startedAt),
+);
+ipcMain.handle("bench:delete", (_e, id: string) => {
+  if (/^\d+$/.test(id)) rmSync(join(benchDir(), `${id}.json`), { force: true });
+});
 
 ipcMain.handle("runs:list", (): RunSummary[] =>
   readdirSync(runsDir())
@@ -807,7 +972,7 @@ const runs = new RunManager(
   userData("discovery"),
   async ({ problem, task, workspace, resume, journal, onEvent, signal }) => {
     const s = readSettings();
-    if (!hasProject(s.leanWorkspace)) throw new Error("Install Lean and Mathlib in Setup first.");
+    if (!leanReady(s)) throw new Error("Install Lean and Mathlib in Setup first.");
     const run = leanRunner({ workspace: s.leanWorkspace, timeoutMs: s.timeoutMs });
     const check = quickCheck(s, Math.min(2, task.limits.w * Math.max(1, task.concurrency))) ?? (async (src: string) => checkFromRun(await run(src)));
     // One meter per run, across its problems and its resumes.

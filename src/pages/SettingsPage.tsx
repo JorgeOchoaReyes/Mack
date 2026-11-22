@@ -1,5 +1,6 @@
 import { ArrowRight, ExternalLink } from "lucide-react";
 import { UPSTREAM } from "../../core/upstream";
+import { PROVIDERS, type ProviderId } from "../../core/model/providers";
 import { api, errorText, type Settings } from "../api";
 import { Button, Field, Toggle } from "../components/ui";
 import { useEffect, useState } from "react";
@@ -47,14 +48,14 @@ export function SettingsPage({ settings, saveSettings, onGo }: Props) {
       <section className="settings-group">
         <h2>Prover</h2>
         <div className="grid-2">
-          <Field label="Attempts per run" hint="How many times the model may revise its proof. Each attempt is one billed model call.">
+          <Field label="Attempts per run" hint="Model calls a run may make in all, shared by its chains. Labs make dozens to thousands per hard problem; with a cheap prover model 64 or more is affordable.">
             <input
               className="input"
               type="number"
               min={1}
-              max={50}
+              max={1000}
               value={settings.maxAttempts}
-              onChange={(e) => void saveSettings({ maxAttempts: Math.max(1, Math.min(50, Number(e.target.value) || 1)) })}
+              onChange={(e) => void saveSettings({ maxAttempts: Math.max(1, Math.min(1000, Number(e.target.value) || 1)) })}
             />
           </Field>
           <Field label="Lean deadline (seconds)" hint="A check that runs longer counts as a failed attempt, never a pass.">
@@ -66,17 +67,38 @@ export function SettingsPage({ settings, saveSettings, onGo }: Props) {
               onChange={(e) => void saveSettings({ timeoutMs: Math.max(10, Number(e.target.value) || 10) * 1000 })}
             />
           </Field>
-          <Field label="Attempts at once" hint="Independent chains of attempts running side by side, sharing the attempts above. The first verified proof stops the others. Each chain keeps a Lean REPL in memory.">
+          <Field label="Attempts at once" hint="Independent chains of attempts side by side, sharing the attempts above; the first verified proof stops the others. Their Lean checks wait for the Lean processes allowed below, so more chains cost no more memory.">
             <input
               className="input"
               type="number"
               min={1}
-              max={4}
+              max={32}
               value={settings.parallelAttempts}
-              onChange={(e) => void saveSettings({ parallelAttempts: Math.max(1, Math.min(4, Number(e.target.value) || 1)) })}
+              onChange={(e) => void saveSettings({ parallelAttempts: Math.max(1, Math.min(32, Number(e.target.value) || 1)) })}
+            />
+          </Field>
+          <Field label="Revisions before starting over" hint="After this many rounds of Lean feedback a chain starts again from a clean conversation: fresh tries explore, long revisions only patch. 0 never starts over.">
+            <input
+              className="input"
+              type="number"
+              min={0}
+              max={50}
+              value={settings.revisionsPerChain}
+              onChange={(e) => void saveSettings({ revisionsPerChain: Math.max(0, Math.min(50, Math.floor(Number(e.target.value)) || 0)) })}
             />
           </Field>
         </div>
+        <ProverModel settings={settings} saveSettings={saveSettings} />
+        <Toggle
+          checked={settings.leanAutomation}
+          onChange={(v) => void saveSettings({ leanAutomation: v })}
+          label="Try Lean's automation first: before any model call, and on every sorry an attempt leaves, Mack tries omega, norm_num, simp, linarith, nlinarith, positivity, aesop, grind and exact?. What closes is put in; only the rest goes back to the model."
+        />
+        <Toggle
+          checked={settings.reuseProofs}
+          onChange={(v) => void saveSettings({ reuseProofs: v })}
+          label="Learn from earlier proofs: every proof Lean verifies is kept, and attempts on a new statement are shown the verified proofs of the most similar ones."
+        />
         <Toggle
           checked={settings.checkStatement}
           onChange={(v) => void saveSettings({ checkStatement: v })}
@@ -175,6 +197,7 @@ export function SettingsPage({ settings, saveSettings, onGo }: Props) {
           label="Use the resident Lean REPL for quick checks (keeps Mathlib loaded between checks; the final verification always uses a fresh Lean)"
         />
         <LeanLimit value={settings.maxLeanProcesses ?? 0} onChange={(n) => void saveSettings({ maxLeanProcesses: n })} />
+        <RemoteLeanFields settings={settings} saveSettings={saveSettings} />
       </section>
 
       <section className="settings-group">
@@ -418,5 +441,65 @@ function LeanLimit({ value, onChange }: { value: number; onChange: (n: number) =
     >
       <input className="input" type="number" min={0} max={16} value={value} onChange={(e) => onChange(Math.max(0, Math.min(16, Math.floor(Number(e.target.value)) || 0)))} />
     </Field>
+  );
+}
+
+/** The model trained for Lean that writes the attempts, on any provider, with its price for the spending limits. */
+function ProverModel({ settings, saveSettings }: { settings: Settings; saveSettings: (p: Partial<Settings>) => Promise<unknown> }) {
+  const model = settings.proverModel.trim();
+  const price = settings.prices[model];
+  const setPrice = (k: "input" | "output", v: number) => void saveSettings({ prices: { ...settings.prices, [model]: { input: price?.input ?? 0, output: price?.output ?? 0, [k]: Math.max(0, v) } } });
+  return (
+    <div className="grid-2">
+      <Field
+        label="Prover model (optional)"
+        hint="A model trained only to write Lean proofs (DeepSeek-Prover-V2, Kimina-Prover, Goedel-Prover-V2) proves far more competition problems per dollar than a general model. When set, it writes every attempt and your main model only plans. Its provider needs a key in Setup."
+      >
+        <div className="inline-fields">
+          <select className="input" style={{ width: 150, flex: "none" }} value={settings.proverProvider} onChange={(e) => void saveSettings({ proverProvider: e.target.value as ProviderId })}>
+            {PROVIDERS.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+          <input className="input" placeholder="e.g. deepseek/deepseek-prover-v2 (empty: off)" value={settings.proverModel} onChange={(e) => void saveSettings({ proverModel: e.target.value })} />
+        </div>
+      </Field>
+      {model && (
+        <Field label="Prover price ($ per million tokens, input / output)" hint={price ? "Counted against your spending limits." : "Not set: the high assumed price is counted, so limits stop early."}>
+          <div className="inline-fields">
+            <input className="input" type="number" min={0} step={0.1} value={price?.input ?? ""} placeholder="input" onChange={(e) => setPrice("input", Number(e.target.value) || 0)} />
+            <input className="input" type="number" min={0} step={0.1} value={price?.output ?? ""} placeholder="output" onChange={(e) => setPrice("output", Number(e.target.value) || 0)} />
+          </div>
+        </Field>
+      )}
+    </div>
+  );
+}
+
+/** Lean on another machine over SSH: a cloud box with more memory runs every check. */
+function RemoteLeanFields({ settings, saveSettings }: { settings: Settings; saveSettings: (p: Partial<Settings>) => Promise<unknown> }) {
+  const r = settings.remoteLean;
+  const set = (patch: Partial<Settings["remoteLean"]>) => void saveSettings({ remoteLean: { ...r, ...patch } });
+  return (
+    <details className="settings-details" open={!!r.host}>
+      <summary>Run Lean on another machine (SSH)</summary>
+      <p className="muted small">
+        A rented cloud machine or a workstation with more memory runs every Lean check, and this computer only sends the proof text. The machine needs Lean and Mathlib in the folder below, with Mack&apos;s REPL built in <span className="mono">.mack/repl</span> for quick checks (copy this computer&apos;s Lean workspace there), and <span className="mono">ssh</span> must log in with a key, without a password prompt. Leave the host empty to run Lean here.
+      </p>
+      <div className="grid-2">
+        <Field label="SSH host" hint="As you would type it after ssh: user@machine, or a name from your SSH config.">
+          <input className="input" placeholder="ubuntu@203.0.113.7" value={r.host} onChange={(e) => set({ host: e.target.value })} />
+        </Field>
+        <Field label="Lean workspace on that machine">
+          <input className="input" value={r.workspace} onChange={(e) => set({ workspace: e.target.value })} />
+        </Field>
+        <Field label="Lean processes at once there" hint="About 6 GB of that machine's memory each: a 128 GB machine runs about 18.">
+          <input className="input" type="number" min={1} max={64} value={r.processes} onChange={(e) => set({ processes: Math.max(1, Math.min(64, Math.floor(Number(e.target.value)) || 1)) })} />
+        </Field>
+      </div>
+      <Toggle checked={r.repl} onChange={(v) => set({ repl: v })} label="That machine has Mack's REPL built (.mack/repl), for quick checks with Mathlib kept loaded" />
+    </details>
   );
 }

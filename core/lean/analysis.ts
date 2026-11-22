@@ -109,3 +109,65 @@ export async function complete(source: string, check: LeanCheckRun, opts: { wall
   const final = await check(current);
   return final.status === "complete" ? { closers, completed: current } : { closers, error: `the completed file does not check: ${final.status}` };
 }
+
+/**
+ * The automation sweep Mack runs on a proof with `sorry`s before asking a
+ * model again (the "sketch, then hammer" step of Draft-Sketch-Prove and of the
+ * labs' provers): each `sorry` gets one combined call of the cheap closers,
+ * then `aesop`, `grind` and `exact?`, each bounded by heartbeats. A closer
+ * counts only when the file then elaborates with no error, since a tactic
+ * that leaves a goal open is an error. Unlike `complete`, a `sorry` nothing
+ * closes is left in place and the sweep goes on to the others.
+ */
+export const SWEEP_SUITE = [
+  `first ${["rfl", "assumption", "decide", "omega", "norm_num", "simp", "linarith", "positivity", "ring", "simp_all", "nlinarith", "tauto"].map((t) => `| (${t}; done)`).join(" ")}`,
+  "aesop",
+  "grind",
+  "exact?",
+];
+
+export type SweepResult = {
+  /** The file with every `sorry` closed, when all were. */
+  completed?: string;
+  /** The file with the closers found so far put in. */
+  current: string;
+  closed: number;
+  open: number;
+  error?: string;
+};
+
+export async function sweep(source: string, check: LeanCheckRun, opts: { wallMs?: number; maxSorries?: number } = {}): Promise<SweepResult> {
+  const offsets = sorryOffsets(source);
+  if (!offsets.length) return { current: source, closed: 0, open: 0 };
+  if (offsets.length > (opts.maxSorries ?? 8)) return { current: source, closed: 0, open: offsets.length, error: "too many sorries to sweep" };
+  const deadline = Date.now() + (opts.wallMs ?? 90_000);
+  let current = source;
+  let closed = 0;
+  for (let k = offsets.length - 1; k >= 0; k--) {
+    const at = offsets[k];
+    const probe = await check(capped(splice(current, at, 5, "by sorry"), COMPLETION_HEARTBEATS));
+    if (probe.status === "noVerdict") return { current, closed, open: offsets.length - closed, error: probe.output };
+    const term = probe.status !== "errors";
+    for (const tac of SWEEP_SUITE) {
+      if (Date.now() > deadline) return { current, closed, open: offsets.length - closed, error: "the sweep ran out of time" };
+      let used = term ? `(by ${tac})` : tac;
+      const c = await check(capped(splice(current, at, 5, used), COMPLETION_HEARTBEATS));
+      if (c.status === "noVerdict" || c.errors.length) continue;
+      if (tac === "exact?") {
+        // `exact?` closes the goal but names what it found; the proof keeps the name, not the search.
+        const suggestion = /Try this: (.+)/.exec(c.output)?.[1]?.trim();
+        if (!suggestion) continue;
+        used = term ? `(by ${suggestion})` : suggestion;
+        const again = await check(capped(splice(current, at, 5, used), COMPLETION_HEARTBEATS));
+        if (again.status === "noVerdict" || again.errors.length) continue;
+      }
+      current = splice(current, at, 5, used);
+      closed++;
+      break;
+    }
+  }
+  const open = offsets.length - closed;
+  if (open) return { current, closed, open };
+  const final = await check(current);
+  return final.status === "complete" ? { current, closed, open, completed: current } : { current, closed, open, error: `the swept file does not check: ${final.status}` };
+}

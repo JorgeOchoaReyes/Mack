@@ -982,3 +982,23 @@ body:has(.resizer.dragging) { cursor: col-resize; user-select: none; }
 .starter-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
 .starter-chip { padding: 6px 12px; border-radius: 99px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font: inherit; font-size: 13px; cursor: pointer; transition: border-color 120ms, background 120ms; }
 .starter-chip:hover { border-color: var(--accent-edge); background: var(--surface-2); }
+
+/* Benchmark */
+.bench-config { padding: 8px 0; line-height: 1.5; }
+.bench-row { grid-template-columns: 22px minmax(150px, auto) 1fr auto; }
+.bench-row .run-meta { display: inline-flex; align-items: center; gap: 8px; }
+.bench-live-head { align-items: baseline; flex-wrap: wrap; }
+.bench-live-head h2 { margin: 0; }
+.bench-bar { height: 6px; border-radius: 3px; background: var(--sunken); overflow: hidden; }
+.bench-bar > div { height: 100%; background: var(--accent); transition: width 0.3s; }
+.bench-status { display: flex; align-items: center; gap: 6px; margin: 0; }
+.bench-results { display: grid; border-top: 1px solid var(--border); }
+.bench-result { display: grid; grid-template-columns: 18px minmax(160px, auto) 1fr auto; align-items: center; gap: 10px; width: 100%; padding: 7px 16px; border: 0; border-bottom: 1px solid var(--border); background: transparent; text-align: left; cursor: pointer; color: var(--text); }
+.bench-result:disabled { cursor: default; }
+.bench-result:not(:disabled):hover { background: var(--surface-2); }
+.bench-proof { margin: 0; padding: 10px 16px; max-height: 320px; overflow: auto; background: var(--sunken); font-family: var(--mono); font-size: 12px; white-space: pre-wrap; }
+.settings-details { border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; background: var(--surface-2); }
+.settings-details > summary { cursor: pointer; font-weight: 600; }
+.settings-details[open] > summary { margin-bottom: 8px; }
+.inline-fields { display: flex; gap: 8px; align-items: center; }
+.inline-fields > .input { min-width: 0; flex: 1; }
