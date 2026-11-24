@@ -18,7 +18,12 @@ export { SETUP_STEPS, type SetupEvent, type SetupStep } from "./setup-steps";
 import type { SetupEvent, SetupStep } from "./setup-steps";
 
 const REPL_GIT = "https://github.com/leanprover-community/repl";
-const ELAN_ZIP = "https://github.com/leanprover/elan/releases/latest/download/elan-x86_64-pc-windows-msvc.zip";
+/** elan's release archive for this computer: a zip on Windows, a tarball on Linux and macOS. */
+export function elanArchive(platform: NodeJS.Platform = process.platform, arch: string = process.arch): string {
+  const cpu = arch === "arm64" ? "aarch64" : "x86_64";
+  const target = platform === "win32" ? `${cpu}-pc-windows-msvc.zip` : platform === "darwin" ? `${cpu}-apple-darwin.tar.gz` : `${cpu}-unknown-linux-gnu.tar.gz`;
+  return `https://github.com/leanprover/elan/releases/latest/download/elan-${target}`;
+}
 
 export function hasProject(workspace: string): boolean {
   return existsSync(join(workspace, "lakefile.toml")) || existsSync(join(workspace, "lakefile.lean"));
@@ -32,17 +37,20 @@ export function hasMathlib(workspace: string): boolean {
 async function installElan(log: (l: string) => void, signal?: AbortSignal): Promise<void> {
   const dir = await mkdtemp(join(tmpdir(), "mack-elan-"));
   try {
-    log(`Downloading ${ELAN_ZIP}`);
-    const res = await fetch(ELAN_ZIP, { signal });
+    const url = elanArchive();
+    const windows = process.platform === "win32";
+    log(`Downloading ${url}`);
+    const res = await fetch(url, { signal });
     if (!res.ok) throw new Error(`download failed: HTTP ${res.status}`);
-    const zip = join(dir, "elan.zip");
-    await writeFile(zip, Buffer.from(await res.arrayBuffer()));
+    const archive = join(dir, windows ? "elan.zip" : "elan.tar.gz");
+    await writeFile(archive, Buffer.from(await res.arrayBuffer()));
     // Windows 10+ ships bsdtar, which reads zip archives. Named by its full
     // path: a GNU tar earlier on PATH (Git Bash's) reads `C:` as a remote host.
-    const tar = join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe");
-    const unzip = await runStreaming(tar, ["-xf", zip, "-C", dir], { onLine: log, signal });
+    // Linux and macOS have tar on PATH.
+    const tar = windows ? join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe") : "tar";
+    const unzip = await runStreaming(tar, [windows ? "-xf" : "-xzf", archive, "-C", dir], { onLine: log, signal });
     if (unzip.code !== 0) throw new Error("could not unpack the elan archive");
-    const init = await runStreaming(join(dir, "elan-init.exe"), ["-y", "--default-toolchain", "none"], { onLine: log, signal });
+    const init = await runStreaming(join(dir, windows ? "elan-init.exe" : "elan-init"), ["-y", "--default-toolchain", "none"], { onLine: log, signal });
     if (init.code !== 0) throw new Error(`elan-init exited with ${init.code}`);
   } finally {
     await rm(dir, { recursive: true, force: true });

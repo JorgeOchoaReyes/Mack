@@ -303,7 +303,7 @@ export function indexPage(runs: SharedRun[], repo: string): string {
 <h1>How well do models prove math <em>in Lean</em>?</h1>
 <p class="lead">Mack runs open models on competition problems formalized in Lean 4, and counts a problem as solved only when Lean's kernel accepts the proof. These are the runs its users shared: every attempt, every Lean error, every model's thinking, and every solved proof re-checked with Lean before it was published.</p>
 <div class="cta">
-<a class="btn primary" href="${RELEASES}">Download Mack for Windows</a>
+<a class="btn primary" href="${RELEASES}">Download Mack for Windows or Linux</a>
 <a class="btn" href="#how">How it works</a>
 <a class="btn" href="#trust">How far to trust it</a>
 </div>
