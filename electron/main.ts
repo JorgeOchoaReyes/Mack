@@ -43,7 +43,7 @@ import { remoteLean, setRemoteLean } from "../core/lean/remote";
 import { describeExamples, ProofStore, trainingData } from "../core/proof-store";
 import { decompose } from "../core/decompose";
 import { easierVersions } from "../core/variants";
-import { BENCH_SETS, BENCH_SHARE_DIR, benchReport, benchSet, benchShare, benchSlug, classifyFailure, pickSample, runBench, type AttemptNote, type BenchEvent, type BenchResult, type BenchRun } from "../core/bench/bench";
+import { attemptKind, attemptsDataset, BENCH_SETS, BENCH_SHARE_DIR, benchReport, benchSet, benchShare, benchSlug, classifyFailure, LOG_LIMITS, splitReply, type AttemptLog, type BenchEnv, pickSample, runBench, type AttemptNote, type BenchEvent, type BenchResult, type BenchRun } from "../core/bench/bench";
 import { newerMackRelease } from "../core/upstream";
 import type { ApprovalPolicy } from "../core/chat/executor";
 import type { ReasoningEffort } from "../core/model/provider";
@@ -844,6 +844,8 @@ async function benchOne(s: Settings, p: { id: string; source: string }, bench: B
   // How each attempt ended, to say afterwards why the problem was not solved.
   const notes: AttemptNote[] = [];
   let lastCandidate = "";
+  const log: AttemptLog[] = [];
+  const timeline: { t: number; message: string }[] = [];
   await attemptProof(s, bench.config.method ?? "single", p.source, {
     provider,
     model,
@@ -854,6 +856,26 @@ async function benchOne(s: Settings, p: { id: string; source: string }, bench: B
     prepare: { checkStatement: false, idea: s.proofIdea },
     signal: AbortSignal.any([signal, ctl.signal]),
     onEvent: (ev) => {
+      if (ev.type === "attempt") {
+        if (log.length < LOG_LIMITS.attempts) {
+          const { thinking, prose } = splitReply(ev.reply ?? "", ev.reasoning);
+          log.push({
+            n: ev.n,
+            outcome: ev.outcome,
+            kind: ev.outcome === "verified" ? "verified" : attemptKind(ev),
+            ...(ev.model ? { model: ev.model } : {}),
+            ...(ev.at ? { at: new Date(ev.at).toISOString() } : {}),
+            ms: ev.ms,
+            tokens: ev.tokens,
+            ...(ev.promptTokens ? { promptTokens: ev.promptTokens } : {}),
+            ...(ev.truncated ? { truncated: true } : {}),
+            detail: ev.detail.slice(0, LOG_LIMITS.detail),
+            candidate: ev.candidate.slice(0, LOG_LIMITS.candidate),
+            ...(thinking ? { thinking: thinking.slice(0, LOG_LIMITS.thinking) } : {}),
+            ...(prose ? { prose: prose.slice(0, LOG_LIMITS.prose) } : {}),
+          });
+        }
+      }
       if (ev.type === "attempt" && ev.n > 0) {
         attempts++;
         if (ev.outcome !== "verified") {
@@ -863,10 +885,14 @@ async function benchOne(s: Settings, p: { id: string; source: string }, bench: B
       }
       if (ev.type === "solved") proof = ev.proof;
       if (ev.type === "failed") message = ev.message;
-      if (ev.type === "status") status(ev.message);
+      if (ev.type === "status") {
+        status(ev.message);
+        // The run's own steps, once each: what it tried, in order.
+        if (timeline.length < LOG_LIMITS.timeline && timeline[timeline.length - 1]?.message !== ev.message) timeline.push({ t: Date.now() - t0, message: ev.message.slice(0, 300) });
+      }
     },
   });
-  if (proof) return { id: p.id, outcome: "solved", attempts, ms: Date.now() - t0, usd: meter.spent, proof };
+  if (proof) return { id: p.id, outcome: "solved", attempts, ms: Date.now() - t0, usd: meter.spent, proof, log, timeline };
   const outcomes: Record<string, number> = {};
   for (const n of notes) outcomes[n.outcome] = (outcomes[n.outcome] ?? 0) + 1;
   const failure = classifyFailure(notes, message);
@@ -880,6 +906,8 @@ async function benchOne(s: Settings, p: { id: string; source: string }, bench: B
     failure,
     outcomes,
     ...(notes.length ? { lastError: notes[notes.length - 1].detail.slice(0, 2000), lastCandidate: lastCandidate.slice(0, 4000) } : {}),
+    log,
+    timeline,
   };
 }
 
@@ -895,42 +923,101 @@ ipcMain.handle("proofs:export", async (e) => {
   return { path: r.filePath, count: proofs.length };
 });
 ipcMain.handle("bench:sets", () => BENCH_SETS.map(({ problems, ...rest }) => ({ ...rest, size: problems.length })));
-ipcMain.handle("bench:start", (e, setId: string, n: number, budget: number, method?: string) => {
+/** The models one benchmark run uses: its main model, and the prover models that write the attempts (none: the main model writes them). */
+export type BenchModels = { provider: ProviderId; model: string; proverProvider: ProviderId; proverModel: string };
+
+/** The settings with a benchmark run's own models in place of the ones in Settings. */
+function withModels(s: Settings, m: BenchModels): Settings {
+  return { ...s, provider: m.provider, models: { ...s.models, [m.provider]: m.model }, proverProvider: m.proverProvider, proverModel: m.proverModel };
+}
+
+const benchLabel = (m: BenchModels) => `${m.model.split("/").pop()}${m.proverModel.trim() ? ` + ${m.proverModel.split(",").map((x) => x.trim().split("/").pop()).filter(Boolean).join(", ")}` : ""}`;
+
+/**
+ * One benchmark run per set of models, one after another on the same problems
+ * (the same sample, the same budget each), so their results compare: a
+ * comparison is a group of runs. Stopping stops the run going and the ones
+ * queued behind it.
+ */
+ipcMain.handle("bench:start", async (e, setId: string, n: number, budget: number, method?: string, models?: BenchModels[]) => {
   if (benching) throw new Error("A benchmark is already running.");
-  const s = readSettings();
+  const base = readSettings();
   const set = benchSet(String(setId));
   if (!set) throw new Error("unknown benchmark set");
-  const model = s.models[s.provider];
-  if (!model) throw new Error(`Choose a ${providerInfo(s.provider).label} model in Setup first.`);
-  if (!leanReady(s)) throw new Error("Install Lean and Mathlib in Setup first.");
-  const run: BenchRun = {
-    id: `${Date.now()}`,
-    set: set.id,
-    startedAt: Date.now(),
-    finishedAt: 0,
-    status: "running",
-    config: { model, ...(proverModels(s).length ? { prover: proverModels(s).join(", ") } : {}), maxAttempts: s.maxAttempts, parallel: parallelOf(s), automation: s.leanAutomation, revisions: s.revisionsPerChain, method: method === "decompose" ? "decompose" : "single", easierFirst: s.easierFirst, premises: s.premiseSelection },
-    sample: pickSample(set, Math.floor(Number(n)) || 10),
-    results: [],
-    budget: Math.max(0, Number(budget) || 0),
+  const list = (Array.isArray(models) && models.length ? models : [{ provider: base.provider, model: base.models[base.provider], proverProvider: base.proverProvider, proverModel: base.proverModel }])
+    .filter((m) => m && isProvider(m.provider) && typeof m.model === "string" && m.model.trim())
+    .map((m) => ({ provider: m.provider, model: m.model.trim(), proverProvider: isProvider(m.proverProvider) ? m.proverProvider : m.provider, proverModel: String(m.proverModel ?? "").trim() }));
+  if (!list.length) throw new Error(`Choose a model for the run, or one in Setup.`);
+  if (list.length > 6) throw new Error("Compare at most 6 models at once.");
+  if (!leanReady(base)) throw new Error("Install Lean and Mathlib in Setup first.");
+  const sample = pickSample(set, Math.floor(Number(n)) || 10);
+  const group = list.length > 1 ? `${Date.now()}` : undefined;
+  const env: BenchEnv = {
+    app: app.getVersion(),
+    platform: `${process.platform === "win32" ? "Windows" : process.platform === "darwin" ? "macOS" : process.platform} ${os.release()}, ${Math.round(os.totalmem() / 1024 ** 3)} GB`,
+    lean: (await lakeVersion(base.leanWorkspace).catch(() => null)) ?? undefined,
+    leanDeadlineMs: base.timeoutMs,
+    leanProcesses: leanProcesses(base),
+    repl: base.useRepl,
+    remoteLean: remoteOn(base),
+    proofIdea: base.proofIdea,
   };
+  const runs: BenchRun[] = list.map((m, i) => {
+    const s = withModels(base, m);
+    return {
+      id: `${Date.now() + i}`,
+      set: set.id,
+      startedAt: 0,
+      finishedAt: 0,
+      status: "running",
+      config: {
+        provider: m.provider,
+        model: m.model,
+        ...(proverModels(s).length ? { prover: proverModels(s).join(", "), proverProvider: m.proverProvider } : {}),
+        maxAttempts: s.maxAttempts,
+        parallel: parallelOf(s),
+        automation: s.leanAutomation,
+        revisions: s.revisionsPerChain,
+        method: method === "decompose" ? "decompose" : "single",
+        easierFirst: s.easierFirst,
+        premises: s.premiseSelection,
+      },
+      sample,
+      results: [],
+      budget: Math.max(0, Number(budget) || 0),
+      ...(group ? { group } : {}),
+      label: benchLabel(m),
+      env,
+    };
+  });
   const ctl = new AbortController();
   benching = ctl;
-  benchingId = run.id;
-  const send = (ev: BenchEvent) => {
+  const send = (run: BenchRun) => (ev: BenchEvent) => {
     if (!e.sender.isDestroyed()) e.sender.send("bench:event", ev);
     if (ev.type !== "status") saveBench(run);
   };
-  void runBench({ run, set, signal: ctl.signal, onEvent: send, proveOne: (p, signal) => benchOne(s, p, run, signal, (message) => send({ type: "status", id: p.id, message })) })
-    .catch((err: Error) => {
-      run.status = "stopped";
-      run.message = err.message;
-    })
-    .finally(() => {
-      benching = null;
+  void (async () => {
+    for (const [i, run] of runs.entries()) {
+      const s = withModels(base, list[i]);
+      benchingId = run.id;
+      run.startedAt = Date.now();
+      if (ctl.signal.aborted) {
+        run.status = "stopped";
+        run.message = "stopped before it started";
+        run.finishedAt = Date.now();
+        saveBench(run);
+        continue;
+      }
+      await runBench({ run, set, signal: ctl.signal, onEvent: send(run), proveOne: (p, signal) => benchOne(s, p, run, signal, (message) => send(run)({ type: "status", id: p.id, message })) }).catch((err: Error) => {
+        run.status = "stopped";
+        run.message = err.message;
+      });
       saveBench(run);
-    });
-  return run;
+    }
+  })().finally(() => {
+    benching = null;
+  });
+  return runs;
 });
 ipcMain.handle("bench:stop", () => benching?.abort());
 ipcMain.handle("bench:list", (): BenchRun[] =>
@@ -970,14 +1057,27 @@ ipcMain.handle("bench:export", async (e, id: string) => {
   return r.filePath;
 });
 // A run shared as a pull request on the Mack repo, so its results can be reviewed there.
-ipcMain.handle("bench:share", async (_e, id: string) => {
+ipcMain.handle("bench:share", async (_e, id: string, logs?: boolean) => {
   const run = readBench(String(id));
   if (!run) throw new Error("That benchmark run is gone.");
   if (run.status === "running") throw new Error("Wait for the run to finish, or stop it, before sharing it.");
   const { token } = await githubAuth();
   if (!token) throw new Error("Connect GitHub first: Settings → GitHub, or log in with the GitHub CLI (gh auth login).");
   const set = benchSet(run.set);
-  return openCommunityPr(token, { ...COMMUNITY_REPO, dir: BENCH_SHARE_DIR }, benchSlug(run), (_slug, login) => benchShare(run, set, app.getVersion(), login), "benchmark");
+  return openCommunityPr(token, { ...COMMUNITY_REPO, dir: BENCH_SHARE_DIR }, benchSlug(run), (_slug, login) => benchShare(run, set, app.getVersion(), login, { logs: logs !== false }), "benchmark");
+});
+// Every attempt of a run as a JSON Lines dataset, saved where the person chooses.
+ipcMain.handle("bench:dataset", async (e, id: string) => {
+  const run = readBench(String(id));
+  if (!run) throw new Error("That benchmark run is gone.");
+  const data = attemptsDataset(run);
+  if (!data) throw new Error("This run kept no attempt log: runs from Mack 0.2.19 on keep one.");
+  const win = BrowserWindow.fromWebContents(e.sender);
+  const opts = { title: "Save every attempt of the run", defaultPath: `mack-attempts-${run.set}-${run.id}.jsonl`, filters: [{ name: "JSON Lines", extensions: ["jsonl"] }] };
+  const r = win ? await dialog.showSaveDialog(win, opts) : await dialog.showSaveDialog(opts);
+  if (r.canceled || !r.filePath) return null;
+  writeFileSync(r.filePath, data, "utf8");
+  return r.filePath;
 });
 ipcMain.handle("bench:delete", (_e, id: string) => {
   if (/^\d+$/.test(id)) rmSync(join(benchDir(), `${id}.json`), { force: true });

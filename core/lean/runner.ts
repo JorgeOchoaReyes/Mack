@@ -7,7 +7,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { killTree, lakeCommand, leanEnv } from "./toolchain";
-import { freshRunScript, remoteLean, sshArgs, type RemoteLean } from "./remote";
+import { freshRunScript, LINTERS_OFF, remoteLean, sshArgs, type RemoteLean } from "./remote";
 import type { LeanRun, RunResult } from "./verify";
 
 /**
@@ -128,7 +128,7 @@ async function runOnce(config: LeanConfig, source: string): Promise<RunResult> {
           resolve(r);
         }
       };
-      const child = spawn(lakeCommand(), ["env", "lean", file], {
+      const child = spawn(lakeCommand(), ["env", "lean", LINTERS_OFF, file], {
         cwd: config.workspace,
         env: leanEnv(),
         stdio: ["ignore", "pipe", "pipe"],

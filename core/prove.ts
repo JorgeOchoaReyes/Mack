@@ -3,19 +3,37 @@
 // candidate counts as solved only when `verifyText` accepts it. What the
 // model says about its own proof decides nothing.
 
-import { checkFromRun, describeCheck, type LeanCheckRun } from "./lean/check";
+import { checkDetail, checkFromRun, describeCheck, type LeanCheckRun } from "./lean/check";
 import { extractStatement, frozenObjection, protocolObjection } from "./lean/rules";
 import { describeRejection, excerpt, pristineType, verifyText, type LeanRun } from "./lean/verify";
 import type { ChatMessage, ModelProvider } from "./model/provider";
 import { prepare, type Lemma, type PrepareEvent } from "./prepare";
 import { unknownNames } from "./lean/mathlib-index";
 import { sweep } from "./lean/analysis";
+import { dropDeadTactics } from "./lean/repair";
 
 export type AttemptOutcome = "refused" | "no verdict" | "errors" | "sorries" | "rejected" | "verified";
 
 export type ProveEvent =
   | { type: "status"; message: string }
-  | { type: "attempt"; n: number; candidate: string; outcome: AttemptOutcome; detail: string; ms: number; tokens: number }
+  | {
+      type: "attempt";
+      n: number;
+      candidate: string;
+      outcome: AttemptOutcome;
+      detail: string;
+      ms: number;
+      tokens: number;
+      model?: string;
+      /** When the model was asked (ms since 1970). */
+      at?: number;
+      promptTokens?: number;
+      /** The model's whole reply, and its thinking when the provider returns it apart. */
+      reply?: string;
+      reasoning?: string;
+      /** The reply stopped at the token limit. */
+      truncated?: boolean;
+    }
   | { type: "solved"; n: number; proof: string; axioms: string[] }
   | { type: "failed"; message: string }
   | PrepareEvent;
@@ -144,10 +162,17 @@ export async function prove(o: ProveOptions): Promise<void> {
       const t0 = Date.now();
       let reply: string;
       let tokens = 0;
+      let promptTokens = 0;
+      let reasoning: string | undefined;
+      let truncated = false;
+      const at = Date.now();
       try {
         const r = await writer.provider.chat({ model: writer.model, messages, maxTokens: isProver ? 16384 : 8192, temperature: isProver ? 0.9 : 0.6, signal });
         reply = r.content;
         tokens = r.usage?.completionTokens ?? 0;
+        promptTokens = r.usage?.promptTokens ?? 0;
+        reasoning = r.reasoning;
+        truncated = !!r.truncated;
       } catch (e) {
         if (!signal.aborted) modelError = (e as Error).message;
         return;
@@ -155,7 +180,8 @@ export async function prove(o: ProveOptions): Promise<void> {
       if (solved) return;
       messages.push({ role: "assistant", content: reply });
       let candidate = extractLean(reply);
-      const attempt = (outcome: AttemptOutcome, detail: string) => emit({ type: "attempt", n, candidate, outcome, detail, ms: Date.now() - t0, tokens });
+      const attempt = (outcome: AttemptOutcome, detail: string) =>
+        emit({ type: "attempt", n, candidate, outcome, detail, ms: Date.now() - t0, tokens, model: writer.model, at, promptTokens, reply, ...(reasoning ? { reasoning } : {}), ...(truncated ? { truncated } : {}) });
 
       const feedback = async (): Promise<string | null> => {
         const textual = protocolObjection(statement, candidate);
@@ -175,12 +201,23 @@ export async function prove(o: ProveOptions): Promise<void> {
             swept = sw.open ? `Lean's automation closed ${sw.closed} of the ${sw.closed + sw.open} sorries; the file below has them filled in. ` : "";
           }
         }
+        // A tactic left after its goal closed is removed here rather than costing an attempt.
+        if (check.status === "errors") {
+          const repaired = dropDeadTactics(candidate, check.errors);
+          if (repaired) {
+            const again = await quick(repaired);
+            if (again.status !== "noVerdict" && again.errors.length < check.errors.length) {
+              candidate = repaired;
+              check = again;
+            }
+          }
+        }
         if (check.status === "noVerdict") {
           attempt("no verdict", check.output);
           return `Lean gave no verdict (${excerpt(check.output)}). Try a simpler or faster proof.`;
         }
         if (check.status === "errors" || check.status === "sorries") {
-          attempt(check.status, check.output);
+          attempt(check.status, checkDetail(check));
           const hint = o.lookup ? await o.lookup(unknownNames(check.errors.map((e) => e.message).join("\n"))).catch(() => "") : "";
           return `${swept}The checker's verdict:\n${describeCheck(check)}${hint ? `\n\n${hint}` : ""}${swept ? `\n\nThe file as it stands now:\n\`\`\`lean\n${candidate}\`\`\`` : ""}`;
         }

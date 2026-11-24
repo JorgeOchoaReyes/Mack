@@ -28,6 +28,8 @@ export type ChatResponse = {
   usage?: { promptTokens: number; completionTokens: number };
   /** The reply stopped at `maxTokens` (finish reason "length"), not where the model chose to end it. */
   truncated?: boolean;
+  /** The model's thinking, when the provider returns it apart from the answer (`reasoning` or `reasoning_content`). */
+  reasoning?: string;
 };
 
 export interface ModelProvider {

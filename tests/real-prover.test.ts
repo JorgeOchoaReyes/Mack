@@ -13,6 +13,7 @@ import { MathlibIndex, mathlibSource, premises } from "../core/lean/mathlib-inde
 import { leanRunner, setLeanSlots } from "../core/lean/runner";
 import { pristineType, verifyText } from "../core/lean/verify";
 import { decompose, goalAt, goalToLemma } from "../core/decompose";
+import { dropDeadTactics } from "../core/lean/repair";
 import type { ChatRequest, ModelProvider } from "../core/model/provider";
 import type { ProveEvent } from "../core/prove";
 
@@ -92,6 +93,20 @@ describe.skipIf(!workspace)("the prover's Lean procedures against real Lean", ()
       const solved = events.find((e): e is Extract<ProveEvent, { type: "solved" }> => e.type === "solved");
       expect(solved, JSON.stringify(events.filter((e) => e.type !== "status"), null, 1).slice(0, 4000)).toBeDefined();
       expect(solved!.proof).toContain("exact decompose_demo_step1 a b ha hb");
+    },
+    T,
+  );
+
+  it(
+    "removes a tactic left after its goal closed, and the repaired proof checks",
+    async () => {
+      const src = "import Mathlib\n\ntheorem dead_demo (x : ℕ) : x + 0 = x := by\n  simp\n  rfl\n";
+      const c = await check(src);
+      expect(c.status, c.output).toBe("errors");
+      expect(c.errors.map((e) => e.message.toLowerCase())).toEqual([expect.stringMatching(/^no goals/)]);
+      const repaired = dropDeadTactics(src, c.errors);
+      expect(repaired).toBe("import Mathlib\n\ntheorem dead_demo (x : ℕ) : x + 0 = x := by\n  simp\n");
+      expect((await check(repaired!)).status).toBe("complete");
     },
     T,
   );

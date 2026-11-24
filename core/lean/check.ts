@@ -24,6 +24,9 @@ export type LeanCheckRun = (source: string) => Promise<LeanCheck>;
 /** Lean's warning that a declaration uses `sorry`, in its older ('sorry') and newer (`sorry`) wording. */
 export const usesSorry = (msg: string) => /^declaration uses ['`]sorry['`]/i.test(msg);
 
+/** A linter's style warning ("this tactic is never executed", "`<;>` can be replaced"): advice, not a verdict, and noise for a prover. */
+export const isLinterNoise = (msg: string) => /linter can be disabled with|^Used `tac1 <;> tac2`|^this tactic is never executed|^Unused tactic linter|^unused variable/i.test(msg);
+
 /** Whether Lean's output reports an error, with or without an error code after the severity. */
 export const hasLeanError = (output: string) => /(^|\s)error(\([^)\s]*\))?:/m.test(output);
 
@@ -38,6 +41,7 @@ export function parseCliOutput(output: string): { errors: LeanMessage[]; sorryLi
     const msg = m[4].trim();
     if (m[3] === "error") errors.push({ line: Number(m[1]), col: Number(m[2]), message: msg });
     else if (usesSorry(msg)) sorryLines.push(Number(m[1]));
+    else if (isLinterNoise(msg)) continue;
     else notes.push({ line: Number(m[1]), col: Number(m[2]), message: msg });
   }
   return { errors, sorryLines, notes };
@@ -54,6 +58,18 @@ export function checkFromRun(r: RunResult): LeanCheck {
 }
 
 const cut = (s: string) => (s.length > 1500 ? `${s.slice(0, 1500)}…` : s);
+
+/**
+ * What a check found, as a log keeps it: the errors first, then the open
+ * goals, without file paths or linter advice, so the reason an attempt failed
+ * is the first thing read and is never cut off behind warnings.
+ */
+export function checkDetail(c: LeanCheck): string {
+  if (c.status === "noVerdict") return c.output;
+  const lines = c.errors.map((e) => `Probe.lean:${e.line}:${e.col}: error: ${e.message}`);
+  for (const s of c.sorries) lines.push(`Probe.lean:${s.line}:${s.col}: warning: sorry left open${s.goal.startsWith("(") ? "" : `, goal:\n${s.goal}`}`);
+  return lines.length ? lines.join("\n") : c.output;
+}
 
 /** The check as the model reads it: at most 12 errors and 12 open goals, each cut at 1500 characters (upstream's bounds), and up to 30 info messages. */
 export function describeCheck(c: LeanCheck): string {

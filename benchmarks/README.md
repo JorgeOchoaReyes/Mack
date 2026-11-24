@@ -11,3 +11,14 @@ folder per run under `runs/`:
 
 They show where Mack loses problems, so the next change can be chosen from
 real failures rather than guesses.
+
+## The benchmark site
+
+`.github/workflows/benchmarks-site.yml` builds a leaderboard of every run here
+(`core/bench/site.ts`, `scripts/build-bench-site.ts`) and publishes it on
+GitHub Pages whenever a run is merged. A run shared with its attempts
+(`attempts.jsonl`, one JSON line per attempt: the model, how it ended, why,
+Lean's feedback and the candidate) also shows every attempt by reason and the
+Lean errors that cost the most attempts.
+
+Pages has to be turned on once: Settings → Pages → Source: GitHub Actions.

@@ -23,7 +23,8 @@ import type { ChangedFile } from "../core/git";
 import type { GitHubTokenSource, PullRequest } from "../core/github";
 import type { UpdateState } from "../electron/updates";
 import type { UpstreamReport } from "../core/upstream";
-import type { Health, KeySource, ProjectFiles, RunEvent, RunMode, RunOrigin, RunRecord, RunSummary, Settings } from "../electron/main";
+import type { BenchModels, Health, KeySource, ProjectFiles, RunEvent, RunMode, RunOrigin, RunRecord, RunSummary, Settings } from "../electron/main";
+export type { BenchModels };
 import type { MackApi } from "../electron/preload";
 import type { BenchEvent, BenchResult, BenchRun, BenchSet } from "../core/bench/bench";
 export type { BenchEvent, BenchResult, BenchRun };
@@ -67,13 +68,14 @@ export const api = {
   stopProve: () => m().stopProve(),
   onProveEvent: (cb: (e: RunEvent) => void) => m().onProveEvent((e) => cb(e as RunEvent)),
   benchSets: () => m().benchSets() as Promise<BenchSetInfo[]>,
-  benchStart: (setId: string, n: number, budget: number, method: "single" | "decompose") => m().benchStart(setId, n, budget, method) as Promise<BenchRun>,
+  benchStart: (setId: string, n: number, budget: number, method: "single" | "decompose", models: BenchModels[]) => m().benchStart(setId, n, budget, method, models) as Promise<BenchRun[]>,
   proofStats: () => m().proofStats() as Promise<{ count: number }>,
   exportProofs: () => m().exportProofs() as Promise<{ path: string; count: number } | null>,
   benchStop: () => m().benchStop() as Promise<void>,
   benchReport: (id: string) => m().benchReport(id) as Promise<string>,
   benchExport: (id: string) => m().benchExport(id) as Promise<string | null>,
-  benchShare: (id: string) => m().benchShare(id) as Promise<{ url: string; slug: string }>,
+  benchShare: (id: string, logs: boolean) => m().benchShare(id, logs) as Promise<{ url: string; slug: string }>,
+  benchDataset: (id: string) => m().benchDataset(id) as Promise<string | null>,
   benchList: () => m().benchList() as Promise<BenchRun[]>,
   benchDelete: (id: string) => m().benchDelete(id) as Promise<void>,
   onBenchEvent: (cb: (e: BenchEvent) => void) => m().onBenchEvent((e) => cb(e as BenchEvent)),
