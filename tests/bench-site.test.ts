@@ -172,3 +172,18 @@ describe("the harness a run used", () => {
     expect(site["runs/h.html"]).toContain("Open Math Harness <b>687f2a2</b>");
   });
 });
+
+import { METHOD_LABELS } from "../core/bench/bench";
+
+describe("Open Math Harness's own methods in the benchmark", () => {
+  it("mark a search or swarm run with only the harness's procedures, none of Mack's additions", () => {
+    expect(harnessOf({ ...run.config, method: "search" }, "0.2.21", "687f2a2").procedures).toEqual(["strict verifier", "linters off", "OMH search tree"]);
+    expect(harnessOf({ ...run.config, method: "ultramath" }, "0.2.21", "687f2a2").procedures).toEqual(["strict verifier", "linters off", "OMH ultramath swarm"]);
+  });
+
+  it("name the method in full in the report", () => {
+    expect(benchReport({ ...run, config: { ...run.config, method: "search" } }, set)).toContain(`- Method: ${METHOD_LABELS.search};`);
+    expect(METHOD_LABELS.single).toContain("Mack");
+    expect(METHOD_LABELS.ultramath).toContain("Open Math Harness");
+  });
+});

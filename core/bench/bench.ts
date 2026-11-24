@@ -170,6 +170,16 @@ export function failureBreakdown(results: BenchResult[]): { kind: FailureKind; c
   return [...by.entries()].map(([kind, ids]) => ({ kind, count: ids.length, ids })).sort((a, b) => b.count - a.count);
 }
 
+export type BenchMethod = "single" | "decompose" | "search" | "ultramath";
+
+/** The methods, as the screen and the reports name them. */
+export const METHOD_LABELS: Record<BenchMethod, string> = {
+  single: "Attempts (Mack)",
+  decompose: "Decompose into lemmas (Mack)",
+  search: "Search tree (Open Math Harness)",
+  ultramath: "Ultramath swarm (Open Math Harness)",
+};
+
 export type BenchConfig = {
   /** The provider of the main model, and of the prover models. */
   provider?: string;
@@ -180,8 +190,11 @@ export type BenchConfig = {
   parallel: number;
   automation: boolean;
   revisions: number;
-  /** "single": attempts only; "decompose": attempts, then the statement split into lemmas. */
-  method?: "single" | "decompose";
+  /**
+   * "single": attempts only; "decompose": attempts, then the statement split into lemmas (both Mack's);
+   * "search": Open Math Harness's proof search tree; "ultramath": its swarm of members on a shared board.
+   */
+  method?: BenchMethod;
   easierFirst?: boolean;
   premises?: boolean;
 };
@@ -293,7 +306,7 @@ export function benchReport(run: BenchRun, set: BenchSet | undefined, appVersion
     "",
     `- Run ${run.id}, ${new Date(run.startedAt).toISOString()}${appVersion ? `, Mack ${appVersion}` : ""}, ${run.status}`,
     ...(run.harness ? [`- Harness: Mack ${run.harness.mack}, Open Math Harness ${run.harness.openMathHarness}; procedures: ${run.harness.procedures.join(", ")}`] : []),
-    `- Method: ${c.method ?? "single"}; model ${c.model}${c.prover ? `; prover ${c.prover}` : "; no prover model"}`,
+    `- Method: ${METHOD_LABELS[c.method ?? "single"]}; model ${c.model}${c.prover ? `; prover ${c.prover}` : "; no prover model"}`,
     `- ${c.maxAttempts} attempts, ${c.parallel} at once, revisions before starting over ${c.revisions}; automation ${c.automation ? "on" : "off"}; premise selection ${c.premises ? "on" : "off"}; easier versions first ${c.easierFirst ? "on" : "off"}`,
     `- Spent $${sum.usd.toFixed(3)} in ${Math.round(sum.ms / 60000)} min; ${sum.byAutomation} solved by Lean's automation alone; budget ${run.budget ? `$${run.budget}` : "none"}`,
     "",
@@ -554,6 +567,9 @@ export type BenchHarness = { mack: string; openMathHarness: string; procedures: 
 
 /** The harness of a run from its config: the always-on procedures, and the ones its settings turned on. */
 export function harnessOf(config: BenchConfig, mack: string, openMathHarness: string): BenchHarness {
+  // Open Math Harness's own searches use none of Mack's additions: only its verifier and Lean rules, as ported.
+  if (config.method === "search") return { mack, openMathHarness: openMathHarness.slice(0, 7), procedures: ["strict verifier", "linters off", "OMH search tree"] };
+  if (config.method === "ultramath") return { mack, openMathHarness: openMathHarness.slice(0, 7), procedures: ["strict verifier", "linters off", "OMH ultramath swarm"] };
   const procedures = ["strict verifier", "linters off", "dead-tactic repair"];
   if (config.automation) procedures.push("automation sweep");
   if (config.premises) procedures.push("premise selection");

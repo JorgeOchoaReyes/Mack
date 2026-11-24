@@ -9,7 +9,7 @@ import { api, errorText, type BenchModels, type BenchResult, type BenchRun, type
 import { PROVIDERS } from "../../core/model/providers";
 import { Button, EmptyState, Field, timeAgo, Toggle } from "../components/ui";
 import { formatUsd } from "../../core/model/metered";
-import { BENCH_BASICS, FAILURES, failureBreakdown, harnessLabel, headToHead, runMetrics, summarize, timelineOf } from "../../core/bench/bench";
+import { BENCH_BASICS, METHOD_LABELS, type BenchMethod, FAILURES, failureBreakdown, harnessLabel, headToHead, runMetrics, summarize, timelineOf } from "../../core/bench/bench";
 import { COMMUNITY_REPO } from "../../core/community";
 
 type Props = { settings: Settings; onGo: (page: "settings" | "setup") => void };
@@ -24,7 +24,7 @@ export function BenchmarkPage({ settings, onGo }: Props) {
   const [setId, setSetId] = useState("minif2f-test");
   const [size, setSize] = useState(20);
   const [budget, setBudget] = useState(5);
-  const [method, setMethod] = useState<"single" | "decompose">("single");
+  const [method, setMethod] = useState<BenchMethod>("single");
   const [runs, setRuns] = useState<BenchRun[]>([]);
   const [live, setLive] = useState<BenchRun | null>(null);
   const [status, setStatus] = useState<{ id: string; message: string } | null>(null);
@@ -107,10 +107,20 @@ export function BenchmarkPage({ settings, onGo }: Props) {
                 ))}
               </select>
             </Field>
-            <Field label="Method" hint="Decompose tries each problem directly, then splits it into lemmas proved at once: slower and dearer, and stronger on hard problems. Compare the two on the same problems.">
-              <select className="input" value={method} onChange={(e) => setMethod(e.target.value as "single" | "decompose")}>
-                <option value="single">Attempts (single)</option>
-                <option value="decompose">Decompose into lemmas</option>
+            <Field
+              label="Method"
+              hint={
+                method === "search" || method === "ultramath"
+                  ? "Open Math Harness's own method, as Mack ports it: none of Mack's additions (automation, lemma suggestions, decompose, prover models) are used, so it is the baseline Mack's methods are measured against. Its limits are in Settings → Prover."
+                  : "Mack's methods. Decompose tries each problem directly, then splits it into lemmas proved at once: slower and dearer, and stronger on hard problems."
+              }
+            >
+              <select className="input" value={method} onChange={(e) => setMethod(e.target.value as BenchMethod)}>
+                {(Object.keys(METHOD_LABELS) as BenchMethod[]).map((m) => (
+                  <option key={m} value={m}>
+                    {METHOD_LABELS[m]}
+                  </option>
+                ))}
               </select>
             </Field>
             <Field label="Budget for the run (USD, 0 = no limit)" hint="When it is spent, the problems left are skipped. Your global spending limit applies as well.">
@@ -187,7 +197,7 @@ export function BenchmarkPage({ settings, onGo }: Props) {
                     </span>
                     <span className="muted small">
                       {r.config.model.split("/").pop()}
-                      {r.config.prover ? ` + ${r.config.prover.split(",").map((m) => m.trim().split("/").pop()).join(", ")}` : ""} · {r.config.method === "decompose" ? "decompose · " : ""}{r.config.maxAttempts} attempts, {r.config.parallel} at once{r.config.automation ? "" : ", no automation"}
+                      {r.config.prover ? ` + ${r.config.prover.split(",").map((m) => m.trim().split("/").pop()).join(", ")}` : ""} · {r.config.method && r.config.method !== "single" ? `${r.config.method} · ` : ""}{r.config.maxAttempts} attempts, {r.config.parallel} at once{r.config.automation ? "" : ", no automation"}
                     </span>
                     <span className="run-meta muted small">
                       {(r.harness || r.env) && <span className="bench-harness" title={r.harness ? `Procedures: ${r.harness.procedures.join(", ")}` : ""}>{harnessLabel(r.harness, r.env?.app)}</span>}

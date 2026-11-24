@@ -846,16 +846,8 @@ async function benchOne(s: Settings, p: { id: string; source: string }, bench: B
   let lastCandidate = "";
   const log: AttemptLog[] = [];
   const timeline: { t: number; message: string }[] = [];
-  await attemptProof(s, bench.config.method ?? "single", p.source, {
-    provider,
-    model,
-    meter,
-    hooks,
-    run,
-    // Benchmark statements are known to be right; the random tester would only spend time.
-    prepare: { checkStatement: false, idea: s.proofIdea },
-    signal: AbortSignal.any([signal, ctl.signal]),
-    onEvent: (ev) => {
+  // Every method's attempts land in one log: a Mack attempt, a search node, or a swarm member's turn.
+  const onEvent = (ev: ProveEvent) => {
       if (ev.type === "attempt") {
         if (log.length < LOG_LIMITS.attempts) {
           const { thinking, prose } = splitReply(ev.reply ?? "", ev.reasoning);
@@ -890,8 +882,65 @@ async function benchOne(s: Settings, p: { id: string; source: string }, bench: B
         // The run's own steps, once each: what it tried, in order.
         if (timeline.length < LOG_LIMITS.timeline && timeline[timeline.length - 1]?.message !== ev.message) timeline.push({ t: Date.now() - t0, message: ev.message.slice(0, 300) });
       }
-    },
-  });
+  };
+  const both = AbortSignal.any([signal, ctl.signal]);
+  const method = bench.config.method ?? "single";
+  const check = () => (async (src: string) => checkFromRun(await run(src)));
+  if (method === "search") {
+    await search({
+      frozen: p.source,
+      provider,
+      model,
+      run,
+      check: quickCheck(s, Math.min(2, s.search.w)) ?? check(),
+      prepare: { checkStatement: false, idea: s.proofIdea },
+      lookup: mathlibHints,
+      limits: s.search,
+      analysis: s.searchAnalysis,
+      sketch: sketchFor(p.source),
+      worker: s.searchWorker,
+      workspace: userData("bench-workspaces", bench.id, p.id),
+      signal: both,
+      onEvent: (ev) => {
+        if (ev.type === "node") {
+          const n = ev.node;
+          const outcome = n.status === "invalid" ? "refused" : n.status === "complete" ? "rejected" : n.status;
+          onEvent({ type: "attempt", n: n.id + 1, candidate: n.file, outcome, detail: n.detail, ms: ev.ms, tokens: ev.tokens, model, at: Date.now() - ev.ms });
+        } else if (ev.type === "solved" || ev.type === "failed" || ev.type === "status") onEvent(ev);
+      },
+    });
+  } else if (method === "ultramath") {
+    let turn = 0;
+    await ultramath({
+      problem: p.source,
+      provider,
+      model,
+      run,
+      check: quickCheck(s, 2) ?? check(),
+      limits: s.ultramath,
+      signal: both,
+      onEvent: (ev) => {
+        if (ev.type === "turn") {
+          // A member's turn is the swarm's attempt: what its Lean check said, when it ran one, judges it.
+          const said = ev.check ?? "";
+          const outcome = !said ? "no verdict" : /error/i.test(said) ? "errors" : /sorry/i.test(said) ? "sorries" : "rejected";
+          onEvent({ type: "attempt", n: ++turn, candidate: ev.summary, outcome, detail: said || "(the member ran no Lean check this turn)", ms: 0, tokens: ev.tokens, model: `${model} · member ${ev.member}`, at: Date.now() });
+        } else if (ev.type === "solved" || ev.type === "failed" || ev.type === "status") onEvent(ev);
+      },
+    });
+  } else {
+    await attemptProof(s, method, p.source, {
+      provider,
+      model,
+      meter,
+      hooks,
+      run,
+      // Benchmark statements are known to be right; the random tester would only spend time.
+      prepare: { checkStatement: false, idea: s.proofIdea },
+      signal: both,
+      onEvent,
+    });
+  }
   if (proof) return { id: p.id, outcome: "solved", attempts, ms: Date.now() - t0, usd: meter.spent, proof, log, timeline };
   const outcomes: Record<string, number> = {};
   for (const n of notes) outcomes[n.outcome] = (outcomes[n.outcome] ?? 0) + 1;
@@ -978,7 +1027,7 @@ ipcMain.handle("bench:start", async (e, setId: string, n: number, budget: number
         parallel: parallelOf(s),
         automation: s.leanAutomation,
         revisions: s.revisionsPerChain,
-        method: method === "decompose" ? "decompose" : "single",
+        method: (["decompose", "search", "ultramath"] as const).find((x) => x === method) ?? "single",
         easierFirst: s.easierFirst,
         premises: s.premiseSelection,
       },
