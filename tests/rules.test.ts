@@ -106,3 +106,23 @@ describe("extractLean", () => {
     expect(extractLean("<think>```lean\nbad\n```</think>\nok:\n```lean\ngood\n```")).toBe("good\n");
   });
 });
+
+import { checkFromRun as parseRun } from "../core/lean/check";
+import { unknownNames as namesIn } from "../core/lean/mathlib-index";
+
+describe("Lean's message formats", () => {
+  it("reads errors with and without an error code, and both wordings of the sorry warning", () => {
+    const c = parseRun({
+      kind: "refused",
+      output:
+        "/tmp/x/Probe.lean:4:8: error(lean.unknownIdentifier): Unknown identifier `no_such_lemma`\n/tmp/x/Probe.lean:6:2: error: unsolved goals\n⊢ False\n/tmp/x/Probe.lean:3:8: warning: declaration uses `sorry`\n/tmp/x/Probe.lean:9:8: warning: declaration uses 'sorry'\n/tmp/x/Probe.lean:5:4: info: x : ℕ\n⊢ x = x\n",
+    });
+    expect(c.errors.map((e) => [e.line, e.message.split("\n")[0]])).toEqual([
+      [4, "Unknown identifier `no_such_lemma`"],
+      [6, "unsolved goals"],
+    ]);
+    expect(c.sorries.map((s) => s.line)).toEqual([3, 9]);
+    expect(c.notes).toEqual([{ line: 5, col: 4, message: "x : ℕ\n⊢ x = x" }]);
+    expect(namesIn("error(lean.unknownIdentifier): Unknown identifier `Nat.foo`\nunknown constant 'Nat.bar'")).toEqual(["Nat.foo", "Nat.bar"]);
+  });
+});

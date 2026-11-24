@@ -13,10 +13,11 @@ import { DEFAULT_WORKSPACE, hasMathlib, hasProject, runSetup, verifyWorkspace, t
 import { lakeVersion } from "../core/lean/toolchain";
 import { OpenAICompatibleProvider } from "../core/model/openai-compatible";
 import { PROVIDERS, providerInfo, type ProviderId } from "../core/model/providers";
-import { ghCliToken, githubLogin, type GitHubTokenSource } from "../core/github";
+import { ghCliToken, githubLogin, openCommunityPr, type GitHubTokenSource } from "../core/github";
+import { COMMUNITY_REPO } from "../core/community";
 import { prove, type ProveEvent } from "../core/prove";
 import { lemmaSource, type Lemma } from "../core/prepare";
-import { describeDecls, MathlibIndex, mathlibSource, nameHints, searchDecls } from "../core/lean/mathlib-index";
+import { describeDecls, describePremises, MathlibIndex, mathlibSource, nameHints, premises, searchDecls } from "../core/lean/mathlib-index";
 import { describeEnvironment, probeEnvironment } from "../core/environment";
 import { readPlan } from "../core/chat/plan";
 import { search, type SearchEvent } from "../core/search/search";
@@ -34,7 +35,7 @@ import { RUN_TOOLS } from "../core/search/run-tools";
 import { CHAT_TOOLS as SWARM_CHAT_TOOLS, SwarmService } from "../core/ultramath/service";
 import { confine, registerTools } from "../core/chat/tools";
 import { CONSTRUCT_TOOLS, ConstructionService } from "../core/construct/service";
-import { frozenObjection } from "../core/lean/rules";
+import { extractStatement, frozenObjection } from "../core/lean/rules";
 import { basename } from "node:path";
 import { statSync } from "node:fs";
 import { registerUpdates } from "./updates";
@@ -42,7 +43,7 @@ import { remoteLean, setRemoteLean } from "../core/lean/remote";
 import { describeExamples, ProofStore, trainingData } from "../core/proof-store";
 import { decompose } from "../core/decompose";
 import { easierVersions } from "../core/variants";
-import { BENCH_SETS, benchSet, pickSample, runBench, type BenchEvent, type BenchResult, type BenchRun } from "../core/bench/bench";
+import { BENCH_SETS, BENCH_SHARE_DIR, benchReport, benchSet, benchShare, benchSlug, classifyFailure, pickSample, runBench, type AttemptNote, type BenchEvent, type BenchResult, type BenchRun } from "../core/bench/bench";
 import { newerMackRelease } from "../core/upstream";
 import type { ApprovalPolicy } from "../core/chat/executor";
 import type { ReasoningEffort } from "../core/model/provider";
@@ -103,6 +104,8 @@ export type Settings = {
   decomposeRounds: number;
   /** Before the attempts, prove easier versions of the statement and offer them as lemmas. */
   easierFirst: boolean;
+  /** Premise selection: give every attempt the Mathlib theorems the statement's concepts point to. */
+  premiseSelection: boolean;
   /** Lean on another machine over SSH (empty host: Lean runs here). */
   remoteLean: { host: string; workspace: string; repl: boolean; processes: number };
   /** USD all of Mack may spend in `globalPeriod`, every session and background call together; 0 means no limit. */
@@ -202,6 +205,7 @@ const DEFAULTS: Settings = {
   decomposeAttempts: 16,
   decomposeRounds: 2,
   easierFirst: false,
+  premiseSelection: true,
   remoteLean: { host: "", workspace: "~/mack-lean", repl: true, processes: 8 },
   autoUpdate: true,
   maxCostPerSession: 2,
@@ -567,6 +571,13 @@ async function searchMathlib(query: string, limit: number): Promise<string> {
   return describeDecls(searchDecls(await index.load(), query, limit), query);
 }
 
+/** The Mathlib theorems a statement's concepts point to, as a note for the attempts; empty without Mathlib's source here. */
+async function premisesFor(s: Settings, frozen: string): Promise<string> {
+  const index = mathlibIndex(s);
+  if (!index) return "";
+  return describePremises(premises(await index.load(), extractStatement(frozen) ?? frozen));
+}
+
 /** What this computer has installed, for the chat's agent: looked at on launch and after Setup changes the workspace. */
 let environmentNote = "";
 let environmentOf = "";
@@ -662,6 +673,7 @@ async function attemptProof(
     provers: proversFor(s, o.meter, o.hooks),
     revisions: s.revisionsPerChain,
     automation: s.leanAutomation,
+    premises: s.premiseSelection ? (frozen: string) => premisesFor(s, frozen) : undefined,
     signal: o.signal,
   };
   let lemmas = o.lemmas ?? [];
@@ -829,6 +841,9 @@ async function benchOne(s: Settings, p: { id: string; source: string }, bench: B
   let attempts = 0;
   let proof: string | undefined;
   let message = "";
+  // How each attempt ended, to say afterwards why the problem was not solved.
+  const notes: AttemptNote[] = [];
+  let lastCandidate = "";
   await attemptProof(s, bench.config.method ?? "single", p.source, {
     provider,
     model,
@@ -839,13 +854,33 @@ async function benchOne(s: Settings, p: { id: string; source: string }, bench: B
     prepare: { checkStatement: false, idea: s.proofIdea },
     signal: AbortSignal.any([signal, ctl.signal]),
     onEvent: (ev) => {
-      if (ev.type === "attempt" && ev.n > 0) attempts++;
+      if (ev.type === "attempt" && ev.n > 0) {
+        attempts++;
+        if (ev.outcome !== "verified") {
+          notes.push({ outcome: ev.outcome, detail: ev.detail });
+          lastCandidate = ev.candidate;
+        }
+      }
       if (ev.type === "solved") proof = ev.proof;
       if (ev.type === "failed") message = ev.message;
       if (ev.type === "status") status(ev.message);
     },
   });
-  return { id: p.id, outcome: proof ? "solved" : "failed", attempts, ms: Date.now() - t0, usd: meter.spent, ...(proof ? { proof } : { message }) };
+  if (proof) return { id: p.id, outcome: "solved", attempts, ms: Date.now() - t0, usd: meter.spent, proof };
+  const outcomes: Record<string, number> = {};
+  for (const n of notes) outcomes[n.outcome] = (outcomes[n.outcome] ?? 0) + 1;
+  const failure = classifyFailure(notes, message);
+  return {
+    id: p.id,
+    outcome: "failed",
+    attempts,
+    ms: Date.now() - t0,
+    usd: meter.spent,
+    message,
+    failure,
+    outcomes,
+    ...(notes.length ? { lastError: notes[notes.length - 1].detail.slice(0, 2000), lastCandidate: lastCandidate.slice(0, 4000) } : {}),
+  };
 }
 
 ipcMain.handle("proofs:stats", () => ({ count: proofStore().all().length }));
@@ -874,7 +909,7 @@ ipcMain.handle("bench:start", (e, setId: string, n: number, budget: number, meth
     startedAt: Date.now(),
     finishedAt: 0,
     status: "running",
-    config: { model, ...(proverModels(s).length ? { prover: proverModels(s).join(", ") } : {}), maxAttempts: s.maxAttempts, parallel: parallelOf(s), automation: s.leanAutomation, revisions: s.revisionsPerChain, method: method === "decompose" ? "decompose" : "single", easierFirst: s.easierFirst },
+    config: { model, ...(proverModels(s).length ? { prover: proverModels(s).join(", ") } : {}), maxAttempts: s.maxAttempts, parallel: parallelOf(s), automation: s.leanAutomation, revisions: s.revisionsPerChain, method: method === "decompose" ? "decompose" : "single", easierFirst: s.easierFirst, premises: s.premiseSelection },
     sample: pickSample(set, Math.floor(Number(n)) || 10),
     results: [],
     budget: Math.max(0, Number(budget) || 0),
@@ -913,6 +948,37 @@ ipcMain.handle("bench:list", (): BenchRun[] =>
     })
     .sort((a, b) => b.startedAt - a.startedAt),
 );
+/** One saved run, or null. */
+function readBench(id: string): BenchRun | null {
+  if (!/^\d+$/.test(id)) return null;
+  const f = join(benchDir(), `${id}.json`);
+  return existsSync(f) ? (JSON.parse(readFileSync(f, "utf8")) as BenchRun) : null;
+}
+ipcMain.handle("bench:report", (_e, id: string) => {
+  const run = readBench(String(id));
+  if (!run) throw new Error("That benchmark run is gone.");
+  return benchReport(run, benchSet(run.set), app.getVersion());
+});
+ipcMain.handle("bench:export", async (e, id: string) => {
+  const run = readBench(String(id));
+  if (!run) throw new Error("That benchmark run is gone.");
+  const win = BrowserWindow.fromWebContents(e.sender);
+  const opts = { title: "Save the benchmark report", defaultPath: `mack-benchmark-${run.set}-${run.id}.md`, filters: [{ name: "Markdown", extensions: ["md"] }] };
+  const r = win ? await dialog.showSaveDialog(win, opts) : await dialog.showSaveDialog(opts);
+  if (r.canceled || !r.filePath) return null;
+  writeFileSync(r.filePath, benchReport(run, benchSet(run.set), app.getVersion()), "utf8");
+  return r.filePath;
+});
+// A run shared as a pull request on the Mack repo, so its results can be reviewed there.
+ipcMain.handle("bench:share", async (_e, id: string) => {
+  const run = readBench(String(id));
+  if (!run) throw new Error("That benchmark run is gone.");
+  if (run.status === "running") throw new Error("Wait for the run to finish, or stop it, before sharing it.");
+  const { token } = await githubAuth();
+  if (!token) throw new Error("Connect GitHub first: Settings → GitHub, or log in with the GitHub CLI (gh auth login).");
+  const set = benchSet(run.set);
+  return openCommunityPr(token, { ...COMMUNITY_REPO, dir: BENCH_SHARE_DIR }, benchSlug(run), (_slug, login) => benchShare(run, set, app.getVersion(), login), "benchmark");
+});
 ipcMain.handle("bench:delete", (_e, id: string) => {
   if (/^\d+$/.test(id)) rmSync(join(benchDir(), `${id}.json`), { force: true });
 });

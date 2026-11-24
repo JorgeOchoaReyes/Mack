@@ -45,6 +45,8 @@ export type ProveOptions = {
   revisions?: number;
   /** Verified proofs of similar statements, shown to every attempt as worked examples. */
   examples?: string;
+  /** Premise selection: the Mathlib theorems likely to help prove this statement, as a note for every attempt; empty for none. */
+  premises?: (frozen: string) => Promise<string>;
   /** Try Lean's automation on the statement before any model call, and on every `sorry` an attempt leaves (default on). */
   automation?: boolean;
   signal?: AbortSignal;
@@ -100,7 +102,8 @@ export async function prove(o: ProveOptions): Promise<void> {
       }
     }
   }
-  const notes = [prep.notes, o.examples].filter(Boolean).join("\n\n");
+  const premises = o.premises ? await o.premises(o.frozen).catch(() => "") : "";
+  const notes = [prep.notes, o.examples, premises].filter(Boolean).join("\n\n");
   const provers = o.provers?.length ? o.provers : null;
   let chainNo = 0;
 

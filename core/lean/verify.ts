@@ -11,6 +11,7 @@
 
 import { randomBytes } from "node:crypto";
 import { extractStatement, forbiddenToken, preambleCopy, theoremName } from "./rules";
+import { hasLeanError } from "./check";
 
 export const TRUSTED_AXIOMS = ["propext", "Classical.choice", "Quot.sound"];
 
@@ -132,7 +133,7 @@ export async function pristineType(frozen: string, run: LeanRun): Promise<{ ok: 
   const marker = freshMarker();
   const r = await run(checked + reportCommands(marker, thm));
   if (r.kind === "noVerdict") return { ok: false, reason: r.reason };
-  if (r.kind === "refused" || r.output.includes("error:")) return { ok: false, reason: excerpt(r.output) };
+  if (r.kind === "refused" || hasLeanError(r.output)) return { ok: false, reason: excerpt(r.output) };
   const report = harnessReport(r.output, marker, thm);
   if (!report) return { ok: false, reason: `Lean printed no report for \`${thm}\` after the file:\n${excerpt(r.output)}` };
   return { ok: true, type: report.type };
@@ -160,7 +161,7 @@ export async function verifyText(frozen: string, pristine: string, candidate: st
   const marker = freshMarker();
   const r = await run(checked + reportCommands(marker, thm));
   if (r.kind === "noVerdict") return reject({ kind: "elaboration", excerpt: excerpt(r.reason) });
-  if (r.kind === "refused" || r.output.includes("error:")) return reject({ kind: "elaboration", excerpt: excerpt(r.output) });
+  if (r.kind === "refused" || hasLeanError(r.output)) return reject({ kind: "elaboration", excerpt: excerpt(r.output) });
   const report = harnessReport(r.output, marker, thm);
   if (!report) return reject({ kind: "noType" });
   const { usesSorry, axioms } = parseAxioms(report.axiomLine);
