@@ -82,6 +82,23 @@ export function goalToLemma(goal: string): GoalLemma | null {
 const splice = (src: string, at: number, len: number, text: string) => src.slice(0, at) + text + src.slice(at + len);
 const lineOf = (src: string, at: number) => src.slice(0, at).split("\n").length;
 
+/**
+ * The goal `trace_state` printed, read from Lean's whole output: newer Lean
+ * prints it as bare text with no `file:line:col: info:` header, older Lean
+ * under one. The probe has no errors, so the other lines are `sorry`
+ * warnings, which are dropped. Null unless exactly one goal is left.
+ */
+export function goalFromOutput(output: string): string | null {
+  const kept = output
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .filter((l) => !/^.*?:\d+:\d+: warning(\([^)\s]*\))?: declaration uses ['`]sorry['`]\s*$/.test(l))
+    .map((l) => l.replace(/^.*?:\d+:\d+: info(\([^)\s]*\))?: /, ""))
+    .join("\n")
+    .trim();
+  return (kept.match(/⊢/g) ?? []).length === 1 ? kept : null;
+}
+
 /** The goal Lean reports at the `sorry` at `at`, and whether that `sorry` stands where a term goes. */
 export async function goalAt(source: string, at: number, check: LeanCheckRun): Promise<{ goal: string; term: boolean } | null> {
   const line = lineOf(source, at);
@@ -90,6 +107,8 @@ export async function goalAt(source: string, at: number, check: LeanCheckRun): P
     if (c.status === "noVerdict" || c.errors.length) continue;
     const note = (c.notes ?? []).find((n) => n.line === line && n.message.includes("⊢"));
     if (note) return { goal: note.message, term };
+    const bare = goalFromOutput(c.output);
+    if (bare) return { goal: bare, term };
   }
   return null;
 }

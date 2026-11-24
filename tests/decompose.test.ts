@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { goalAt, goalToLemma } from "../core/decompose";
+import { goalAt, goalFromOutput, goalToLemma } from "../core/decompose";
 import type { LeanCheck } from "../core/lean/check";
 import { parseVariants } from "../core/variants";
 import { trainingData } from "../core/proof-store";
@@ -17,6 +17,14 @@ describe("stating a step's goal as a lemma", () => {
     expect(goalToLemma("n : ℕ := 3\n⊢ n = 3")).toBeNull();
     expect(goalToLemma("⊢ True\n⊢ False")).toBeNull();
     expect(goalToLemma("⊢ 1 + 1 = 2")).toEqual({ binders: "", target: "1 + 1 = 2", args: [] });
+  });
+
+  it("reads a goal newer Lean prints as bare text, without a position", () => {
+    // Lean v4.36's own output for `(trace_state; sorry)`, as the real-Lean CI test saw it.
+    const out = "a b : ℝ\nha : 0 < a\nhb : 0 < b\n⊢ 0 < a * b\n/tmp/mack-lean-s3vZJX/Probe.lean:3:8: warning: declaration uses `sorry`\n";
+    expect(goalFromOutput(out)).toBe("a b : ℝ\nha : 0 < a\nhb : 0 < b\n⊢ 0 < a * b");
+    expect(goalFromOutput("/x/P.lean:4:2: info: x : ℕ\n⊢ x = x\n/x/P.lean:3:8: warning: declaration uses 'sorry'\n")).toBe("x : ℕ\n⊢ x = x");
+    expect(goalFromOutput("/x/P.lean:3:8: warning: declaration uses `sorry`\n")).toBeNull();
   });
 
   it("reads the goal Lean prints at a sorry, in tactic position or in term position", async () => {
