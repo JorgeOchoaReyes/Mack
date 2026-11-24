@@ -11,6 +11,15 @@ import { PUTNAMBENCH } from "./putnambench";
 export type BenchProblem = { id: string; source: string };
 export type BenchSet = { id: string; label: string; blurb: string; problems: BenchProblem[] };
 
+/** The latest Putnam years in PutnamBench, newest last: the recent set (below). */
+export const RECENT_YEARS = (() => {
+  const years = [...new Set(PUTNAMBENCH.map((p) => Number(/^putnam_(\d{4})_/.exec(p.id)?.[1] ?? 0)))].filter(Boolean).sort((a, b) => a - b);
+  return years.slice(-2);
+})();
+
+/** The id of the recent set: published apart from the others, since its point is a different question. */
+export const RECENT_SET = "putnam-recent";
+
 export const BENCH_SETS: BenchSet[] = [
   {
     id: "minif2f-test",
@@ -23,6 +32,12 @@ export const BENCH_SETS: BenchSet[] = [
     label: "PutnamBench",
     blurb: `${PUTNAMBENCH.length} Putnam competition problems since 1962, formalized in Lean 4: much harder than miniF2F, and where the labs compete now. Answers are given; only the proofs are asked for.`,
     problems: PUTNAMBENCH,
+  },
+  {
+    id: RECENT_SET,
+    label: `Recent Putnam (${RECENT_YEARS.join("–")})`,
+    blurb: `The PutnamBench problems from the latest competitions (${RECENT_YEARS.join(" and ")}): the contamination check. Older problems and their proofs are public and may be in a model's training data; these are the least likely to be, for a model trained before they were set. A model that does much worse here than on older problems of the same difficulty was probably helped by memory.`,
+    problems: PUTNAMBENCH.filter((p) => RECENT_YEARS.some((y) => p.id.startsWith(`putnam_${y}_`))),
   },
 ];
 
@@ -91,6 +106,8 @@ export type BenchEnv = {
   app: string;
   platform: string;
   lean?: string;
+  /** The Mathlib commit of the workspace the run used (its lake-manifest.json), so its proofs can be re-checked against the same Mathlib. */
+  mathlib?: string;
   leanDeadlineMs: number;
   leanProcesses: number;
   repl: boolean;
@@ -171,12 +188,13 @@ export function failureBreakdown(results: BenchResult[]): { kind: FailureKind; c
   return [...by.entries()].map(([kind, ids]) => ({ kind, count: ids.length, ids })).sort((a, b) => b.count - a.count);
 }
 
-export type BenchMethod = "single" | "decompose" | "search" | "ultramath";
+export type BenchMethod = "single" | "decompose" | "steps" | "search" | "ultramath";
 
 /** The methods, as the screen and the reports name them. */
 export const METHOD_LABELS: Record<BenchMethod, string> = {
   single: "Attempts (Mack)",
   decompose: "Decompose into lemmas (Mack)",
+  steps: "Step by step (Mack)",
   search: "Search tree (Open Math Harness)",
   ultramath: "Ultramath swarm (Open Math Harness)",
 };
@@ -198,6 +216,8 @@ export type BenchConfig = {
   method?: BenchMethod;
   easierFirst?: boolean;
   premises?: boolean;
+  /** Helper lemmas from problems solved earlier in the run offered to later ones (core/bench/pool.ts). */
+  lemmaPool?: boolean;
 };
 
 export type BenchRun = {
@@ -510,6 +530,66 @@ export function runMetrics(run: Pick<BenchRun, "results">): RunMetrics {
   };
 }
 
+/**
+ * The 95% Wilson interval of a solve rate: `k` solved of `n`. A rate from 20
+ * problems is rough (13/20 is 43–82%), one from 244 much less so; the site
+ * shows the range so two runs are only told apart when their ranges are.
+ */
+export function rateRange(k: number, n: number): { low: number; high: number } {
+  if (n <= 0) return { low: 0, high: 0 };
+  const z = 1.959964;
+  const p = k / n;
+  const d = 1 + (z * z) / n;
+  const centre = (p + (z * z) / (2 * n)) / d;
+  const half = (z * Math.sqrt((p * (1 - p)) / n + (z * z) / (4 * n * n))) / d;
+  return { low: Math.max(0, centre - half), high: Math.min(1, centre + half) };
+}
+
+/**
+ * A run's score as published: solved out of every problem in its sample, so a
+ * problem skipped (budget spent, stopped) counts as unsolved and a run cannot
+ * gain by stopping early. `full` when the sample is the whole set.
+ */
+export function publishedScore(run: Pick<BenchRun, "results" | "sample" | "set">): { solved: number; of: number; rate: number; low: number; high: number; full: boolean } {
+  const of = run.sample.length || run.results.length;
+  const solved = run.results.filter((r) => r.outcome === "solved").length;
+  const { low, high } = rateRange(solved, of);
+  const set = benchSet(run.set);
+  return { solved, of, rate: of ? solved / of : 0, low, high, full: !!set && of === set.problems.length };
+}
+
+/** What is wrong with a run's sample: not the fixed one for its size, or results that are not exactly its problems. Empty when complete. */
+export function sampleProblems(run: Pick<BenchRun, "results" | "sample" | "set">): string[] {
+  const set = benchSet(run.set);
+  if (!set) return [];
+  const out: string[] = [];
+  if (!Array.isArray(run.sample) || !run.sample.length) return ["run.json has no sample"];
+  const expected = pickSample(set, run.sample.length);
+  if (expected.length !== run.sample.length || expected.some((id, i) => run.sample[i] !== id)) out.push(`the sample is not the fixed ${run.sample.length} problems of ${set.label} that Mack picks for that size`);
+  const ids = run.results.map((r) => r.id);
+  const dup = ids.filter((id, i) => ids.indexOf(id) !== i);
+  if (dup.length) out.push(`problems with more than one result: ${[...new Set(dup)].slice(0, 5).join(", ")}`);
+  const missing = run.sample.filter((id) => !ids.includes(id));
+  if (missing.length) out.push(`problems of the sample with no result (a skipped one is still listed, as skipped): ${missing.slice(0, 5).join(", ")}${missing.length > 5 ? ` and ${missing.length - 5} more` : ""}`);
+  const extra = ids.filter((id) => !run.sample.includes(id));
+  if (extra.length) out.push(`results for problems outside the sample: ${extra.slice(0, 5).join(", ")}`);
+  return out;
+}
+
+/** The attempt budgets "solved within k" is reported at. */
+export const WITHIN = [1, 4, 16, 64] as const;
+
+/**
+ * How many problems were solved within k model attempts, for each k: a curve
+ * like the labs' pass@k. Not the same measure: Mack's attempts revise one
+ * another from Lean's feedback, where pass@k counts independent samples, so
+ * the two are compared with that caveat. Automation alone counts as 0.
+ */
+export function solvedWithin(run: Pick<BenchRun, "results">, ks: readonly number[] = WITHIN): { k: number; solved: number }[] {
+  const firsts = run.results.filter((r) => r.outcome === "solved").map((r) => r.attempts);
+  return ks.map((k) => ({ k, solved: firsts.filter((n) => n <= k).length }));
+}
+
 /** Two runs head to head on the problems both tried: what each solved that the other did not. */
 export function headToHead(a: Pick<BenchRun, "results">, b: Pick<BenchRun, "results">): { both: string[]; onlyA: string[]; onlyB: string[]; neither: string[] } {
   const outcome = (r: Pick<BenchRun, "results">) => new Map(r.results.filter((x) => x.outcome !== "skipped").map((x) => [x.id, x.outcome === "solved"]));
@@ -555,11 +635,14 @@ export function timelineOf(r: Pick<BenchResult, "log">): TimelineRow[] {
 export const BENCH_BASICS: { term: string; text: string }[] = [
   { term: "Solved", text: "Lean's strict verifier accepted the proof: the statement is unchanged, no sorry or extra axiom is used, and Lean's kernel checks it. Nothing else counts, whatever the model says." },
   { term: "The problems", text: "miniF2F has 244 competition problems (AIME, AMC, IMO, MATH exercises); PutnamBench has Putnam problems since 1962 and is much harder. The same number of problems always picks the same ones, so runs compare." },
-  { term: "Methods", text: "Attempts: the model writes whole proofs and fixes them from Lean's errors. Decompose: if that fails, the statement is split into lemmas that are proved separately and put back together." },
-  { term: "Solve rate and cost", text: "Solved problems out of those tried; skipped ones (budget spent, stopped) do not count. Per solve is the run's whole cost divided by the problems solved." },
+  { term: "Methods", text: "Attempts: the model writes whole proofs and fixes them from Lean's errors. Decompose: if that fails, the statement is split into lemmas that are proved separately and put back together. Step by step: the proof is built one tactic at a time on Lean's live proof states, keeping only steps Lean accepts." },
+  { term: "Solve rate and cost", text: "In the app, solved problems out of those tried; on the public site, out of the whole sample, so a skipped problem counts as unsolved. Per solve is the run's whole cost divided by the problems solved. Cost, time and tokens are as the run reported them." },
   { term: "Attempts", text: "One attempt is one proof the model wrote and Lean checked. Attempts per solve is how many the solved problems took on average; fewer means the model gets there sooner." },
   { term: "By automation alone", text: "Problems Lean's own tactics (omega, simp, linarith, aesop, …) closed before any model call: free, and a floor every model starts from." },
   { term: "Why not solved", text: "Each failed attempt is labelled from Lean's errors: wrong lemma names, type mismatch, goals left open, timeouts, and so on. A problem's reason is its most common one; its timeline shows every attempt." },
+  { term: "Range", text: "The 95% range of a solve rate: with few problems it is wide (13 of 20 is 43–82%), so two runs are only told apart when their ranges barely overlap. Only runs on the whole set are ranked." },
+  { term: "Solved within k", text: "How many problems were solved within 1, 4, 16 or 64 model attempts. Like the labs' pass@k, but Mack's attempts learn from Lean's errors where pass@k samples independently, so compare with care." },
+  { term: "Recent problems", text: "The latest Putnam competitions, as a contamination check: a model trained before they were set cannot have memorized their proofs. A big drop from older problems suggests memory helped there." },
   { term: "Mack's own failures", text: "If Lean could not start, crashed or lost its connection, the attempt is labelled \"Mack or Lean failed to run\", never blamed on the model. Many of these mean something to fix in Mack or the setup, not in the model." },
 ];
 
@@ -576,13 +659,15 @@ export function harnessOf(config: BenchConfig, mack: string, openMathHarness: st
   // Open Math Harness's own searches use none of Mack's additions: only its verifier and Lean rules, as ported.
   if (config.method === "search") return { mack, openMathHarness: openMathHarness.slice(0, 7), procedures: ["strict verifier", "linters off", "OMH search tree"] };
   if (config.method === "ultramath") return { mack, openMathHarness: openMathHarness.slice(0, 7), procedures: ["strict verifier", "linters off", "OMH ultramath swarm"] };
-  const procedures = ["strict verifier", "linters off", "dead-tactic repair"];
+  if (config.method === "steps") return { mack, openMathHarness: openMathHarness.slice(0, 7), procedures: ["strict verifier", "linters off", "step-by-step search", ...(config.automation ? ["automation on every state"] : []), ...(config.premises ? ["premise selection"] : [])] };
+  const procedures = ["strict verifier", "linters off", "dead-tactic repair", "name repair"];
   if (config.automation) procedures.push("automation sweep");
   if (config.premises) procedures.push("premise selection");
   if (config.easierFirst) procedures.push("easier versions first");
   if (config.method === "decompose") procedures.push("decompose");
   if (config.prover) procedures.push(config.prover.includes(",") ? "prover ensemble" : "prover model");
   if (config.revisions) procedures.push(`restart after ${config.revisions} revisions`);
+  if (config.lemmaPool) procedures.push("run-wide lemma pool");
   return { mack, openMathHarness: openMathHarness.slice(0, 7), procedures };
 }
 

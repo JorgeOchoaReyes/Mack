@@ -144,6 +144,41 @@ export function similarNames(decls: Decl[], unknown: string, limit = 6): Decl[] 
     .map((x) => x.d);
 }
 
+/**
+ * The one real Mathlib name an unknown name almost certainly meant, or null
+ * when there is no single clear one: the same last component in another
+ * namespace (`Nat.pow_le_pow_left` for `pow_le_pow_left`, or the reverse), or
+ * the same name up to case and underscores. A guess, not a fact: the caller
+ * keeps it only when Lean then reports fewer errors.
+ */
+export function renameFor(decls: Decl[], unknown: string): string | null {
+  const parts = unknown.split(".");
+  const last = parts[parts.length - 1];
+  if (!last || decls.some((d) => d.name === unknown)) return null;
+  const head = parts.length > 1 ? parts[0] : "";
+  const pick = (cands: Decl[]): string | null => {
+    const names = [...new Set(cands.map((d) => d.name))].filter((n) => n !== unknown);
+    if (names.length === 1) return names[0];
+    const same = head ? names.filter((n) => n.startsWith(`${head}.`)) : names.filter((n) => !n.includes("."));
+    return same.length === 1 ? same[0] : null;
+  };
+  const sameLast = pick(decls.filter((d) => d.name === last || d.name.endsWith(`.${last}`)));
+  if (sameLast) return sameLast;
+  const norm = (s: string) => s.toLowerCase().replace(/_/g, "");
+  const ns = parts.slice(0, -1).join(".");
+  return pick(decls.filter((d) => norm(d.name) === norm(unknown) || (ns && d.name.startsWith(`${ns}.`) && norm(d.name.slice(ns.length + 1)) === norm(last))));
+}
+
+/** `source` with each name of `renames` replaced where it stands as a whole identifier. */
+export function applyRenames(source: string, renames: Record<string, string>): string {
+  let out = source;
+  for (const [from, to] of Object.entries(renames)) {
+    const escaped = from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    out = out.replace(new RegExp(`(?<![\\p{L}\\p{N}_'.!?])${escaped}(?![\\p{L}\\p{N}_'!?])`, "gu"), to);
+  }
+  return out;
+}
+
 /** For each name Lean did not know, the real Mathlib names closest to it, as a note for the next attempt; empty when there is nothing to say. */
 export function nameHints(decls: Decl[], names: string[]): string {
   const lines = names
@@ -183,16 +218,20 @@ export function mathlibSource(workspace: string): string | undefined {
   return existsSync(join(root, "Mathlib")) ? root : undefined;
 }
 
-/** What identifies the installed Mathlib: its commit in the manifest, else the folder's time. */
-function versionOf(workspace: string, root: string): string {
+/** The Mathlib commit a workspace's lake-manifest.json pins, or undefined. */
+export function mathlibRev(workspace: string): string | undefined {
   try {
     const m = JSON.parse(readFileSync(join(workspace, "lake-manifest.json"), "utf8")) as { packages?: { name?: string; rev?: string }[] };
     const rev = m.packages?.find((p) => p.name === "mathlib")?.rev;
-    if (rev) return rev;
+    return rev && /^[0-9a-f]{7,40}$/.test(rev) ? rev : undefined;
   } catch {
-    // No manifest: the folder's time stands in.
+    return undefined;
   }
-  return String(statSync(join(root, "Mathlib")).mtimeMs);
+}
+
+/** What identifies the installed Mathlib: its commit in the manifest, else the folder's time. */
+function versionOf(workspace: string, root: string): string {
+  return mathlibRev(workspace) ?? String(statSync(join(root, "Mathlib")).mtimeMs);
 }
 
 /** The index of one workspace's Mathlib: built once per Mathlib version and kept in `cacheFile`. */

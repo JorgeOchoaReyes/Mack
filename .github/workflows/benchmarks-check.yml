@@ -1,12 +1,16 @@
 # Checks shared benchmark runs (benchmarks/runs/<folder>/) on the pull request
-# that adds them: only the files a share writes, a run.json the site can read,
-# problems from the set it names, proofs for solved problems, sane sizes, and
-# nothing that looks like a secret (core/bench/validate.ts). Make this check
-# required so a run reaches the benchmark site only when it passes.
+# that adds them, in two jobs:
+# - validate: only the files a share writes, a run.json the site can read,
+#   the whole fixed sample for its size, proofs for solved problems, sane
+#   sizes, and nothing that looks like a secret (core/bench/validate.ts);
+# - proofs: every solved proof re-verified with Lean and the strict verifier,
+#   against the Mathlib the run used (core/bench/recheck.ts), so a solve
+#   cannot be claimed by editing run.json.
+# Make both required so a run reaches the benchmark site only when they pass.
 name: Benchmark runs
 on:
   pull_request:
-    paths: ["benchmarks/runs/**", "core/bench/**", "scripts/validate-bench.ts"]
+    paths: ["benchmarks/runs/**", "core/bench/**", "scripts/validate-bench.ts", "scripts/recheck-bench.ts", ".github/workflows/benchmarks-check.yml"]
 permissions:
   contents: read
 jobs:
@@ -26,3 +30,71 @@ jobs:
         run: |
           dirs=$(git diff --name-only "origin/${{ github.base_ref }}"...HEAD -- benchmarks/runs | awk -F/ 'NF>=4 {print $1"/"$2"/"$3}' | sort -u | tr '\n' ' ')
           node dist-electron/scripts/validate-bench.js $dirs
+
+  proofs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Runs this change adds or edits
+        id: runs
+        shell: bash
+        run: |
+          dirs=""
+          # Only well-formed folder names (the validate job reports the others), so no name reaches a command line as code.
+          for d in $(git diff --name-only "origin/${{ github.base_ref }}"...HEAD -- benchmarks/runs | awk -F/ 'NF>=4 {print $1"/"$2"/"$3}' | sort -u | grep -E '^benchmarks/runs/[a-z0-9][a-z0-9-]{0,99}$' || true); do
+            [ -f "$d/run.json" ] && dirs="$dirs $d"
+          done
+          echo "dirs=$dirs" >> "$GITHUB_OUTPUT"
+          echo "Runs: ${dirs:-none}"
+      - uses: actions/setup-node@v4
+        if: steps.runs.outputs.dirs != ''
+        with:
+          node-version: 22
+      - name: Install elan
+        if: steps.runs.outputs.dirs != ''
+        shell: bash
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - uses: actions/cache@v4
+        if: steps.runs.outputs.dirs != ''
+        with:
+          path: community/lean/.lake
+          key: community-lake-${{ hashFiles('community/lean/lake-manifest.json', 'community/lean/lean-toolchain') }}
+      - if: steps.runs.outputs.dirs != ''
+        run: npm ci
+      - if: steps.runs.outputs.dirs != ''
+        run: npx tsc -p tsconfig.electron.json
+      - name: Re-check every solved proof with Lean
+        if: steps.runs.outputs.dirs != ''
+        shell: bash
+        env:
+          MACK_RECHECK_JOBS: "3"
+          DIRS: ${{ steps.runs.outputs.dirs }}
+        run: |
+          set -euo pipefail
+          pinned=$(node -e 'const m=require("./community/lean/lake-manifest.json");console.log((m.packages.find(p=>p.name==="mathlib")||{}).rev||"")')
+          status=0
+          for d in $DIRS; do
+            rev=$(node -e 'const r=require(require("path").resolve(process.argv[1]));const v=(r.env&&r.env.mathlib)||"";console.log(/^[0-9a-f]{7,40}$/.test(v)?v:"")' "$d/run.json")
+            if [ -z "$rev" ] || [ "$rev" = "$pinned" ]; then
+              ws="community/lean"
+              [ -z "$rev" ] && echo "::notice::$d does not record its Mathlib; re-checking against the pinned one ($pinned)."
+            else
+              ws="$RUNNER_TEMP/mathlib-$rev"
+              if [ ! -d "$ws/.lake/packages/mathlib" ]; then
+                mkdir -p "$ws"
+                curl -sSfL "https://raw.githubusercontent.com/leanprover-community/mathlib4/$rev/lean-toolchain" -o "$ws/lean-toolchain"
+                printf 'name = "recheck"\n\n[[require]]\nname = "mathlib"\ngit = "https://github.com/leanprover-community/mathlib4"\nrev = "%s"\n' "$rev" > "$ws/lakefile.toml"
+                (cd "$ws" && lake update && lake exe cache get)
+              fi
+            fi
+            if [ "$ws" = "community/lean" ] && [ ! -f community/lean/.lake/packages/mathlib/.lake/build/lib/lean/Mathlib.olean ]; then
+              (cd community/lean && lake exe cache get && lake build Mathlib)
+            fi
+            node dist-electron/scripts/recheck-bench.js "$ws" "$d" || status=1
+          done
+          exit $status

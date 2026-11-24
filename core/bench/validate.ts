@@ -1,10 +1,13 @@
 // What makes a shared benchmark run safe to merge into the Mack repo, where the
 // site publishes it: only the files a share writes, a run.json the site can
 // read whose problems belong to the set it names, sane sizes, and nothing that
-// looks like a secret. CI runs this on every pull request that adds a run
+// looks like a secret, and the whole fixed sample for its size (a failure
+// cannot be dropped, a problem cannot be hand-picked). Whether each solved
+// proof really holds is checked apart, with Lean (scripts/recheck-bench.ts).
+// CI runs this on every pull request that adds a run
 // (scripts/validate-bench.ts); a run that fails is not merged.
 
-import { benchSet, type BenchRun } from "./bench";
+import { benchSet, sampleProblems, type BenchRun } from "./bench";
 import { findings } from "../secrets";
 
 /** The files a shared run holds; REPORT.md and run.json are required. */
@@ -46,6 +49,8 @@ export function validateRun(folder: string, files: Record<string, string>): stri
     // A solved problem carries the proof the verifier accepted, so anyone can check it.
     const noProof = run.results.filter((r) => r.outcome === "solved" && !r.proof).map((r) => r.id);
     if (noProof.length) problems.push(`solved problems without their proof: ${noProof.slice(0, 5).join(", ")}`);
+    // Every problem of the fixed sample for the run's size, each once: no dropped failures, no hand-picked problems.
+    problems.push(...sampleProblems(run));
   }
   if ("attempts.jsonl" in files) {
     const lines = files["attempts.jsonl"].split("\n").filter((l) => l.trim());

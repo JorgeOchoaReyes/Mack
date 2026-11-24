@@ -8,7 +8,7 @@ import { extractStatement, frozenObjection, protocolObjection } from "./lean/rul
 import { describeRejection, excerpt, pristineType, verifyText, type LeanRun } from "./lean/verify";
 import type { ChatMessage, ModelProvider } from "./model/provider";
 import { prepare, type Lemma, type PrepareEvent } from "./prepare";
-import { unknownNames } from "./lean/mathlib-index";
+import { applyRenames, unknownNames } from "./lean/mathlib-index";
 import { closeByAutomation, sweep } from "./lean/analysis";
 
 /** The sweep's tactics (core/lean/analysis.ts SWEEP_SUITE), for the trace. */
@@ -57,6 +57,8 @@ export type ProveOptions = {
   lemmas?: Lemma[];
   /** Real Mathlib names close to ones Lean did not know, as a note for the next attempt. */
   lookup?: (unknown: string[]) => Promise<string>;
+  /** For names Lean did not know, the one real Mathlib name each almost certainly meant (none when unclear): tried before the model revises. */
+  rename?: (unknown: string[]) => Promise<Record<string, string>>;
   /**
    * Models trained for Lean (DeepSeek-Prover, Kimina, Goedel) that write the attempts; `model` then only plans.
    * With several, the chains take them in turn: different models fail on different problems, so a mix solves more.
@@ -210,6 +212,20 @@ export async function prove(o: ProveOptions): Promise<void> {
             candidate = sw.current;
             check = await quick(candidate);
             swept = sw.open ? `Lean's automation closed ${sw.closed} of the ${sw.closed + sw.open} sorries; the file below has them filled in. ` : "";
+          }
+        }
+        // A lemma name Mathlib does not have, with one clear real name, is fixed here rather than costing an attempt.
+        if (check.status === "errors" && o.rename) {
+          const unknown = unknownNames(check.errors.map((e) => e.message).join("\n"));
+          const renames = unknown.length ? await o.rename(unknown).catch(() => ({}) as Record<string, string>) : {};
+          const renamed = Object.keys(renames).length ? applyRenames(candidate, renames) : candidate;
+          if (renamed !== candidate) {
+            const again = await quick(renamed);
+            if (again.status !== "noVerdict" && again.errors.length < check.errors.length) {
+              emit({ type: "status", message: `${label(n)}: fixed lemma names Lean did not know: ${Object.entries(renames).map(([a, b]) => `${a} → ${b}`).join(", ")}` });
+              candidate = renamed;
+              check = again;
+            }
           }
         }
         // A tactic left after its goal closed is removed here rather than costing an attempt.

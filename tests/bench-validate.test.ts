@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BENCH_SETS, benchShare, type BenchRun } from "../core/bench/bench";
+import { BENCH_SETS, benchShare, pickSample, type BenchRun } from "../core/bench/bench";
 import { validateRun } from "../core/bench/validate";
 
 const set = BENCH_SETS[0];
@@ -10,11 +10,11 @@ const run: BenchRun = {
   finishedAt: 1,
   status: "done",
   config: { model: "m", maxAttempts: 2, parallel: 1, automation: true, revisions: 4 },
-  sample: [set.problems[0].id, set.problems[1].id],
+  sample: pickSample(set, 2),
   budget: 0,
   results: [
-    { id: set.problems[0].id, outcome: "solved", attempts: 1, ms: 1, usd: 0, proof: "theorem …" },
-    { id: set.problems[1].id, outcome: "failed", attempts: 2, ms: 1, usd: 0, log: [{ n: 1, outcome: "errors", kind: "gaps", ms: 1, tokens: 1, detail: "x", candidate: "y", thinking: "my key is sk-or-v1-0123456789abcdef0123456789abcdef0123456789abcdef" }] },
+    { id: pickSample(set, 2)[0], outcome: "solved", attempts: 1, ms: 1, usd: 0, proof: "theorem …" },
+    { id: pickSample(set, 2)[1], outcome: "failed", attempts: 2, ms: 1, usd: 0, log: [{ n: 1, outcome: "errors", kind: "gaps", ms: 1, tokens: 1, detail: "x", candidate: "y", thinking: "my key is sk-or-v1-0123456789abcdef0123456789abcdef0123456789abcdef" }] },
   ],
 };
 
@@ -35,5 +35,16 @@ describe("validating a shared run before it is merged", () => {
     expect(validateRun("ok", { ...good, "run.json": foreign }).join("\n")).toContain("not in miniF2F test: made_up_problem");
     expect(validateRun("ok", { ...good, "REPORT.md": "token ghp_0123456789abcdefghijABCDEFGHIJ012345" }).join("\n")).toContain("looks like a secret");
     expect(validateRun("ok", { "run.json": "{" }).join("\n")).toContain("missing REPORT.md");
+  });
+
+  it("refuses a run that dropped a failure or picked its own problems", () => {
+    const good = benchShare(run, set, "0.2.22", "me").files;
+    const dropped = JSON.stringify({ ...run, results: [run.results[0]] });
+    expect(validateRun("ok", { ...good, "run.json": dropped }).join("\n")).toContain(`problems of the sample with no result (a skipped one is still listed, as skipped): ${run.sample[1]}`);
+    const picked = [set.problems[0].id, set.problems[1].id].filter((id) => !run.sample.includes(id)).slice(0, 2);
+    const handPicked = JSON.stringify({ ...run, sample: [run.sample[0], picked[0]], results: [run.results[0], { ...run.results[1], id: picked[0] }] });
+    expect(validateRun("ok", { ...good, "run.json": handPicked }).join("\n")).toContain("the sample is not the fixed 2 problems of miniF2F test");
+    const twice = JSON.stringify({ ...run, results: [...run.results, run.results[0]] });
+    expect(validateRun("ok", { ...good, "run.json": twice }).join("\n")).toContain("more than one result");
   });
 });

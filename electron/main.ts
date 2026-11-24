@@ -17,7 +17,7 @@ import { ghCliToken, githubLogin, openCommunityPr, pullState, type GitHubTokenSo
 import { COMMUNITY_REPO } from "../core/community";
 import { prove, type ProveEvent } from "../core/prove";
 import { lemmaSource, type Lemma } from "../core/prepare";
-import { describeDecls, describePremises, MathlibIndex, mathlibSource, nameHints, premises, searchDecls } from "../core/lean/mathlib-index";
+import { describeDecls, describePremises, MathlibIndex, mathlibRev, mathlibSource, nameHints, renameFor, premises, searchDecls } from "../core/lean/mathlib-index";
 import { describeEnvironment, probeEnvironment } from "../core/environment";
 import { readPlan } from "../core/chat/plan";
 import { search, type SearchEvent } from "../core/search/search";
@@ -42,6 +42,8 @@ import { registerUpdates } from "./updates";
 import { remoteLean, setRemoteLean } from "../core/lean/remote";
 import { describeExamples, ProofStore, trainingData } from "../core/proof-store";
 import { decompose } from "../core/decompose";
+import { stepSearch } from "../core/stepsearch";
+import { helperLemmas, relevantLemmas } from "../core/bench/pool";
 import { easierVersions } from "../core/variants";
 import { attemptKind, attemptsDataset, harnessOf, BENCH_SETS, BENCH_SHARE_DIR, benchReport, benchSet, benchShare, benchSlug, classifyFailure, LOG_LIMITS, splitReply, type AttemptLog, type BenchEnv, pickSample, runBench, type AttemptNote, type BenchEvent, type BenchResult, type BenchRun } from "../core/bench/bench";
 import { newerMackRelease, UPSTREAM } from "../core/upstream";
@@ -594,6 +596,19 @@ async function mathlibHints(names: string[]): Promise<string> {
   return index ? nameHints(await index.load(), names) : "";
 }
 
+/** For names Lean did not know, the one real Mathlib name each almost certainly meant. */
+async function mathlibRenames(names: string[]): Promise<Record<string, string>> {
+  const index = names.length ? mathlibIndex(readSettings()) : undefined;
+  if (!index) return {};
+  const decls = await index.load();
+  const out: Record<string, string> = {};
+  for (const n of names) {
+    const to = renameFor(decls, n);
+    if (to) out[n] = to;
+  }
+  return out;
+}
+
 /**
  * The lemmas a verifier accepted in a project, newest first, from its plan's Proved list: the
  * accepted proof file for `verify_lean`, the run's proof for a proof run. `except` is the
@@ -670,6 +685,7 @@ async function attemptProof(
     check: quickCheck(s, parallel),
     parallel,
     lookup: mathlibHints,
+    rename: mathlibRenames,
     provers: proversFor(s, o.meter, o.hooks),
     revisions: s.revisionsPerChain,
     automation: s.leanAutomation,
@@ -829,7 +845,7 @@ const benchDir = () => {
 };
 const saveBench = (run: BenchRun) => writeFileSync(join(benchDir(), `${run.id}.json`), JSON.stringify(run));
 
-async function benchOne(s: Settings, p: { id: string; source: string }, bench: BenchRun, signal: AbortSignal, status: (m: string) => void): Promise<BenchResult> {
+async function benchOne(s: Settings, p: { id: string; source: string }, bench: BenchRun, signal: AbortSignal, status: (m: string) => void, pool: Lemma[] = []): Promise<BenchResult> {
   const t0 = Date.now();
   const model = s.models[s.provider];
   const left = bench.budget > 0 ? bench.budget - bench.results.reduce((a, r) => a + r.usd, 0) : 0;
@@ -916,6 +932,23 @@ async function benchOne(s: Settings, p: { id: string; source: string }, bench: B
         else if (ev.type === "solved" || ev.type === "failed" || ev.type === "status" || ev.type === "idea" || ev.type === "statementCheck") onEvent(ev);
       },
     });
+  } else if (method === "steps") {
+    quickCheck(s, 2);
+    const pool = repl?.pool;
+    if (!pool) onEvent({ type: "failed", message: "Step by step needs the Lean REPL, and it is not running." });
+    else
+      await stepSearch({
+        frozen: p.source,
+        provider,
+        model,
+        session: pool.session,
+        run,
+        maxCalls: s.maxAttempts,
+        automation: s.leanAutomation,
+        notes: s.premiseSelection ? await premisesFor(s, p.source).catch(() => "") : "",
+        signal: both,
+        onEvent,
+      });
   } else if (method === "ultramath") {
     let turn = 0;
     await ultramath({
@@ -941,7 +974,12 @@ async function benchOne(s: Settings, p: { id: string; source: string }, bench: B
       },
     });
   } else {
-    await attemptProof(s, method, p.source, {
+    // Lemmas this run proved on earlier problems, the ones related to this statement.
+    const offered = bench.config.lemmaPool ? relevantLemmas(pool, p.source) : [];
+    if (offered.length) trace(`Offered ${offered.length} lemma${offered.length === 1 ? "" : "s"} proved earlier in this run: ${offered.map((l) => /^(?:private\s+)?(?:theorem|lemma)\s+(\S+)/.exec(l.source)?.[1] ?? "?").join(", ")}`);
+    // Never the person's own past proofs as examples: they are private, so no one else could reproduce the run.
+    await attemptProof({ ...s, reuseProofs: false }, method, p.source, {
+      lemmas: offered,
       provider,
       model,
       meter,
@@ -953,6 +991,7 @@ async function benchOne(s: Settings, p: { id: string; source: string }, bench: B
       onEvent,
     });
   }
+  if (proof && bench.config.lemmaPool) pool.push(...helperLemmas(proof, p.source, p.id));
   if (proof) return { id: p.id, outcome: "solved", attempts, ms: Date.now() - t0, usd: meter.spent, proof, log, timeline };
   const outcomes: Record<string, number> = {};
   for (const n of notes) outcomes[n.outcome] = (outcomes[n.outcome] ?? 0) + 1;
@@ -1000,7 +1039,7 @@ const benchLabel = (m: BenchModels) => `${m.model.split("/").pop()}${m.proverMod
  * comparison is a group of runs. Stopping stops the run going and the ones
  * queued behind it.
  */
-ipcMain.handle("bench:start", async (e, setId: string, n: number, budget: number, method?: string, models?: BenchModels[]) => {
+ipcMain.handle("bench:start", async (e, setId: string, n: number, budget: number, method?: string, models?: BenchModels[], opts?: { lemmaPool?: boolean }) => {
   if (benching) throw new Error("A benchmark is already running.");
   const base = readSettings();
   const set = benchSet(String(setId));
@@ -1011,12 +1050,16 @@ ipcMain.handle("bench:start", async (e, setId: string, n: number, budget: number
   if (!list.length) throw new Error(`Choose a model for the run, or one in Setup.`);
   if (list.length > 6) throw new Error("Compare at most 6 models at once.");
   if (!leanReady(base)) throw new Error("Install Lean and Mathlib in Setup first.");
+  if (method === "steps" && !(base.useRepl && (remoteOn(base) ? base.remoteLean.repl : hasRepl(base.leanWorkspace))))
+    throw new Error("Step by step works on Lean's live proof states, so it needs the Lean REPL: turn it on in Settings → Prover, or build it in Settings → Setup.");
   const sample = pickSample(set, Math.floor(Number(n)) || 10);
   const group = list.length > 1 ? `${Date.now()}` : undefined;
   const env: BenchEnv = {
     app: app.getVersion(),
     platform: `${process.platform === "win32" ? "Windows" : process.platform === "darwin" ? "macOS" : process.platform} ${os.release()}, ${Math.round(os.totalmem() / 1024 ** 3)} GB`,
     lean: (await lakeVersion(base.leanWorkspace).catch(() => null)) ?? undefined,
+    // The Mathlib the proofs were checked against, so CI re-checks them against the same one (a remote machine's is not known here).
+    ...(remoteOn(base) ? {} : { mathlib: mathlibRev(base.leanWorkspace) }),
     leanDeadlineMs: base.timeoutMs,
     leanProcesses: leanProcesses(base),
     repl: base.useRepl && (remoteOn(base) ? base.remoteLean.repl : hasRepl(base.leanWorkspace)),
@@ -1039,9 +1082,10 @@ ipcMain.handle("bench:start", async (e, setId: string, n: number, budget: number
         parallel: parallelOf(s),
         automation: s.leanAutomation,
         revisions: s.revisionsPerChain,
-        method: (["decompose", "search", "ultramath"] as const).find((x) => x === method) ?? "single",
+        method: (["decompose", "steps", "search", "ultramath"] as const).find((x) => x === method) ?? "single",
         easierFirst: s.easierFirst,
         premises: s.premiseSelection,
+        ...((method === "single" || method === "decompose" || !method) && opts?.lemmaPool !== false ? { lemmaPool: true } : {}),
       },
       sample,
       results: [],
@@ -1062,6 +1106,8 @@ ipcMain.handle("bench:start", async (e, setId: string, n: number, budget: number
   void (async () => {
     for (const [i, run] of runs.entries()) {
       const s = withModels(base, list[i]);
+      // Each run its own lemma pool: runs compared on the same problems never share one.
+      const pool: Lemma[] = [];
       benchingId = run.id;
       run.startedAt = Date.now();
       if (ctl.signal.aborted) {
@@ -1071,7 +1117,7 @@ ipcMain.handle("bench:start", async (e, setId: string, n: number, budget: number
         saveBench(run);
         continue;
       }
-      await runBench({ run, set, signal: ctl.signal, onEvent: send(run), proveOne: (p, signal) => benchOne(s, p, run, signal, (message) => send(run)({ type: "status", id: p.id, message })) }).catch((err: Error) => {
+      await runBench({ run, set, signal: ctl.signal, onEvent: send(run), proveOne: (p, signal) => benchOne(s, p, run, signal, (message) => send(run)({ type: "status", id: p.id, message }), pool) }).catch((err: Error) => {
         run.status = "stopped";
         run.message = err.message;
       });

@@ -9,7 +9,7 @@ import { api, errorText, type BenchModels, type BenchResult, type BenchRun, type
 import { PROVIDERS } from "../../core/model/providers";
 import { Button, EmptyState, Field, timeAgo, Toggle } from "../components/ui";
 import { formatUsd } from "../../core/model/metered";
-import { BENCH_BASICS, METHOD_LABELS, type BenchMethod, FAILURES, failureBreakdown, harnessLabel, headToHead, runMetrics, summarize, timelineOf } from "../../core/bench/bench";
+import { BENCH_BASICS, METHOD_LABELS, type BenchMethod, FAILURES, failureBreakdown, harnessLabel, headToHead, rateRange, runMetrics, solvedWithin, summarize, timelineOf } from "../../core/bench/bench";
 import { COMMUNITY_REPO } from "../../core/community";
 
 type Props = { settings: Settings; onGo: (page: "settings" | "setup") => void };
@@ -37,6 +37,7 @@ export function BenchmarkPage({ settings, onGo }: Props) {
   const [compare, setCompare] = useState<string[]>([]);
   const [metrics, setMetrics] = useState<string | null>(null);
   const [replReady, setReplReady] = useState<boolean | null>(null);
+  const [lemmaPool, setLemmaPool] = useState(true);
   /** Where each shared run's pull request stands, from GitHub. */
   const [prs, setPrs] = useState<Record<string, string>>({});
 
@@ -64,7 +65,7 @@ export function BenchmarkPage({ settings, onGo }: Props) {
   const start = async () => {
     setError("");
     try {
-      const started = await api.benchStart(setId, size, budget, method, models.filter((m) => m.model.trim()));
+      const started = await api.benchStart(setId, size, budget, method, models.filter((m) => m.model.trim()), { lemmaPool });
       setQueued(started.map((r) => r.id));
       setLive(started[0]);
     } catch (e) {
@@ -119,7 +120,9 @@ export function BenchmarkPage({ settings, onGo }: Props) {
               hint={
                 method === "search" || method === "ultramath"
                   ? "Open Math Harness's own method, as Mack ports it: none of Mack's additions (automation, lemma suggestions, decompose, prover models) are used, so it is the baseline Mack's methods are measured against. Its limits are in Settings → Prover."
-                  : "Mack's methods. Decompose tries each problem directly, then splits it into lemmas proved at once: slower and dearer, and stronger on hard problems."
+                  : method === "steps"
+                    ? "Mack's step-by-step search: the proof is built one tactic at a time on Lean's live proof states, keeping only the steps Lean accepts and trying Lean's automation on every state. Each model call proposes several next steps; the attempt budget is the number of calls. Needs the Lean REPL."
+                    : "Mack's methods. Decompose tries each problem directly, then splits it into lemmas proved at once: slower and dearer, and stronger on hard problems."
               }
             >
               <select className="input" value={method} onChange={(e) => setMethod(e.target.value as BenchMethod)}>
@@ -138,6 +141,12 @@ export function BenchmarkPage({ settings, onGo }: Props) {
             </Field>
           </div>
           <ModelsEditor models={models} setModels={setModels} />
+          {(method === "single" || method === "decompose") && (
+            <label className="row gap-sm small" title="Each run keeps its own pool: runs compared on the same problems never share lemmas.">
+              <input type="checkbox" checked={lemmaPool} onChange={(e) => setLemmaPool(e.target.checked)} />
+              Share proved lemmas across the run: helper lemmas from problems already solved are offered to the ones after them.
+            </label>
+          )}
           {!settings.remoteLean?.host && (replReady === false || !settings.useRepl) && (
             <div className="bench-warning">
               <b>The Lean REPL is {settings.useRepl ? "not built" : "turned off"}, so every Lean check reloads Mathlib.</b> A run then takes several times longer (minutes per problem before the model is even asked).{" "}
@@ -666,7 +675,7 @@ function MetricsDialog({ run, onClose }: { run: BenchRun; onClose: () => void })
           </button>
         </div>
         <div className="bench-stats">
-          <Stat label="Solved" value={`${m.solved}/${m.tried}`} sub={pct(m.rate)} />
+          <Stat label="Solved" value={`${m.solved}/${m.tried}`} sub={`${pct(m.rate)} · 95% range ${pct(rateRange(m.solved, m.tried).low)}–${pct(rateRange(m.solved, m.tried).high)}`} />
           <Stat label="Cost" value={formatUsd(m.usd)} sub={m.perSolve !== null ? `${formatUsd(m.perSolve)} per solve` : "no solve"} />
           <Stat label="Time" value={secs(m.ms)} sub={`${secs(m.msPerProblem)} per problem`} />
           <Stat label="Attempts" value={`${m.attempts}`} sub={m.attemptsPerSolve !== null ? `${m.attemptsPerSolve.toFixed(1)} per solve` : "no solve"} />
@@ -703,6 +712,20 @@ function MetricsDialog({ run, onClose }: { run: BenchRun; onClose: () => void })
               </table>
             </div>
           </>
+        )}
+        {m.solved > 0 && (
+          <div className="bench-breakdown">
+            <p className="small" title="Like the labs' pass@k, but Mack's attempts revise one another from Lean's errors, where pass@k samples independently.">Solved within k attempts</p>
+            {solvedWithin(run).map((w) => (
+              <div key={w.k} className="bench-why-row">
+                <span>within {w.k} attempt{w.k === 1 ? "" : "s"}</span>
+                <span className="bench-why-bar">
+                  <span style={{ width: `${m.tried ? (w.solved / m.tried) * 100 : 0}%`, background: "var(--ok)" }} />
+                </span>
+                <span className="muted small">{w.solved}</span>
+              </div>
+            ))}
+          </div>
         )}
         {m.kinds.length > 0 && (
           <div className="bench-breakdown">
