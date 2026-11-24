@@ -43,8 +43,8 @@ import { remoteLean, setRemoteLean } from "../core/lean/remote";
 import { describeExamples, ProofStore, trainingData } from "../core/proof-store";
 import { decompose } from "../core/decompose";
 import { easierVersions } from "../core/variants";
-import { attemptKind, attemptsDataset, BENCH_SETS, BENCH_SHARE_DIR, benchReport, benchSet, benchShare, benchSlug, classifyFailure, LOG_LIMITS, splitReply, type AttemptLog, type BenchEnv, pickSample, runBench, type AttemptNote, type BenchEvent, type BenchResult, type BenchRun } from "../core/bench/bench";
-import { newerMackRelease } from "../core/upstream";
+import { attemptKind, attemptsDataset, harnessOf, BENCH_SETS, BENCH_SHARE_DIR, benchReport, benchSet, benchShare, benchSlug, classifyFailure, LOG_LIMITS, splitReply, type AttemptLog, type BenchEnv, pickSample, runBench, type AttemptNote, type BenchEvent, type BenchResult, type BenchRun } from "../core/bench/bench";
+import { newerMackRelease, UPSTREAM } from "../core/upstream";
 import type { ApprovalPolicy } from "../core/chat/executor";
 import type { ReasoningEffort } from "../core/model/provider";
 
@@ -964,7 +964,7 @@ ipcMain.handle("bench:start", async (e, setId: string, n: number, budget: number
   };
   const runs: BenchRun[] = list.map((m, i) => {
     const s = withModels(base, m);
-    return {
+    const run: BenchRun = {
       id: `${Date.now() + i}`,
       set: set.id,
       startedAt: 0,
@@ -989,6 +989,8 @@ ipcMain.handle("bench:start", async (e, setId: string, n: number, budget: number
       label: benchLabel(m),
       env,
     };
+    run.harness = harnessOf(run.config, app.getVersion(), UPSTREAM.baseline);
+    return run;
   });
   const ctl = new AbortController();
   benching = ctl;

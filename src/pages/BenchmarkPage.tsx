@@ -9,7 +9,7 @@ import { api, errorText, type BenchModels, type BenchResult, type BenchRun, type
 import { PROVIDERS } from "../../core/model/providers";
 import { Button, EmptyState, Field, timeAgo, Toggle } from "../components/ui";
 import { formatUsd } from "../../core/model/metered";
-import { BENCH_BASICS, FAILURES, failureBreakdown, headToHead, runMetrics, summarize, timelineOf } from "../../core/bench/bench";
+import { BENCH_BASICS, FAILURES, failureBreakdown, harnessLabel, headToHead, runMetrics, summarize, timelineOf } from "../../core/bench/bench";
 import { COMMUNITY_REPO } from "../../core/community";
 
 type Props = { settings: Settings; onGo: (page: "settings" | "setup") => void };
@@ -190,6 +190,7 @@ export function BenchmarkPage({ settings, onGo }: Props) {
                       {r.config.prover ? ` + ${r.config.prover.split(",").map((m) => m.trim().split("/").pop()).join(", ")}` : ""} · {r.config.method === "decompose" ? "decompose · " : ""}{r.config.maxAttempts} attempts, {r.config.parallel} at once{r.config.automation ? "" : ", no automation"}
                     </span>
                     <span className="run-meta muted small">
+                      {(r.harness || r.env) && <span className="bench-harness" title={r.harness ? `Procedures: ${r.harness.procedures.join(", ")}` : ""}>{harnessLabel(r.harness, r.env?.app)}</span>}
                       {formatUsd(sum.usd)} · {secs(sum.ms)} · {timeAgo(r.startedAt)}
                       {r.status === "stopped" ? " · stopped" : ""}
                       <button
@@ -492,6 +493,9 @@ function Compare({ runs, onClose }: { runs: BenchRun[]; onClose: () => void }) {
         </button>
       </div>
       {sets.size > 1 && <p className="bad small">These runs are on different problem sets, so their rates do not compare.</p>}
+      {new Set(runs.map((r) => harnessLabel(r.harness, r.env?.app))).size > 1 && (
+        <p className="bad small">These runs used different harness versions ({[...new Set(runs.map((r) => harnessLabel(r.harness, r.env?.app) || "unknown"))].join(", ")}), so differences may come from Mack, not only the models.</p>
+      )}
       {runs.length === 2 && <HeadToHead a={runs[0]} b={runs[1]} name={name} />}
       <div className="bench-table">
         <table>
@@ -647,6 +651,7 @@ function MetricsDialog({ run, onClose }: { run: BenchRun; onClose: () => void })
         <p className="muted small">
           Model {c.model}
           {c.prover ? `; prover ${c.prover}` : ""}. {c.maxAttempts} attempts, {c.parallel} at once, starting over after {c.revisions} revisions; automation {c.automation ? "on" : "off"}, premise selection {c.premises ? "on" : "off"}, easier versions first {c.easierFirst ? "on" : "off"}.
+          {run.harness ? ` Harness: Mack ${run.harness.mack}, Open Math Harness ${run.harness.openMathHarness}; ${run.harness.procedures.join(", ")}.` : ""}
           {run.env ? ` Mack ${run.env.app} on ${run.env.platform}${run.env.lean ? `, ${run.env.lean}` : ""}; Lean deadline ${secs(run.env.leanDeadlineMs)}, ${run.env.leanProcesses} Lean processes${run.env.remoteLean ? " on a remote machine" : ""}${run.env.repl ? ", REPL on" : ""}.` : ""}
         </p>
       </div>

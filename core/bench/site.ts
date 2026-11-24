@@ -5,7 +5,7 @@
 // with its settings, its failures by reason and every problem's result.
 // Pure functions of the runs, so the page is the same wherever it is built.
 
-import { attemptKinds, BENCH_BASICS, BENCH_SETS, FAILURES, failureBreakdown, runMetrics, summarize, timelineOf, topErrors, type AttemptLog, type BenchResult, type BenchRun } from "./bench";
+import { attemptKinds, BENCH_BASICS, BENCH_SETS, harnessLabel, FAILURES, failureBreakdown, runMetrics, summarize, timelineOf, topErrors, type AttemptLog, type BenchResult, type BenchRun } from "./bench";
 
 /** A run as shared: its folder in the repo, who shared it and from which Mack. */
 export type SharedRun = BenchRun & { folder: string; sharedBy?: string; appVersion?: string; attemptsLogged?: boolean };
@@ -111,6 +111,7 @@ export function indexPage(runs: SharedRun[], repo: string): string {
 <td>${usd(s.usd)}</td>
 <td>${s.solved ? usd(s.usd / s.solved) : "–"}</td>
 <td>${day(r.startedAt)}</td>
+<td title="${esc(r.harness?.procedures.join(", ") ?? "")}">${esc(harnessLabel(r.harness, r.appVersion ?? r.env?.app).replace(/^Mack /, ""))}</td>
 <td>${r.sharedBy ? `<a href="https://github.com/${esc(r.sharedBy)}">${esc(r.sharedBy)}</a>` : ""}</td>
 </tr>`,
       )
@@ -137,7 +138,7 @@ ${modelRows.map(([k, m]) => `<tr><td class="wrap">${esc(k)}</td><td>${m.runs}</t
       : "";
     return `<h2>${esc(setLabel(set))} <span class="muted small">${rows.length} run${rows.length === 1 ? "" : "s"}</span></h2>
 <div class="scroll"><table>
-<thead><tr><th>#</th><th>Solved</th><th>Rate</th><th>Method</th><th>Models</th><th>Attempts</th><th>Cost</th><th>Per solve</th><th>Date</th><th>By</th></tr></thead>
+<thead><tr><th>#</th><th>Solved</th><th>Rate</th><th>Method</th><th>Models</th><th>Attempts</th><th>Cost</th><th>Per solve</th><th>Date</th><th>Harness</th><th>By</th></tr></thead>
 <tbody>
 ${body}
 </tbody></table></div>
@@ -201,7 +202,7 @@ ${m.byModel.map((x) => `<tr><td>${esc(short(x.model))}</td><td>${x.attempts}</td
     : ""
 }
 <div class="card small">
-Model <b>${esc(c.model)}</b>${c.prover ? `; prover <b>${esc(c.prover)}</b>` : "; no prover model"}. ${c.maxAttempts} attempts, ${c.parallel} at once, starting over after ${c.revisions} revisions. Automation ${c.automation ? "on" : "off"}; premise selection ${c.premises ? "on" : "off"}; easier versions first ${c.easierFirst ? "on" : "off"}.
+${r.harness ? `Harness <b>Mack ${esc(r.harness.mack)}</b>, Open Math Harness <b>${esc(r.harness.openMathHarness)}</b>; ${esc(r.harness.procedures.join(", "))}.<br>` : ""}Model <b>${esc(c.model)}</b>${c.prover ? `; prover <b>${esc(c.prover)}</b>` : "; no prover model"}. ${c.maxAttempts} attempts, ${c.parallel} at once, starting over after ${c.revisions} revisions. Automation ${c.automation ? "on" : "off"}; premise selection ${c.premises ? "on" : "off"}; easier versions first ${c.easierFirst ? "on" : "off"}.
 </div>
 <h2>Why problems were not solved</h2>
 ${

@@ -203,6 +203,8 @@ export type BenchRun = {
   group?: string;
   label?: string;
   env?: BenchEnv;
+  /** The harness the run used: Mack's version, the Open Math Harness commit it implements, and its own procedures in play. */
+  harness?: BenchHarness;
 };
 
 export type BenchEvent = { type: "started"; run: BenchRun } | { type: "status"; id: string; message: string } | { type: "result"; result: BenchResult } | { type: "finished"; run: BenchRun };
@@ -290,6 +292,7 @@ export function benchReport(run: BenchRun, set: BenchSet | undefined, appVersion
     `# Mack benchmark: ${set?.label ?? run.set}, ${sum.solved}/${sum.tried} solved (${(sum.rate * 100).toFixed(1)}%)`,
     "",
     `- Run ${run.id}, ${new Date(run.startedAt).toISOString()}${appVersion ? `, Mack ${appVersion}` : ""}, ${run.status}`,
+    ...(run.harness ? [`- Harness: Mack ${run.harness.mack}, Open Math Harness ${run.harness.openMathHarness}; procedures: ${run.harness.procedures.join(", ")}`] : []),
     `- Method: ${c.method ?? "single"}; model ${c.model}${c.prover ? `; prover ${c.prover}` : "; no prover model"}`,
     `- ${c.maxAttempts} attempts, ${c.parallel} at once, revisions before starting over ${c.revisions}; automation ${c.automation ? "on" : "off"}; premise selection ${c.premises ? "on" : "off"}; easier versions first ${c.easierFirst ? "on" : "off"}`,
     `- Spent $${sum.usd.toFixed(3)} in ${Math.round(sum.ms / 60000)} min; ${sum.byAutomation} solved by Lean's automation alone; budget ${run.budget ? `$${run.budget}` : "none"}`,
@@ -540,3 +543,26 @@ export const BENCH_BASICS: { term: string; text: string }[] = [
   { term: "Why not solved", text: "Each failed attempt is labelled from Lean's errors: wrong lemma names, type mismatch, goals left open, timeouts, and so on. A problem's reason is its most common one; its timeline shows every attempt." },
   { term: "Mack's own failures", text: "If Lean could not start, crashed or lost its connection, the attempt is labelled \"Mack or Lean failed to run\", never blamed on the model. Many of these mean something to fix in Mack or the setup, not in the model." },
 ];
+
+/**
+ * Which harness produced a run, so runs from different harness versions are
+ * never compared as if only the model changed: Mack's version, the Open Math
+ * Harness commit its methodology follows, and the procedures of Mack's own
+ * that the run used (each changes what a model can solve).
+ */
+export type BenchHarness = { mack: string; openMathHarness: string; procedures: string[] };
+
+/** The harness of a run from its config: the always-on procedures, and the ones its settings turned on. */
+export function harnessOf(config: BenchConfig, mack: string, openMathHarness: string): BenchHarness {
+  const procedures = ["strict verifier", "linters off", "dead-tactic repair"];
+  if (config.automation) procedures.push("automation sweep");
+  if (config.premises) procedures.push("premise selection");
+  if (config.easierFirst) procedures.push("easier versions first");
+  if (config.method === "decompose") procedures.push("decompose");
+  if (config.prover) procedures.push(config.prover.includes(",") ? "prover ensemble" : "prover model");
+  if (config.revisions) procedures.push(`restart after ${config.revisions} revisions`);
+  return { mack, openMathHarness: openMathHarness.slice(0, 7), procedures };
+}
+
+/** A harness in one line: `Mack 0.2.21 · OMH 687f2a2`. */
+export const harnessLabel = (h: BenchHarness | undefined, app?: string) => (h ? `Mack ${h.mack} · OMH ${h.openMathHarness}` : app ? `Mack ${app}` : "");
