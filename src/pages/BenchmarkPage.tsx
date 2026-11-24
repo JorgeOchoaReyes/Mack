@@ -4,12 +4,12 @@
 // with the settings they used, to compare.
 
 import { ArrowRight, BarChart3, CheckCircle2, CircleDashed, Columns3, Copy, Database, ExternalLink, FileDown, Gauge, GitPullRequest, Loader2, Play, Plus, Square, Trash2, X, XCircle, Zap } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { api, errorText, type BenchModels, type BenchResult, type BenchRun, type BenchSetInfo, type ProviderId, type Settings } from "../api";
 import { PROVIDERS } from "../../core/model/providers";
 import { Button, EmptyState, Field, timeAgo, Toggle } from "../components/ui";
 import { formatUsd } from "../../core/model/metered";
-import { FAILURES, failureBreakdown, headToHead, runMetrics, summarize } from "../../core/bench/bench";
+import { FAILURES, failureBreakdown, headToHead, runMetrics, summarize, timelineOf } from "../../core/bench/bench";
 import { COMMUNITY_REPO } from "../../core/community";
 
 type Props = { settings: Settings; onGo: (page: "settings" | "setup") => void };
@@ -260,7 +260,7 @@ function Results({ results, open, setOpen }: { results: BenchResult[]; open?: st
     <div className="bench-results">
       {results.map((r) => (
         <div key={r.id}>
-          <button className="bench-result" onClick={() => toggle(shown === r.id ? null : r.id)} disabled={!r.proof && !r.message && !r.lastError}>
+          <button className="bench-result" onClick={() => toggle(shown === r.id ? null : r.id)} disabled={!r.proof && !r.message && !r.lastError && !r.log?.length}>
             {r.outcome === "solved" ? r.attempts === 0 ? <Zap size={14} className="ok" /> : <CheckCircle2 size={14} className="ok" /> : r.outcome === "skipped" ? <CircleDashed size={14} className="muted" /> : <XCircle size={14} className="bad" />}
             <span className="mono">{r.id}</span>
             <span className="muted small">
@@ -269,10 +269,16 @@ function Results({ results, open, setOpen }: { results: BenchResult[]; open?: st
             </span>
             <span className="muted small">{r.outcome === "skipped" ? "" : `${secs(r.ms)} · ${formatUsd(r.usd)}`}</span>
           </button>
-          {shown === r.id && (r.proof || r.message || r.lastError) && (
+          {shown === r.id && (r.proof || r.message || r.lastError || r.log?.length) && (
             <div className="bench-why">
+              {r.log && r.log.length > 0 && <AttemptTimeline result={r} />}
               {r.proof ? (
-                <pre className="bench-proof">{r.proof}</pre>
+                <>
+                  <p className="small">The verified proof</p>
+                  <pre className="bench-proof">{r.proof}</pre>
+                </>
+              ) : r.log && r.log.length > 0 ? (
+                r.message ? <p className="muted small">{r.message}</p> : null
               ) : (
                 <>
                   {r.outcomes && <p className="muted small">Attempts ended: {Object.entries(r.outcomes).map(([k, v]) => `${k} ${v}`).join(", ")}</p>}
@@ -708,6 +714,99 @@ function HeadToHead({ a, b, name }: { a: BenchRun; b: BenchRun; name: (r: BenchR
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+const clock = (ms: number | null) => (ms === null ? "" : `+${ms < 60_000 ? `${Math.round(ms / 1000)}s` : `${Math.floor(ms / 60_000)}m${String(Math.round((ms % 60_000) / 1000)).padStart(2, "0")}s`}`);
+
+/** A problem's attempts in order: each row says when, which model, what it cost and how it ended, and opens to what Lean said, what the model thought and what it wrote. */
+function AttemptTimeline({ result }: { result: BenchResult }) {
+  const rows = timelineOf(result);
+  const [open, setOpen] = useState<number | null>(null);
+  const [steps, setSteps] = useState(false);
+  return (
+    <div className="bench-timeline">
+      <p className="small">
+        <b>{rows.length} attempt{rows.length === 1 ? "" : "s"}</b>
+        {rows.some((x) => x.repeats) ? <span className="muted"> · {rows.filter((x) => x.repeats).length} repeated an earlier error</span> : null}
+      </p>
+      <div className="bench-table">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>When</th>
+              <th>Model</th>
+              <th>Took</th>
+              <th>Tokens</th>
+              <th>Ended</th>
+              <th>Lean said</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((a, i) => (
+              <Fragment key={`${a.n}-${i}`}>
+                <tr className={`bench-attempt ${open === i ? "open" : ""}`} onClick={() => setOpen(open === i ? null : i)}>
+                  <td>{a.n}</td>
+                  <td title={a.at ? new Date(a.at).toLocaleString() : ""}>{clock(a.offsetMs) || "–"}</td>
+                  <td className="mono">{a.model?.split("/").pop() ?? ""}</td>
+                  <td>{secs(a.ms)}</td>
+                  <td>
+                    {a.promptTokens ? `${Math.round(a.promptTokens / 100) / 10}k → ` : ""}
+                    {Math.round(a.tokens / 100) / 10}k{a.truncated ? <span className="bad" title="The reply was cut at the token limit"> cut</span> : null}
+                  </td>
+                  <td className={a.kind === "verified" ? "ok" : "bad"}>{a.label}</td>
+                  <td className="bench-attempt-error">
+                    {a.error}
+                    {a.repeats ? <span className="muted"> (same as #{a.repeats})</span> : null}
+                  </td>
+                </tr>
+                {open === i && (
+                  <tr className="bench-attempt-detail">
+                    <td colSpan={7}>
+                      {a.detail && (
+                        <>
+                          <p className="small">Lean&apos;s feedback</p>
+                          <pre className="bench-proof">{a.detail}</pre>
+                        </>
+                      )}
+                      {a.thinking && (
+                        <details>
+                          <summary className="small">The model&apos;s thinking ({a.thinking.length < 1000 ? a.thinking.length : `${Math.round(a.thinking.length / 100) / 10}k`} characters)</summary>
+                          <pre className="bench-proof">{a.thinking}</pre>
+                        </details>
+                      )}
+                      {a.prose && (
+                        <details>
+                          <summary className="small">What it wrote around the proof</summary>
+                          <pre className="bench-proof">{a.prose}</pre>
+                        </details>
+                      )}
+                      <p className="small">The attempt</p>
+                      <pre className="bench-proof">{a.candidate}</pre>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {result.timeline && result.timeline.length > 0 && (
+        <button className="link small" onClick={() => setSteps(!steps)}>
+          {steps ? "Hide" : "Show"} what the run did ({result.timeline.length} steps)
+        </button>
+      )}
+      {steps && (
+        <ol className="bench-steps small">
+          {result.timeline!.map((t, i) => (
+            <li key={i}>
+              <span className="muted">{clock(t.t)}</span> {t.message}
+            </li>
+          ))}
+        </ol>
+      )}
     </div>
   );
 }

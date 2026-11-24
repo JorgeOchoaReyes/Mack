@@ -500,3 +500,30 @@ export function headToHead(a: Pick<BenchRun, "results">, b: Pick<BenchRun, "resu
   }
   return out;
 }
+
+/** One attempt as a timeline row: when (from the first attempt), who, what it cost, how it ended, and the earlier attempt it repeats. */
+export type TimelineRow = AttemptLog & { label: string; offsetMs: number | null; error: string; repeats?: number };
+
+/**
+ * A problem's attempts in order. An attempt that fails with the same Lean
+ * error as an earlier one (names and numbers aside) points back to it: a
+ * model repeating one mistake is the clearest thing a timeline can show.
+ */
+export function timelineOf(r: Pick<BenchResult, "log">): TimelineRow[] {
+  const log = [...(r.log ?? [])].sort((a, b) => (a.at && b.at ? a.at.localeCompare(b.at) : a.n - b.n));
+  const t0 = log.find((a) => a.at)?.at;
+  const seen = new Map<string, number>();
+  return log.map((a) => {
+    const error = a.kind === "verified" ? "" : errorHead(a.detail);
+    const key = error.replace(/`[^`]*`|'[^']*'/g, "`…`").replace(/\d+/g, "N");
+    const repeats = key ? seen.get(key) : undefined;
+    if (key && repeats === undefined) seen.set(key, a.n);
+    return {
+      ...a,
+      label: a.kind === "verified" ? "Verified" : FAILURES[a.kind].label,
+      offsetMs: t0 && a.at ? Date.parse(a.at) - Date.parse(t0) : null,
+      error,
+      ...(repeats !== undefined ? { repeats } : {}),
+    };
+  });
+}
