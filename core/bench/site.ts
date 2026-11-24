@@ -5,7 +5,7 @@
 // with its settings, its failures by reason and every problem's result.
 // Pure functions of the runs, so the page is the same wherever it is built.
 
-import { attemptKinds, BENCH_SETS, FAILURES, failureBreakdown, runMetrics, summarize, timelineOf, topErrors, type AttemptLog, type BenchResult, type BenchRun } from "./bench";
+import { attemptKinds, BENCH_BASICS, BENCH_SETS, FAILURES, failureBreakdown, runMetrics, summarize, timelineOf, topErrors, type AttemptLog, type BenchResult, type BenchRun } from "./bench";
 
 /** A run as shared: its folder in the repo, who shared it and from which Mack. */
 export type SharedRun = BenchRun & { folder: string; sharedBy?: string; appVersion?: string; attemptsLogged?: boolean };
@@ -148,7 +148,9 @@ ${modelTable}`;
     `<h1>Mack benchmark</h1>
 <p class="muted">How many competition problems Mack proves in Lean, run by its users on their own models and settings: miniF2F (244 competition problems) and PutnamBench (Putnam problems since 1962). Runs on the same set and size use the same problems, so they compare. Each run's page shows why its unsolved problems failed.</p>
 <p class="small"><a href="${esc(repo)}">Mack on GitHub</a> · <a href="${esc(repo)}/tree/main/benchmarks/runs">the runs' data</a></p>
-${sections.join("\n") || '<p class="card">No runs shared yet. Run one from Mack\'s Benchmark screen and press "Share as a PR".</p>'}`,
+${sections.join("\n") || '<p class="card">No runs shared yet. Run one from Mack\'s Benchmark screen and press "Share as a PR".</p>'}
+<h2>How to read these results</h2>
+<div class="card small">${BENCH_BASICS.map((b) => `<p><b>${esc(b.term)}.</b> ${esc(b.text)}</p>`).join("\n")}</div>`,
     "",
   );
 }

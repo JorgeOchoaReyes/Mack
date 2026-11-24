@@ -9,7 +9,7 @@ import { api, errorText, type BenchModels, type BenchResult, type BenchRun, type
 import { PROVIDERS } from "../../core/model/providers";
 import { Button, EmptyState, Field, timeAgo, Toggle } from "../components/ui";
 import { formatUsd } from "../../core/model/metered";
-import { FAILURES, failureBreakdown, headToHead, runMetrics, summarize, timelineOf } from "../../core/bench/bench";
+import { BENCH_BASICS, FAILURES, failureBreakdown, headToHead, runMetrics, summarize, timelineOf } from "../../core/bench/bench";
 import { COMMUNITY_REPO } from "../../core/community";
 
 type Props = { settings: Settings; onGo: (page: "settings" | "setup") => void };
@@ -140,6 +140,18 @@ export function BenchmarkPage({ settings, onGo }: Props) {
       {metrics && runs.find((r) => r.id === metrics) && <MetricsDialog run={runs.find((r) => r.id === metrics)!} onClose={() => setMetrics(null)} />}
 
       {compare.length >= 2 && <Compare runs={compare.map((id) => runs.find((r) => r.id === id)).filter((r): r is BenchRun => !!r)} onClose={() => setCompare([])} />}
+
+      <details className="bench-basics" open={runs.length === 0}>
+        <summary>How to read these results</summary>
+        <dl>
+          {BENCH_BASICS.map((b) => (
+            <div key={b.term}>
+              <dt>{b.term}</dt>
+              <dd>{b.text}</dd>
+            </div>
+          ))}
+        </dl>
+      </details>
 
       <section className="wt-section">
         <div className="row gap-sm wt-head">

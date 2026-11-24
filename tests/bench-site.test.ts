@@ -140,3 +140,14 @@ describe("a problem's attempt timeline", () => {
     expect(site["runs/r1.html"]).toContain(`href="r1/${run.results[1].id}.html"`);
   });
 });
+
+import { BENCH_BASICS } from "../core/bench/bench";
+
+describe("the basics of reading a run", () => {
+  it("appear in every report and on the site", () => {
+    expect(BENCH_BASICS.length).toBeGreaterThan(5);
+    expect(benchReport(run, set)).toContain("## How to read this report");
+    expect(benchReport(run, set)).toContain("**Solved.** Lean's strict verifier accepted the proof");
+    expect(buildSite([{ ...run, folder: "r" }], "https://github.com/o/r")["index.html"]).toContain("How to read these results");
+  });
+});
