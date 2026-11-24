@@ -1028,3 +1028,5 @@ body:has(.resizer.dragging) { cursor: col-resize; user-select: none; }
 .bench-why { display: grid; gap: 4px; padding: 8px 16px 12px; background: var(--sunken); }
 .bench-why p { margin: 4px 0 0; }
 .bench-why .bench-proof { padding: 8px 10px; border-radius: 8px; background: var(--surface); }
+.bench-confirm { flex: 1 1 100%; display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: 10px; background: var(--surface); }
+.bench-confirm p { margin: 0; line-height: 1.45; }

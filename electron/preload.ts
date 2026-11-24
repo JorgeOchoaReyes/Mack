@@ -34,6 +34,7 @@ const api = {
   benchStop: () => ipcRenderer.invoke("bench:stop"),
   benchReport: (id: string) => ipcRenderer.invoke("bench:report", id),
   benchExport: (id: string) => ipcRenderer.invoke("bench:export", id),
+  benchShare: (id: string) => ipcRenderer.invoke("bench:share", id),
   benchList: () => ipcRenderer.invoke("bench:list"),
   benchDelete: (id: string) => ipcRenderer.invoke("bench:delete", id),
   onBenchEvent: (cb: (e: unknown) => void) => subscribe("bench:event", cb),

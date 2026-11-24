@@ -13,7 +13,8 @@ import { DEFAULT_WORKSPACE, hasMathlib, hasProject, runSetup, verifyWorkspace, t
 import { lakeVersion } from "../core/lean/toolchain";
 import { OpenAICompatibleProvider } from "../core/model/openai-compatible";
 import { PROVIDERS, providerInfo, type ProviderId } from "../core/model/providers";
-import { ghCliToken, githubLogin, type GitHubTokenSource } from "../core/github";
+import { ghCliToken, githubLogin, openCommunityPr, type GitHubTokenSource } from "../core/github";
+import { COMMUNITY_REPO } from "../core/community";
 import { prove, type ProveEvent } from "../core/prove";
 import { lemmaSource, type Lemma } from "../core/prepare";
 import { describeDecls, describePremises, MathlibIndex, mathlibSource, nameHints, premises, searchDecls } from "../core/lean/mathlib-index";
@@ -42,7 +43,7 @@ import { remoteLean, setRemoteLean } from "../core/lean/remote";
 import { describeExamples, ProofStore, trainingData } from "../core/proof-store";
 import { decompose } from "../core/decompose";
 import { easierVersions } from "../core/variants";
-import { BENCH_SETS, benchReport, benchSet, classifyFailure, pickSample, runBench, type AttemptNote, type BenchEvent, type BenchResult, type BenchRun } from "../core/bench/bench";
+import { BENCH_SETS, BENCH_SHARE_DIR, benchReport, benchSet, benchShare, benchSlug, classifyFailure, pickSample, runBench, type AttemptNote, type BenchEvent, type BenchResult, type BenchRun } from "../core/bench/bench";
 import { newerMackRelease } from "../core/upstream";
 import type { ApprovalPolicy } from "../core/chat/executor";
 import type { ReasoningEffort } from "../core/model/provider";
@@ -967,6 +968,16 @@ ipcMain.handle("bench:export", async (e, id: string) => {
   if (r.canceled || !r.filePath) return null;
   writeFileSync(r.filePath, benchReport(run, benchSet(run.set), app.getVersion()), "utf8");
   return r.filePath;
+});
+// A run shared as a pull request on the Mack repo, so its results can be reviewed there.
+ipcMain.handle("bench:share", async (_e, id: string) => {
+  const run = readBench(String(id));
+  if (!run) throw new Error("That benchmark run is gone.");
+  if (run.status === "running") throw new Error("Wait for the run to finish, or stop it, before sharing it.");
+  const { token } = await githubAuth();
+  if (!token) throw new Error("Connect GitHub first: Settings → GitHub, or log in with the GitHub CLI (gh auth login).");
+  const set = benchSet(run.set);
+  return openCommunityPr(token, { ...COMMUNITY_REPO, dir: BENCH_SHARE_DIR }, benchSlug(run), (_slug, login) => benchShare(run, set, app.getVersion(), login), "benchmark");
 });
 ipcMain.handle("bench:delete", (_e, id: string) => {
   if (/^\d+$/.test(id)) rmSync(join(benchDir(), `${id}.json`), { force: true });

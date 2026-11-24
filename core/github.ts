@@ -148,6 +148,7 @@ export async function openCommunityPr(
   target: { owner: string; repo: string; dir: string },
   baseSlug: string,
   make: (slug: string, login: string) => { files: Record<string, string>; title: string; body: string },
+  branchPrefix = "community",
 ): Promise<{ url: string; slug: string }> {
   const me = await api<{ login: string }>(token, "GET", "/user");
   const upstream = await api<{ default_branch: string }>(token, "GET", `/repos/${target.owner}/${target.repo}`);
@@ -186,7 +187,7 @@ export async function openCommunityPr(
     tree: Object.entries(o.files).map(([name, content]) => ({ path: `${target.dir}/${slug}/${name}`, mode: "100644", type: "blob", content })),
   });
   const commit = await api<{ sha: string }>(token, "POST", `/repos/${head.owner}/${head.repo}/git/commits`, { message: o.title, tree: tree.sha, parents: [baseSha] });
-  const branch = `community/${slug}-${Date.now().toString(36)}`;
+  const branch = `${branchPrefix}/${slug}-${Date.now().toString(36)}`;
   await api(token, "POST", `/repos/${head.owner}/${head.repo}/git/refs`, { ref: `refs/heads/${branch}`, sha: commit.sha });
   const pr = await api<{ html_url: string }>(token, "POST", `/repos/${target.owner}/${target.repo}/pulls`, {
     title: o.title,

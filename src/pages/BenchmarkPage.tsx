@@ -3,12 +3,13 @@
 // attempt budget is measured instead of guessed. Earlier runs stay listed
 // with the settings they used, to compare.
 
-import { ArrowRight, CheckCircle2, CircleDashed, Copy, FileDown, Gauge, Loader2, Play, Square, Trash2, XCircle, Zap } from "lucide-react";
+import { ArrowRight, CheckCircle2, CircleDashed, Copy, ExternalLink, FileDown, Gauge, GitPullRequest, Loader2, Play, Square, Trash2, XCircle, Zap } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, errorText, type BenchResult, type BenchRun, type BenchSetInfo, type Settings } from "../api";
 import { Button, EmptyState, Field, timeAgo } from "../components/ui";
 import { formatUsd } from "../../core/model/metered";
 import { FAILURES, failureBreakdown, summarize } from "../../core/bench/bench";
+import { COMMUNITY_REPO } from "../../core/community";
 
 type Props = { settings: Settings; onGo: (page: "settings" | "setup") => void };
 
@@ -283,6 +284,8 @@ function Breakdown({ results }: { results: BenchResult[] }) {
 /** Save a run's report, or copy it to paste into a chat. */
 function Share({ id }: { id: string }) {
   const [note, setNote] = useState("");
+  const [confirm, setConfirm] = useState(false);
+  const [pr, setPr] = useState("");
   const act = async (f: () => Promise<string>) => {
     try {
       setNote(await f());
@@ -292,7 +295,7 @@ function Share({ id }: { id: string }) {
   };
   return (
     <div className="bench-share">
-      <span className="muted small">Share this run to review where Mack loses problems: the report has the settings, the reasons, and each unsolved problem's last attempt and Lean feedback.</span>
+      <span className="muted small">Share this run to review where Mack loses problems: the report has the settings, the reasons, and each unsolved problem's last attempt and Lean feedback. Save or copy it, or open a pull request with it on the Mack repo.</span>
       <Button size="sm" icon={FileDown} onClick={() => void act(async () => ((await api.benchExport(id)) ? "Saved." : ""))}>
         Save report
       </Button>
@@ -308,7 +311,42 @@ function Share({ id }: { id: string }) {
       >
         Copy report
       </Button>
+      <Button size="sm" icon={GitPullRequest} onClick={() => setConfirm(true)} disabled={!!pr}>
+        Share as a PR
+      </Button>
       {note && <span className="muted small">{note}</span>}
+      {pr && (
+        <button className="link small" onClick={() => void api.openExternal(pr)}>
+          Pull request opened <ExternalLink size={12} />
+        </button>
+      )}
+      {confirm && (
+        <div className="bench-confirm">
+          <p className="small">
+            This opens a <b>public</b> pull request on {COMMUNITY_REPO.owner}/{COMMUNITY_REPO.repo} under your GitHub account, with this run&apos;s report and data: the settings and model names, each problem&apos;s result, and the unsolved problems&apos; last attempts and Lean feedback. No keys or project files are included.
+          </p>
+          <div className="row gap-sm">
+            <Button
+              size="sm"
+              variant="primary"
+              icon={GitPullRequest}
+              onClick={() => {
+                setConfirm(false);
+                setNote("Opening the pull request…");
+                void api.benchShare(id).then(
+                  (r) => (setPr(r.url), setNote("")),
+                  (e) => setNote(errorText(e)),
+                );
+              }}
+            >
+              Open the pull request
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setConfirm(false)}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

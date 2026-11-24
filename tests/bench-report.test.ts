@@ -71,3 +71,28 @@ theorem abs_sub_comm (a b : ℝ) : |a - b| = |b - a| := sorry
     expect(describePremises(premises(decls, "theorem t (x : ℝ) : √x = √x := by"))).toContain("Real.sqrt_le_sqrt");
   });
 });
+
+import { benchShare, benchSlug } from "../core/bench/bench";
+
+describe("sharing a run as a pull request", () => {
+  it("names the folder by set, method and time, and puts the report and data in it", () => {
+    const set = BENCH_SETS[0];
+    const run: BenchRun = {
+      id: "9",
+      set: set.id,
+      startedAt: Date.UTC(2026, 10, 24, 1, 2),
+      finishedAt: 1,
+      status: "done",
+      config: { model: "acct/models/big", prover: "a/p1, b/p2", maxAttempts: 8, parallel: 2, automation: true, revisions: 4, method: "decompose" },
+      sample: [set.problems[0].id],
+      budget: 0,
+      results: [{ id: set.problems[0].id, outcome: "failed", attempts: 8, ms: 1, usd: 0.5, failure: "timeout" }],
+    };
+    expect(benchSlug(run)).toBe("minif2f-test-decompose-202611240102");
+    const s = benchShare(run, set, "0.2.18", "someone");
+    expect(Object.keys(s.files)).toEqual(["REPORT.md", "run.json"]);
+    expect(s.title).toBe("Benchmark: miniF2F test 0/1 (0%), decompose, big + p1, p2");
+    expect(s.body).toContain("- Lean timed out: 1");
+    expect(JSON.parse(s.files["run.json"]).id).toBe("9");
+  });
+});

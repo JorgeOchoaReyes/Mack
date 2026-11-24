@@ -236,3 +236,39 @@ export function benchReport(run: BenchRun, set: BenchSet | undefined, appVersion
   }
   return `${lines.join("\n")}\n`;
 }
+
+/** Where shared benchmark runs go in the Mack repo, one folder per run. */
+export const BENCH_SHARE_DIR = "benchmarks/runs";
+
+/** A folder name for a shared run: set, method and date. */
+export function benchSlug(run: BenchRun): string {
+  const d = new Date(run.startedAt).toISOString().slice(0, 16).replace(/[-:T]/g, "");
+  return `${run.set}-${run.config.method ?? "single"}-${d}`;
+}
+
+/**
+ * A run shared as a pull request on the Mack repo: the Markdown report and the
+ * run's data (settings, model names and every problem's result; no keys), and
+ * a PR with the headline numbers and the reasons, for review.
+ */
+export function benchShare(run: BenchRun, set: BenchSet | undefined, appVersion: string, contributor: string): { files: Record<string, string>; title: string; body: string } {
+  const sum = summarize(run);
+  const c = run.config;
+  const models = `${c.model.split("/").pop()}${c.prover ? ` + ${c.prover.split(",").map((m) => m.trim().split("/").pop()).join(", ")}` : ""}`;
+  const title = `Benchmark: ${set?.label ?? run.set} ${sum.solved}/${sum.tried} (${(sum.rate * 100).toFixed(0)}%), ${c.method ?? "single"}, ${models}`;
+  const breakdown = failureBreakdown(run.results)
+    .map((b) => `- ${FAILURES[b.kind].label}: ${b.count}`)
+    .join("\n");
+  const body = [
+    `A benchmark run shared from Mack ${appVersion}${contributor ? ` by @${contributor}` : ""}, for review of where Mack loses problems.`,
+    "",
+    `- **${sum.solved}/${sum.tried} solved** (${(sum.rate * 100).toFixed(1)}%), ${sum.byAutomation} by Lean's automation alone; $${sum.usd.toFixed(2)} in ${Math.round(sum.ms / 60000)} min`,
+    `- Method ${c.method ?? "single"}; model ${c.model}${c.prover ? `; prover ${c.prover}` : ""}; ${c.maxAttempts} attempts, ${c.parallel} at once`,
+    "",
+    "Unsolved, by reason:",
+    breakdown || "- none",
+    "",
+    "The full report, with each unsolved problem's last attempt and Lean's feedback, is `REPORT.md` in this PR; `run.json` has the run's data.",
+  ].join("\n");
+  return { files: { "REPORT.md": benchReport(run, set, appVersion), "run.json": `${JSON.stringify(run, null, 2)}\n` }, title, body };
+}
