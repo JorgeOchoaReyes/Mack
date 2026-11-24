@@ -5,7 +5,7 @@
 // with its settings, its failures by reason and every problem's result.
 // Pure functions of the runs, so the page is the same wherever it is built.
 
-import { attemptKinds, BENCH_SETS, FAILURES, failureBreakdown, runMetrics, summarize, topErrors, type AttemptLog, type BenchRun } from "./bench";
+import { attemptKinds, BENCH_BASICS, BENCH_SETS, FAILURES, failureBreakdown, runMetrics, summarize, timelineOf, topErrors, type AttemptLog, type BenchResult, type BenchRun } from "./bench";
 
 /** A run as shared: its folder in the repo, who shared it and from which Mack. */
 export type SharedRun = BenchRun & { folder: string; sharedBy?: string; appVersion?: string; attemptsLogged?: boolean };
@@ -63,6 +63,8 @@ td.wrap { white-space: normal; }
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 16px 0; }
 .stat b { display: block; font-size: 22px; }
 .why { display: grid; grid-template-columns: minmax(140px, 240px) 1fr 36px; gap: 10px; align-items: center; margin: 6px 0; font-size: 14px; }
+pre.card { white-space: pre-wrap; font-size: 12px; overflow: auto; }
+details summary { cursor: pointer; color: var(--accent-text); font-size: 13px; }
 details pre { white-space: pre-wrap; font-size: 12px; background: var(--bar); padding: 8px; border-radius: 8px; max-height: 300px; overflow: auto; }
 footer { margin-top: 40px; font-size: 13px; color: var(--muted); }
 `;
@@ -146,7 +148,9 @@ ${modelTable}`;
     `<h1>Mack benchmark</h1>
 <p class="muted">How many competition problems Mack proves in Lean, run by its users on their own models and settings: miniF2F (244 competition problems) and PutnamBench (Putnam problems since 1962). Runs on the same set and size use the same problems, so they compare. Each run's page shows why its unsolved problems failed.</p>
 <p class="small"><a href="${esc(repo)}">Mack on GitHub</a> · <a href="${esc(repo)}/tree/main/benchmarks/runs">the runs' data</a></p>
-${sections.join("\n") || '<p class="card">No runs shared yet. Run one from Mack\'s Benchmark screen and press "Share as a PR".</p>'}`,
+${sections.join("\n") || '<p class="card">No runs shared yet. Run one from Mack\'s Benchmark screen and press "Share as a PR".</p>'}
+<h2>How to read these results</h2>
+<div class="card small">${BENCH_BASICS.map((b) => `<p><b>${esc(b.term)}.</b> ${esc(b.text)}</p>`).join("\n")}</div>`,
     "",
   );
 }
@@ -166,7 +170,7 @@ export function runPage(r: SharedRun, repo: string): string {
         x.lastError || x.lastCandidate
           ? `<details><summary>${esc(why || "details")}</summary>${x.lastError ? `<p class="small">Lean's last feedback</p><pre>${esc(x.lastError)}</pre>` : ""}${x.lastCandidate ? `<p class="small">Last attempt</p><pre>${esc(x.lastCandidate)}</pre>` : ""}</details>`
           : esc(why);
-      return `<tr><td>${esc(x.id)}</td><td>${outcome}</td><td>${x.attempts}</td><td>${Math.round(x.ms / 1000)}s</td><td>${usd(x.usd)}</td><td class="wrap">${detail}</td></tr>`;
+      return `<tr><td>${x.log?.length ? `<a href="${esc(r.folder)}/${esc(x.id)}.html">${esc(x.id)}</a>` : esc(x.id)}</td><td>${outcome}</td><td>${x.attempts}</td><td>${Math.round(x.ms / 1000)}s</td><td>${usd(x.usd)}</td><td class="wrap">${detail}</td></tr>`;
     })
     .join("\n");
   return page(
@@ -245,9 +249,61 @@ ${errs.map((e) => `<tr><td class="wrap">${esc(e.error)}</td><td>${e.count}</td><
 }`;
 }
 
+const clock = (ms: number | null) => (ms === null ? "" : `+${ms < 60_000 ? `${Math.round(ms / 1000)}s` : `${Math.floor(ms / 60_000)}m${String(Math.round((ms % 60_000) / 1000)).padStart(2, "0")}s`}`);
+
+/** One problem of a run: its statement, then every attempt in order, each opening to Lean's feedback, the model's thinking and the attempt. */
+export function problemPage(r: SharedRun, x: BenchResult, source: string | undefined, repo: string): string {
+  const rows = timelineOf(x);
+  const body = rows
+    .map(
+      (a) => `<tr>
+<td>${a.n}</td>
+<td title="${esc(a.at ?? "")}">${esc(a.at ? a.at.slice(11, 19) : "")} <span class="muted">${clock(a.offsetMs)}</span></td>
+<td>${esc(short(a.model ?? ""))}</td>
+<td>${Math.round(a.ms / 1000)}s</td>
+<td>${a.promptTokens ? `${tokens(a.promptTokens)} → ` : ""}${tokens(a.tokens)}${a.truncated ? ' <span class="bad">cut</span>' : ""}</td>
+<td class="${a.kind === "verified" ? "ok" : "bad"}">${esc(a.label)}</td>
+<td class="wrap">${esc(a.error)}${a.repeats ? ` <span class="muted">(same as #${a.repeats})</span>` : ""}
+<details><summary>details</summary>
+${a.detail ? `<p class="small">Lean's feedback</p><pre>${esc(a.detail)}</pre>` : ""}
+${a.thinking ? `<p class="small">The model's thinking</p><pre>${esc(a.thinking)}</pre>` : ""}
+${a.prose ? `<p class="small">What it wrote around the proof</p><pre>${esc(a.prose)}</pre>` : ""}
+<p class="small">The attempt</p><pre>${esc(a.candidate)}</pre>
+</details></td>
+</tr>`,
+    )
+    .join("\n");
+  const repeated = rows.filter((a) => a.repeats).length;
+  return page(
+    `${x.id}: Mack benchmark`,
+    `<p class="small"><a href="../${esc(r.folder)}.html">← ${esc(setLabel(r.set))}: ${esc(models(r))}, ${day(r.startedAt)}</a></p>
+<h1>${esc(x.id)}</h1>
+<p class="muted">${x.outcome === "solved" ? '<span class="ok">solved</span>' : '<span class="bad">not solved</span>'} in ${x.attempts} attempt${x.attempts === 1 ? "" : "s"}, ${Math.round(x.ms / 1000)}s, ${usd(x.usd)}${x.failure ? ` · ${esc(FAILURES[x.failure].label)}` : ""}${repeated ? ` · ${repeated} attempt${repeated === 1 ? "" : "s"} repeated an earlier error` : ""}</p>
+${source ? `<details><summary>The statement</summary><pre>${esc(source.trim())}</pre></details>` : ""}
+<h2>Attempts</h2>
+<div class="scroll"><table>
+<thead><tr><th>#</th><th>When</th><th>Model</th><th>Took</th><th>Tokens</th><th>Ended</th><th>Lean said</th></tr></thead>
+<tbody>
+${body}
+</tbody></table></div>
+${
+  x.timeline?.length
+    ? `<h2>What the run did</h2><div class="card small"><ol>${x.timeline.map((t) => `<li><span class="muted">${clock(t.t)}</span> ${esc(t.message)}</li>`).join("")}</ol></div>`
+    : ""
+}
+${x.proof ? `<h2>The verified proof</h2><pre class="card">${esc(x.proof)}</pre>` : ""}
+<p class="small"><a href="${esc(repo)}/blob/main/benchmarks/runs/${esc(r.folder)}/attempts.jsonl">attempts.jsonl</a></p>`,
+    "../../",
+  );
+}
+
 /** Every page of the site, by path. */
 export function buildSite(runs: SharedRun[], repo: string): Record<string, string> {
   const files: Record<string, string> = { "index.html": indexPage(runs, repo) };
-  for (const r of runs) files[`runs/${r.folder}.html`] = runPage(r, repo);
+  for (const r of runs) {
+    files[`runs/${r.folder}.html`] = runPage(r, repo);
+    const set = BENCH_SETS.find((s) => s.id === r.set);
+    for (const x of r.results) if (x.log?.length) files[`runs/${r.folder}/${x.id}.html`] = problemPage(r, x, set?.problems.find((p) => p.id === x.id)?.source, repo);
+  }
   return files;
 }

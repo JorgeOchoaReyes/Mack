@@ -66,7 +66,8 @@ describe("the benchmark site", () => {
       [{ ...worse, folder: "b-run" }, withAttempts({ ...shared, folder: "a-run" }, attemptsDataset(run))],
       "https://github.com/o/r",
     );
-    expect(Object.keys(site).sort()).toEqual(["index.html", "runs/a-run.html", "runs/b-run.html"]);
+    // Each run has a page, and each problem with an attempt log has its own.
+    expect(Object.keys(site).sort()).toEqual(["index.html", "runs/a-run.html", ...run.results.map((r) => `runs/a-run/${r.id}.html`).sort(), "runs/b-run.html"].sort());
     const index = site["index.html"];
     expect(index.indexOf("runs/a-run.html")).toBeLessThan(index.indexOf("runs/b-run.html"));
     expect(index).toContain("BEST");
@@ -107,5 +108,46 @@ describe("run metrics and head to head", () => {
 
   it("separates a reply's thinking and prose from its proof", () => {
     expect(splitReply("<think>try induction</think>Plan: induct.\n```lean\ntheorem t := by simp\n```\nDone.", "apart")).toEqual({ thinking: "apart\n\ntry induction", prose: "Plan: induct.\n\nDone." });
+  });
+});
+
+import { timelineOf } from "../core/bench/bench";
+
+describe("a problem's attempt timeline", () => {
+  const log = [
+    { n: 2, outcome: "errors", kind: "names" as const, model: "a/m", at: "2026-11-24T10:00:30.000Z", ms: 5, tokens: 1200, detail: "P.lean:3:1: error: Unknown identifier `Nat.bar`", candidate: "c2", thinking: "maybe bar" },
+    { n: 1, outcome: "errors", kind: "names" as const, model: "a/m", at: "2026-11-24T10:00:00.000Z", ms: 5, tokens: 1000, detail: "P.lean:3:1: error: Unknown identifier `Nat.foo`", candidate: "c1" },
+    { n: 3, outcome: "verified", kind: "verified" as const, model: "b/p", at: "2026-11-24T10:02:05.000Z", ms: 5, tokens: 900, detail: "", candidate: "c3" },
+  ];
+
+  it("orders attempts by time, from the first, and points a repeated error back to its first", () => {
+    const rows = timelineOf({ log });
+    expect(rows.map((r) => [r.n, r.offsetMs, r.label, r.repeats])).toEqual([
+      [1, 0, "Wrong lemma names", undefined],
+      [2, 30_000, "Wrong lemma names", 1],
+      [3, 125_000, "Verified", undefined],
+    ]);
+    expect(rows[1].error).toBe("Unknown identifier `Nat.bar`");
+  });
+
+  it("gives each problem with a log its own page on the site, linked from the run", () => {
+    const one = { ...run, results: [{ ...run.results[1], log }] };
+    const site = buildSite([{ ...one, folder: "r1" }], "https://github.com/o/r");
+    const page = site[`runs/r1/${run.results[1].id}.html`];
+    expect(page).toContain("(same as #1)");
+    expect(page).toContain("maybe bar");
+    expect(page).toContain("+2m05s");
+    expect(site["runs/r1.html"]).toContain(`href="r1/${run.results[1].id}.html"`);
+  });
+});
+
+import { BENCH_BASICS } from "../core/bench/bench";
+
+describe("the basics of reading a run", () => {
+  it("appear in every report and on the site", () => {
+    expect(BENCH_BASICS.length).toBeGreaterThan(5);
+    expect(benchReport(run, set)).toContain("## How to read this report");
+    expect(benchReport(run, set)).toContain("**Solved.** Lean's strict verifier accepted the proof");
+    expect(buildSite([{ ...run, folder: "r" }], "https://github.com/o/r")["index.html"]).toContain("How to read these results");
   });
 });

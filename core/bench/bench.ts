@@ -297,6 +297,7 @@ export function benchReport(run: BenchRun, set: BenchSet | undefined, appVersion
     "## Failures by reason",
     "",
   ];
+  const basics = ["", "## How to read this report", "", ...BENCH_BASICS.map((b) => `- **${b.term}.** ${b.text}`)];
   const breakdown = failureBreakdown(run.results);
   if (!breakdown.length) lines.push("None.");
   for (const b of breakdown) lines.push(`- **${FAILURES[b.kind].label}**: ${b.count} (${b.ids.join(", ")}). ${FAILURES[b.kind].fix}.`);
@@ -328,7 +329,7 @@ export function benchReport(run: BenchRun, set: BenchSet | undefined, appVersion
     if (r.lastError) lines.push("Lean's last feedback:", "```", cut(r.lastError, 1500), "```", "");
     if (r.lastCandidate) lines.push("Last attempt:", "```lean", cut(r.lastCandidate.trim(), 2500), "```");
   }
-  return `${lines.join("\n")}\n`;
+  return `${[...lines, ...basics].join("\n")}\n`;
 }
 
 /** Where shared benchmark runs go in the Mack repo, one folder per run. */
@@ -500,3 +501,42 @@ export function headToHead(a: Pick<BenchRun, "results">, b: Pick<BenchRun, "resu
   }
   return out;
 }
+
+/** One attempt as a timeline row: when (from the first attempt), who, what it cost, how it ended, and the earlier attempt it repeats. */
+export type TimelineRow = AttemptLog & { label: string; offsetMs: number | null; error: string; repeats?: number };
+
+/**
+ * A problem's attempts in order. An attempt that fails with the same Lean
+ * error as an earlier one (names and numbers aside) points back to it: a
+ * model repeating one mistake is the clearest thing a timeline can show.
+ */
+export function timelineOf(r: Pick<BenchResult, "log">): TimelineRow[] {
+  const log = [...(r.log ?? [])].sort((a, b) => (a.at && b.at ? a.at.localeCompare(b.at) : a.n - b.n));
+  const t0 = log.find((a) => a.at)?.at;
+  const seen = new Map<string, number>();
+  return log.map((a) => {
+    const error = a.kind === "verified" ? "" : errorHead(a.detail);
+    const key = error.replace(/`[^`]*`|'[^']*'/g, "`…`").replace(/\d+/g, "N");
+    const repeats = key ? seen.get(key) : undefined;
+    if (key && repeats === undefined) seen.set(key, a.n);
+    return {
+      ...a,
+      label: a.kind === "verified" ? "Verified" : FAILURES[a.kind].label,
+      offsetMs: t0 && a.at ? Date.parse(a.at) - Date.parse(t0) : null,
+      error,
+      ...(repeats !== undefined ? { repeats } : {}),
+    };
+  });
+}
+
+/** How to read a benchmark run, in plain words: shown on the Benchmark screen, in every report and on the site. */
+export const BENCH_BASICS: { term: string; text: string }[] = [
+  { term: "Solved", text: "Lean's strict verifier accepted the proof: the statement is unchanged, no sorry or extra axiom is used, and Lean's kernel checks it. Nothing else counts, whatever the model says." },
+  { term: "The problems", text: "miniF2F has 244 competition problems (AIME, AMC, IMO, MATH exercises); PutnamBench has Putnam problems since 1962 and is much harder. The same number of problems always picks the same ones, so runs compare." },
+  { term: "Methods", text: "Attempts: the model writes whole proofs and fixes them from Lean's errors. Decompose: if that fails, the statement is split into lemmas that are proved separately and put back together." },
+  { term: "Solve rate and cost", text: "Solved problems out of those tried; skipped ones (budget spent, stopped) do not count. Per solve is the run's whole cost divided by the problems solved." },
+  { term: "Attempts", text: "One attempt is one proof the model wrote and Lean checked. Attempts per solve is how many the solved problems took on average; fewer means the model gets there sooner." },
+  { term: "By automation alone", text: "Problems Lean's own tactics (omega, simp, linarith, aesop, …) closed before any model call: free, and a floor every model starts from." },
+  { term: "Why not solved", text: "Each failed attempt is labelled from Lean's errors: wrong lemma names, type mismatch, goals left open, timeouts, and so on. A problem's reason is its most common one; its timeline shows every attempt." },
+  { term: "Mack's own failures", text: "If Lean could not start, crashed or lost its connection, the attempt is labelled \"Mack or Lean failed to run\", never blamed on the model. Many of these mean something to fix in Mack or the setup, not in the model." },
+];
