@@ -199,7 +199,8 @@ async function solve(ctx: Ctx, frozen: string, depth: number, path: string): Pro
     const skeleton = await writeSkeleton(ctx, frozen, statement, why, path);
     if (!skeleton) return null;
     // Lean's automation first: the steps it closes need no lemma.
-    const swept = o.automation === false ? { current: skeleton } : await sweep(skeleton, ctx.quick).catch(() => ({ current: skeleton }));
+    // The sweep checks one tactic at a time: on the REPL only, where a check does not reload Mathlib.
+    const swept = o.automation === false || !o.check ? { current: skeleton } : await sweep(skeleton, ctx.quick).catch(() => ({ current: skeleton }));
     let current = swept.current;
     const start = current.indexOf(statement);
     const offsets = sorryOffsets(current).filter((at) => at > start);
@@ -227,13 +228,18 @@ async function solve(ctx: Ctx, frozen: string, depth: number, path: string): Pro
       steps.push({ at, term: g.term, lemma, args: parsed.args, frozen: lemmaFrozen });
     }
     if (unusable) {
+      ctx.emit({ type: "status", message: `${path ? `[step ${path}] ` : ""}Set this split aside: ${unusable} could not be stated as a lemma of its own.` });
       why = `Lean could not state ${unusable} of the last split as a lemma of its own (its goal uses a hidden or let-bound name, or does not print back as Lean). Name every variable and hypothesis the steps use with \`intro\`/\`obtain\`, and state each step plainly.`;
       continue;
     }
-    ctx.emit({ type: "status", message: `${path ? `[step ${path}] ` : ""}Split into ${steps.length} step${steps.length === 1 ? "" : "s"}; proving them at once…` });
+    ctx.emit({
+      type: "status",
+      message: `${path ? `[step ${path}] ` : ""}Split into ${steps.length} step${steps.length === 1 ? "" : "s"}; proving them at once:\n${steps.map((st, k) => `${k + 1}. ${st.frozen.slice(st.frozen.indexOf("theorem ")).replace(/:= by\s*sorry\s*$/, "").replace(/\s+/g, " ").trim()}`).join("\n")}`,
+    });
     const proofs = await Promise.all(steps.map((s, k) => solve(ctx, s.frozen, depth + 1, path ? `${path}.${k + 1}` : `${k + 1}`)));
     const failed = proofs.flatMap((p, k) => (p ? [] : [k + 1]));
     if (failed.length) {
+      ctx.emit({ type: "status", message: `${path ? `[step ${path}] ` : ""}Step${failed.length > 1 ? "s" : ""} ${failed.join(", ")} of this split could not be proved; asking for another split.` });
       why = `In the last split, step${failed.length > 1 ? "s" : ""} ${failed.join(", ")} could not be proved (it may be false, or too large a step). Split the theorem differently, with smaller or corrected steps.`;
       continue;
     }

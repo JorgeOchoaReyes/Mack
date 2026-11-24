@@ -14,6 +14,7 @@
 // and an `error`, never a fabricated verdict.
 
 import type { LeanCheckRun } from "./check";
+import { extractStatement, theoremName } from "./rules";
 
 export const ANALYSIS_SUITE = ["assumption", "rfl", "trivial", "decide", "simp", "simp_all", "omega", "norm_num", "ring", "linarith", "positivity", "tauto", "aesop", "nlinarith"];
 export const LIBRARY_SEARCH = "exact?";
@@ -170,4 +171,46 @@ export async function sweep(source: string, check: LeanCheckRun, opts: { wallMs?
   if (open) return { current, closed, open };
   const final = await check(current);
   return final.status === "complete" ? { current, closed, open, completed: current } : { current, closed, open, error: `the swept file does not check: ${final.status}` };
+}
+
+/**
+ * Lean's automation on a whole statement in ONE Lean run: the file holds the
+ * statement once per tactic of the sweep, each copy renamed and capped at its
+ * own heartbeats, so one elaboration (one Mathlib load without the REPL)
+ * answers for all of them instead of one each. The first copy Lean accepts
+ * names the closer; the frozen statement proved by it comes back, for the
+ * strict verifier to judge. Null when none closes it.
+ */
+export async function closeByAutomation(frozen: string, check: LeanCheckRun): Promise<string | null> {
+  const statement = extractStatement(frozen);
+  const name = statement && theoremName(statement);
+  if (!statement || !name) return null;
+  const at = frozen.indexOf(statement);
+  const preamble = frozen.slice(0, at);
+  const lines = (t: string) => t.split("\n").length - 1;
+  let file = preamble.replace(/\s*$/, "\n\n");
+  const ranges: { from: number; to: number; tactic: string }[] = [];
+  SWEEP_SUITE.forEach((tactic, i) => {
+    // The statement begins `theorem <name>`: each copy gets its own name.
+    const copy = `set_option maxHeartbeats ${COMPLETION_HEARTBEATS} in\n${statement.replace(/^theorem\s+\S+/, `theorem ${name}_mack_auto_${i}`)} by\n  ${tactic}\n\n`;
+    const from = lines(file) + 1;
+    file += copy;
+    ranges.push({ from, to: lines(file), tactic });
+  });
+  const c = await check(file);
+  if (c.status === "noVerdict") return null;
+  for (const r of ranges) {
+    const inside = (line: number) => line >= r.from && line <= r.to;
+    if (c.errors.some((e) => inside(e.line)) || c.sorries.some((s) => inside(s.line))) continue;
+    let tactic = r.tactic;
+    if (tactic === "exact?") {
+      // `exact?` closes the goal by naming what it found; the proof keeps the name.
+      const hint = (c.notes ?? []).find((n) => inside(n.line) && n.message.includes("Try this:"));
+      const found = hint && /Try this: (.+)/.exec(hint.message)?.[1]?.trim();
+      if (!found) continue;
+      tactic = found;
+    }
+    return `${preamble}${statement} by\n  ${tactic}\n`;
+  }
+  return null;
 }

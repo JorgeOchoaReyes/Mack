@@ -36,10 +36,17 @@ export function BenchmarkPage({ settings, onGo }: Props) {
   const [queued, setQueued] = useState<string[]>([]);
   const [compare, setCompare] = useState<string[]>([]);
   const [metrics, setMetrics] = useState<string | null>(null);
+  const [replReady, setReplReady] = useState<boolean | null>(null);
+  /** Where each shared run's pull request stands, from GitHub. */
+  const [prs, setPrs] = useState<Record<string, string>>({});
 
-  const refresh = () => void api.benchList().then((l) => (setRuns(l), setLive((cur) => cur ?? l.find((r) => r.status === "running") ?? null)));
+  const refresh = () => {
+    void api.benchList().then((l) => (setRuns(l), setLive((cur) => cur ?? l.find((r) => r.status === "running") ?? null)));
+    void api.benchPrs().then(setPrs).catch(() => undefined);
+  };
   useEffect(() => {
     void api.benchSets().then(setSets);
+    void api.health().then((h) => setReplReady(!!h?.hasRepl)).catch(() => setReplReady(null));
     refresh();
     return api.onBenchEvent((e) => {
       if (e.type === "started") setLive({ ...e.run, results: [...e.run.results] });
@@ -131,6 +138,12 @@ export function BenchmarkPage({ settings, onGo }: Props) {
             </Field>
           </div>
           <ModelsEditor models={models} setModels={setModels} />
+          {!settings.remoteLean?.host && (replReady === false || !settings.useRepl) && (
+            <div className="bench-warning">
+              <b>The Lean REPL is {settings.useRepl ? "not built" : "turned off"}, so every Lean check reloads Mathlib.</b> A run then takes several times longer (minutes per problem before the model is even asked).{" "}
+              {settings.useRepl ? "Build it in Settings → Setup → Lean (Repair or update)." : "Turn it on in Settings → Prover."}
+            </div>
+          )}
           <div className="row gap-sm">
             <Button variant="primary" icon={Play} onClick={() => void start()} disabled={!model}>
               {models.filter((m) => m.model.trim()).length > 1 ? `Compare ${models.filter((m) => m.model.trim()).length} models on ${size} problems` : `Run ${size} problems`}
@@ -166,6 +179,11 @@ export function BenchmarkPage({ settings, onGo }: Props) {
       <section className="wt-section">
         <div className="row gap-sm wt-head">
           <h2>Earlier runs</h2>
+          {past.some((r) => r.sharedPr) && (
+            <span className="muted small">
+              <GitPullRequest size={13} /> {past.filter((r) => r.sharedPr).length} shared, {past.filter((r) => prs[r.id] === "merged").length} merged, {past.filter((r) => prs[r.id] === "open").length} open
+            </span>
+          )}
           {past.length > 1 && (
             <span className="muted small">
               <Columns3 size={13} /> Tick runs to compare them{compare.length ? ` (${compare.length} ticked)` : ""}.
@@ -200,6 +218,19 @@ export function BenchmarkPage({ settings, onGo }: Props) {
                       {r.config.prover ? ` + ${r.config.prover.split(",").map((m) => m.trim().split("/").pop()).join(", ")}` : ""} · {r.config.method && r.config.method !== "single" ? `${r.config.method} · ` : ""}{r.config.maxAttempts} attempts, {r.config.parallel} at once{r.config.automation ? "" : ", no automation"}
                     </span>
                     <span className="run-meta muted small">
+                      {r.sharedPr && (
+                        <button
+                          className={`bench-pr pr-${prs[r.id] ?? "unknown"}`}
+                          title={`Shared ${new Date(r.sharedPr.at).toLocaleString()}${r.sharedPr.logs ? ", with every attempt" : ""}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void api.openExternal(r.sharedPr!.url);
+                          }}
+                        >
+                          <GitPullRequest size={11} /> #{r.sharedPr.number}
+                          {prs[r.id] && prs[r.id] !== "unknown" ? ` ${prs[r.id]}` : ""}
+                        </button>
+                      )}
                       {(r.harness || r.env) && <span className="bench-harness" title={r.harness ? `Procedures: ${r.harness.procedures.join(", ")}` : ""}>{harnessLabel(r.harness, r.env?.app)}</span>}
                       {formatUsd(sum.usd)} · {secs(sum.ms)} · {timeAgo(r.startedAt)}
                       {r.status === "stopped" ? " · stopped" : ""}
@@ -228,7 +259,7 @@ export function BenchmarkPage({ settings, onGo }: Props) {
                   {open === r.id && (
                     <div className="bench-detail">
                       <Breakdown results={r.results} />
-                      <Share id={r.id} />
+                      <Share run={r} prState={prs[r.id]} onShared={refresh} />
                       <Results results={r.results} />
                     </div>
                   )}
@@ -350,12 +381,19 @@ function Breakdown({ results }: { results: BenchResult[] }) {
   );
 }
 
-/** Save a run's report, or copy it to paste into a chat. */
-function Share({ id }: { id: string }) {
+/** Save a run's report or attempts, copy the report, or share the run as a pull request on the Mack repo, with every step shown. */
+function Share({ run, prState, onShared }: { run: BenchRun; prState?: string; onShared: () => void }) {
+  const id = run.id;
   const [note, setNote] = useState("");
-  const [confirm, setConfirm] = useState(false);
-  const [pr, setPr] = useState("");
   const [logs, setLogs] = useState(true);
+  type Stage = { kind: "idle" } | { kind: "confirm" } | { kind: "sharing"; since: number } | { kind: "done"; url: string; number: number } | { kind: "error"; message: string };
+  const [stage, setStage] = useState<Stage>(run.sharedPr ? { kind: "done", url: run.sharedPr.url, number: run.sharedPr.number } : { kind: "idle" });
+  const [, tick] = useState(0);
+  useEffect(() => {
+    if (stage.kind !== "sharing") return;
+    const t = setInterval(() => tick((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, [stage.kind]);
   const act = async (f: () => Promise<string>) => {
     try {
       setNote(await f());
@@ -363,9 +401,19 @@ function Share({ id }: { id: string }) {
       setNote(errorText(e));
     }
   };
+  const share = () => {
+    setStage({ kind: "sharing", since: Date.now() });
+    void api.benchShare(id, logs).then(
+      (r) => {
+        setStage({ kind: "done", url: r.url, number: r.number });
+        onShared();
+      },
+      (e) => setStage({ kind: "error", message: errorText(e) }),
+    );
+  };
   return (
     <div className="bench-share">
-      <span className="muted small">Share this run to review where Mack loses problems: the report has the settings, the reasons, and each unsolved problem's last attempt and Lean feedback. Save or copy it, or open a pull request with it on the Mack repo.</span>
+      <span className="muted small">Share this run to review where Mack loses problems: the report has the settings, the reasons, and each unsolved problem's attempts and Lean feedback. Save or copy it, or open a pull request with it on the Mack repo.</span>
       <Button size="sm" icon={FileDown} onClick={() => void act(async () => ((await api.benchExport(id)) ? "Saved." : ""))}>
         Save report
       </Button>
@@ -384,45 +432,58 @@ function Share({ id }: { id: string }) {
       <Button size="sm" icon={Database} onClick={() => void act(async () => ((await api.benchDataset(id)) ? "Saved." : ""))} title="Every attempt as JSON Lines: the model, how it ended, why, Lean's feedback and the candidate">
         Save attempts dataset
       </Button>
-      <Button size="sm" icon={GitPullRequest} onClick={() => setConfirm(true)} disabled={!!pr}>
-        Share as a PR
-      </Button>
-      {note && <span className="muted small">{note}</span>}
-      {pr && (
-        <button className="link small" onClick={() => void api.openExternal(pr)}>
-          Pull request opened <ExternalLink size={12} />
-        </button>
+      {(stage.kind === "idle" || stage.kind === "error") && (
+        <Button size="sm" icon={GitPullRequest} onClick={() => setStage({ kind: "confirm" })}>
+          Share as a PR
+        </Button>
       )}
-      {confirm && (
+      {note && <span className="muted small">{note}</span>}
+      {stage.kind === "confirm" && (
         <div className="bench-confirm">
           <p className="small">
-            This opens a <b>public</b> pull request on {COMMUNITY_REPO.owner}/{COMMUNITY_REPO.repo} under your GitHub account, with this run&apos;s report and data: the settings and model names, each problem&apos;s result, and the unsolved problems&apos; last attempts and Lean feedback. No keys or project files are included.
+            This opens a <b>public</b> pull request on {COMMUNITY_REPO.owner}/{COMMUNITY_REPO.repo} under your GitHub account, with this run&apos;s report and data: the settings and model names, each problem&apos;s result, and the unsolved problems&apos; attempts and Lean feedback. No keys or project files are included.
           </p>
           <Toggle
             checked={logs}
             onChange={setLogs}
-            label="Include every attempt (attempts.jsonl): each attempt's model, outcome, reason and Lean feedback, and the attempt itself, so the run can be analysed fully, not from its last attempts alone"
+            label="Include every attempt (attempts.jsonl): each attempt's model, outcome, reason, Lean feedback, the model's thinking and the attempt itself, so the run can be analysed fully"
           />
           <div className="row gap-sm">
-            <Button
-              size="sm"
-              variant="primary"
-              icon={GitPullRequest}
-              onClick={() => {
-                setConfirm(false);
-                setNote("Opening the pull request…");
-                void api.benchShare(id, logs).then(
-                  (r) => (setPr(r.url), setNote("")),
-                  (e) => setNote(errorText(e)),
-                );
-              }}
-            >
+            <Button size="sm" variant="primary" icon={GitPullRequest} onClick={share}>
               Open the pull request
             </Button>
-            <Button size="sm" variant="ghost" onClick={() => setConfirm(false)}>
+            <Button size="sm" variant="ghost" onClick={() => setStage({ kind: "idle" })}>
               Cancel
             </Button>
           </div>
+        </div>
+      )}
+      {stage.kind === "sharing" && (
+        <div className="bench-status-box">
+          <Loader2 size={15} className="spin" />
+          <span>
+            Opening the pull request on GitHub… {Math.round((Date.now() - stage.since) / 1000)}s. The first time, GitHub makes your fork of the repository, which can take up to a minute.
+          </span>
+        </div>
+      )}
+      {stage.kind === "done" && (
+        <div className="bench-status-box ok-box">
+          <CheckCircle2 size={15} className="ok" />
+          <span>
+            Shared as{" "}
+            <button className="link" onClick={() => void api.openExternal(stage.url)}>
+              pull request #{stage.number} <ExternalLink size={12} />
+            </button>
+            {prState && prState !== "unknown" ? ` · ${prState}` : ""}. It appears on the benchmark website once merged.
+          </span>
+        </div>
+      )}
+      {stage.kind === "error" && (
+        <div className="bench-status-box bad-box">
+          <XCircle size={15} className="bad" />
+          <span>
+            The pull request was not opened: {stage.message}
+          </span>
         </div>
       )}
     </div>
@@ -526,7 +587,7 @@ function Compare({ runs, onClose }: { runs: BenchRun[]; onClose: () => void }) {
               return (
                 <tr key={r.id}>
                   <td className="mono">{name(r)}</td>
-                  <td>{r.config.method ?? "single"}</td>
+                  <td>{METHOD_LABELS[r.config.method ?? "single"]}</td>
                   <td>
                     {s.solved}/{s.tried}
                   </td>
@@ -598,7 +659,7 @@ function MetricsDialog({ run, onClose }: { run: BenchRun; onClose: () => void })
         <div className="row gap-sm bench-live-head">
           <h2>{run.label ?? c.model.split("/").pop()}</h2>
           <span className="muted small">
-            {c.method ?? "single"} · {run.set} · {new Date(run.startedAt).toLocaleString()}
+            {METHOD_LABELS[c.method ?? "single"]} · {run.set} · {new Date(run.startedAt).toLocaleString()}
           </span>
           <button className="icon-btn" title="Close" onClick={onClose}>
             <X size={14} />
@@ -822,7 +883,7 @@ function AttemptTimeline({ result }: { result: BenchResult }) {
       </div>
       {result.timeline && result.timeline.length > 0 && (
         <button className="link small" onClick={() => setSteps(!steps)}>
-          {steps ? "Hide" : "Show"} what the run did ({result.timeline.length} steps)
+          {steps ? "Hide" : "Show"} everything the agent did on this problem ({result.timeline.length} steps)
         </button>
       )}
       {steps && (

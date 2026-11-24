@@ -1,0 +1,28 @@
+# Checks shared benchmark runs (benchmarks/runs/<folder>/) on the pull request
+# that adds them: only the files a share writes, a run.json the site can read,
+# problems from the set it names, proofs for solved problems, sane sizes, and
+# nothing that looks like a secret (core/bench/validate.ts). Make this check
+# required so a run reaches the benchmark site only when it passes.
+name: Benchmark runs
+on:
+  pull_request:
+    paths: ["benchmarks/runs/**", "core/bench/**", "scripts/validate-bench.ts"]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npx tsc -p tsconfig.electron.json
+      - name: Validate the runs this change adds or edits
+        shell: bash
+        run: |
+          dirs=$(git diff --name-only "origin/${{ github.base_ref }}"...HEAD -- benchmarks/runs | awk -F/ 'NF>=4 {print $1"/"$2"/"$3}' | sort -u | tr '\n' ' ')
+          node dist-electron/scripts/validate-bench.js $dirs

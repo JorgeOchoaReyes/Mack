@@ -105,3 +105,29 @@ describe("Lean on another machine", () => {
     expect(freshRunScript(29.2)).toContain("timeout 30 lake env lean");
   });
 });
+
+import { closeByAutomation } from "../core/lean/analysis";
+
+describe("Lean's automation on a whole statement, in one Lean run", () => {
+  const frozen = "import Mathlib\n\nset_option maxHeartbeats 400000\n\n/-- doc -/\ntheorem easy (x : ℕ) : x + 0 = x := by\n  sorry\n";
+  it("checks every tactic of the sweep in a single run and returns the statement proved by the first that closes it", async () => {
+    const files: string[] = [];
+    const fake = async (src: string): Promise<LeanCheck> => {
+      files.push(src);
+      // Only the copy proved by `aesop` elaborates; every other copy errors on its own lines.
+      const lines = src.split("\n");
+      const errors = lines.flatMap((l, i) => (l.trim().startsWith("first |") || l.trim() === "grind" || l.trim() === "exact?" ? [{ line: i + 1, col: 2, message: "failed" }] : []));
+      return { status: errors.length ? "errors" : "complete", errors, sorries: [], notes: [], output: "" };
+    };
+    const closed = await closeByAutomation(frozen, fake);
+    expect(files).toHaveLength(1);
+    expect(files[0].match(/theorem easy_mack_auto_\d/g)).toEqual(["theorem easy_mack_auto_0", "theorem easy_mack_auto_1", "theorem easy_mack_auto_2", "theorem easy_mack_auto_3"]);
+    expect(closed).toBe("import Mathlib\n\nset_option maxHeartbeats 400000\n\n/-- doc -/\ntheorem easy (x : ℕ) : x + 0 = x := by\n  aesop\n");
+  });
+
+  it("returns nothing when no tactic closes it, or Lean gives no verdict", async () => {
+    const allFail = async (src: string): Promise<LeanCheck> => ({ status: "errors", errors: src.split("\n").map((_, i) => ({ line: i + 1, col: 0, message: "no" })), sorries: [], output: "" });
+    expect(await closeByAutomation(frozen, allFail)).toBeNull();
+    expect(await closeByAutomation(frozen, async () => ({ status: "noVerdict", errors: [], sorries: [], output: "timeout" }))).toBeNull();
+  });
+});

@@ -7,7 +7,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { sweep } from "../core/lean/analysis";
+import { closeByAutomation, sweep } from "../core/lean/analysis";
 import { checkFromRun, type LeanCheckRun } from "../core/lean/check";
 import { MathlibIndex, mathlibSource, premises } from "../core/lean/mathlib-index";
 import { leanRunner, setLeanSlots } from "../core/lean/runner";
@@ -34,6 +34,19 @@ describe.skipIf(!workspace)("the prover's Lean procedures against real Lean", ()
       const p = await pristineType(frozen, run!);
       expect(p.ok).toBe(true);
       const v = await verifyText(frozen, p.ok ? p.type : "", r.completed!, run!);
+      expect(v, JSON.stringify(v)).toMatchObject({ ok: true });
+    },
+    T,
+  );
+
+  it(
+    "closes a statement with Lean's automation in one Lean run, and the proof passes the verifier",
+    async () => {
+      const frozen = "import Mathlib\n\ntheorem auto_demo (x : ℕ) (h : 3 ≤ x) : 2 * x + 1 ≥ 7 := by\n  sorry\n";
+      const closed = await closeByAutomation(frozen, check);
+      expect(closed).not.toBeNull();
+      const p = await pristineType(frozen, run!);
+      const v = await verifyText(frozen, p.ok ? p.type : "", closed!, run!);
       expect(v, JSON.stringify(v)).toMatchObject({ ok: true });
     },
     T,
