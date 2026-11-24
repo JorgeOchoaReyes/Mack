@@ -28,7 +28,7 @@ const api = {
   stopProve: () => ipcRenderer.invoke("prove:stop"),
   onProveEvent: (cb: (e: unknown) => void) => subscribe("prove:event", cb),
   benchSets: () => ipcRenderer.invoke("bench:sets"),
-  benchStart: (setId: string, n: number, budget: number, method: string) => ipcRenderer.invoke("bench:start", setId, n, budget, method),
+  benchStart: (setId: string, n: number, budget: number, method: string, models: unknown[]) => ipcRenderer.invoke("bench:start", setId, n, budget, method, models),
   proofStats: () => ipcRenderer.invoke("proofs:stats"),
   exportProofs: () => ipcRenderer.invoke("proofs:export"),
   benchStop: () => ipcRenderer.invoke("bench:stop"),

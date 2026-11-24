@@ -5,7 +5,7 @@
 // with its settings, its failures by reason and every problem's result.
 // Pure functions of the runs, so the page is the same wherever it is built.
 
-import { attemptKinds, BENCH_SETS, FAILURES, failureBreakdown, summarize, topErrors, type AttemptLog, type BenchRun } from "./bench";
+import { attemptKinds, BENCH_SETS, FAILURES, failureBreakdown, runMetrics, summarize, topErrors, type AttemptLog, type BenchRun } from "./bench";
 
 /** A run as shared: its folder in the repo, who shared it and from which Mack. */
 export type SharedRun = BenchRun & { folder: string; sharedBy?: string; appVersion?: string; attemptsLogged?: boolean };
@@ -35,6 +35,7 @@ const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
 const usd = (x: number) => `$${x < 0.1 ? x.toFixed(3) : x.toFixed(2)}`;
 const day = (t: number) => new Date(t).toISOString().slice(0, 10);
 const short = (m: string) => m.split("/").pop() ?? m;
+const tokens = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}k` : `${n}`);
 const models = (r: BenchRun) => `${short(r.config.model)}${r.config.prover ? ` + ${r.config.prover.split(",").map((m) => short(m.trim())).join(", ")}` : ""}`;
 const setLabel = (id: string) => BENCH_SETS.find((s) => s.id === id)?.label ?? id;
 
@@ -112,12 +113,33 @@ export function indexPage(runs: SharedRun[], repo: string): string {
 </tr>`,
       )
       .join("\n");
+    const byModel = new Map<string, { runs: number; best: number; solved: number; tried: number; usd: number }>();
+    for (const { r, s } of rows) {
+      const key = models(r);
+      const m = byModel.get(key) ?? { runs: 0, best: 0, solved: 0, tried: 0, usd: 0 };
+      m.runs++;
+      m.best = Math.max(m.best, s.rate);
+      m.solved += s.solved;
+      m.tried += s.tried;
+      m.usd += s.usd;
+      byModel.set(key, m);
+    }
+    const modelRows = [...byModel.entries()].sort((a, b) => b[1].best - a[1].best || b[1].solved / (b[1].tried || 1) - a[1].solved / (a[1].tried || 1));
+    const modelTable = modelRows.length > 1
+      ? `<h3>By model</h3>
+<div class="scroll"><table>
+<thead><tr><th>Models</th><th>Runs</th><th>Best rate</th><th>Over all runs</th><th>Per solve</th></tr></thead>
+<tbody>
+${modelRows.map(([k, m]) => `<tr><td class="wrap">${esc(k)}</td><td>${m.runs}</td><td>${rateCell(m.best)}</td><td>${m.solved}/${m.tried}</td><td>${m.solved ? usd(m.usd / m.solved) : "–"}</td></tr>`).join("\n")}
+</tbody></table></div>`
+      : "";
     return `<h2>${esc(setLabel(set))} <span class="muted small">${rows.length} run${rows.length === 1 ? "" : "s"}</span></h2>
 <div class="scroll"><table>
 <thead><tr><th>#</th><th>Solved</th><th>Rate</th><th>Method</th><th>Models</th><th>Attempts</th><th>Cost</th><th>Per solve</th><th>Date</th><th>By</th></tr></thead>
 <tbody>
 ${body}
-</tbody></table></div>`;
+</tbody></table></div>
+${modelTable}`;
   });
   return page(
     "Mack benchmark",
@@ -132,6 +154,7 @@ ${sections.join("\n") || '<p class="card">No runs shared yet. Run one from Mack\
 /** One run: its settings, its numbers, its failures by reason, and every problem's result. */
 export function runPage(r: SharedRun, repo: string): string {
   const s = summarize(r);
+  const m = runMetrics(r);
   const c = r.config;
   const breakdown = failureBreakdown(r.results);
   const most = breakdown[0]?.count ?? 1;
@@ -156,7 +179,23 @@ export function runPage(r: SharedRun, repo: string): string {
 <div class="card stat"><span class="muted small">Cost</span><b>${usd(s.usd)}</b></div>
 <div class="card stat"><span class="muted small">Time</span><b>${Math.round(s.ms / 60000)} min</b></div>
 <div class="card stat"><span class="muted small">By automation alone</span><b>${s.byAutomation}</b></div>
+${
+  m.attempts
+    ? `<div class="card stat"><span class="muted small">Attempts per solve</span><b>${m.attemptsPerSolve !== null ? m.attemptsPerSolve.toFixed(1) : "–"}</b></div>
+<div class="card stat"><span class="muted small">Tokens in / out</span><b>${tokens(m.promptTokens)} / ${tokens(m.completionTokens)}</b></div>`
+    : ""
+}
 </div>
+${
+  m.byModel.length > 1 || (m.byModel.length === 1 && m.byModel[0].model !== "unknown")
+    ? `<h2>Each model</h2>
+<div class="scroll"><table>
+<thead><tr><th>Model</th><th>Attempts</th><th>Verified</th><th>Hit rate</th><th>Tokens out</th><th>Replies cut short</th></tr></thead>
+<tbody>
+${m.byModel.map((x) => `<tr><td>${esc(short(x.model))}</td><td>${x.attempts}</td><td>${x.verified}</td><td>${pct(x.attempts ? x.verified / x.attempts : 0)}</td><td>${tokens(x.completionTokens)}</td><td>${x.truncated}</td></tr>`).join("\n")}
+</tbody></table></div>`
+    : ""
+}
 <div class="card small">
 Model <b>${esc(c.model)}</b>${c.prover ? `; prover <b>${esc(c.prover)}</b>` : "; no prover model"}. ${c.maxAttempts} attempts, ${c.parallel} at once, starting over after ${c.revisions} revisions. Automation ${c.automation ? "on" : "off"}; premise selection ${c.premises ? "on" : "off"}; easier versions first ${c.easierFirst ? "on" : "off"}.
 </div>

@@ -3,12 +3,13 @@
 // attempt budget is measured instead of guessed. Earlier runs stay listed
 // with the settings they used, to compare.
 
-import { ArrowRight, CheckCircle2, CircleDashed, Copy, Database, ExternalLink, FileDown, Gauge, GitPullRequest, Loader2, Play, Square, Trash2, XCircle, Zap } from "lucide-react";
+import { ArrowRight, BarChart3, CheckCircle2, CircleDashed, Columns3, Copy, Database, ExternalLink, FileDown, Gauge, GitPullRequest, Loader2, Play, Plus, Square, Trash2, X, XCircle, Zap } from "lucide-react";
 import { useEffect, useState } from "react";
-import { api, errorText, type BenchResult, type BenchRun, type BenchSetInfo, type Settings } from "../api";
+import { api, errorText, type BenchModels, type BenchResult, type BenchRun, type BenchSetInfo, type ProviderId, type Settings } from "../api";
+import { PROVIDERS } from "../../core/model/providers";
 import { Button, EmptyState, Field, timeAgo, Toggle } from "../components/ui";
 import { formatUsd } from "../../core/model/metered";
-import { FAILURES, failureBreakdown, summarize } from "../../core/bench/bench";
+import { FAILURES, failureBreakdown, headToHead, runMetrics, summarize } from "../../core/bench/bench";
 import { COMMUNITY_REPO } from "../../core/community";
 
 type Props = { settings: Settings; onGo: (page: "settings" | "setup") => void };
@@ -29,6 +30,12 @@ export function BenchmarkPage({ settings, onGo }: Props) {
   const [status, setStatus] = useState<{ id: string; message: string } | null>(null);
   const [open, setOpen] = useState<string | null>(null);
   const [error, setError] = useState("");
+  // The models each run uses: the ones in Settings to start with; several compare on the same problems.
+  const [models, setModels] = useState<BenchModels[]>(() => [{ provider: settings.provider, model: settings.models[settings.provider] ?? "", proverProvider: settings.proverProvider, proverModel: settings.proverModel }]);
+  /** Runs started together and not finished yet, in order. */
+  const [queued, setQueued] = useState<string[]>([]);
+  const [compare, setCompare] = useState<string[]>([]);
+  const [metrics, setMetrics] = useState<string | null>(null);
 
   const refresh = () => void api.benchList().then((l) => (setRuns(l), setLive((cur) => cur ?? l.find((r) => r.status === "running") ?? null)));
   useEffect(() => {
@@ -41,6 +48,7 @@ export function BenchmarkPage({ settings, onGo }: Props) {
       else if (e.type === "finished") {
         setLive(null);
         setStatus(null);
+        setQueued((q) => q.filter((id) => id !== e.run.id));
         refresh();
       }
     });
@@ -49,17 +57,17 @@ export function BenchmarkPage({ settings, onGo }: Props) {
   const start = async () => {
     setError("");
     try {
-      setLive(await api.benchStart(setId, size, budget, method));
+      const started = await api.benchStart(setId, size, budget, method, models.filter((m) => m.model.trim()));
+      setQueued(started.map((r) => r.id));
+      setLive(started[0]);
     } catch (e) {
       setError(errorText(e));
     }
   };
 
   const total = sets.find((s) => s.id === setId)?.size ?? 244;
-  const model = settings.models[settings.provider];
+  const model = models.some((m) => m.model.trim());
   const config = [
-    `model ${model?.split("/").pop() ?? "not chosen"}`,
-    settings.proverModel.trim() ? `prover ${settings.proverModel.split(",").map((m) => m.trim().split("/").pop()).filter(Boolean).join(", ")}` : "no prover model",
     `${settings.maxAttempts} attempts`,
     `${settings.parallelAttempts} at once`,
     settings.leanAutomation ? "automation on" : "automation off",
@@ -108,13 +116,14 @@ export function BenchmarkPage({ settings, onGo }: Props) {
             <Field label="Budget for the run (USD, 0 = no limit)" hint="When it is spent, the problems left are skipped. Your global spending limit applies as well.">
               <input className="input" type="number" min={0} step={1} value={budget} onChange={(e) => setBudget(Math.max(0, Number(e.target.value) || 0))} />
             </Field>
-            <Field label="Settings used" hint={<button className="link" onClick={() => onGo("settings")}>Change them in Settings → Prover</button>}>
+            <Field label="Other settings used" hint={<button className="link" onClick={() => onGo("settings")}>Change them in Settings → Prover</button>}>
               <div className="bench-config muted small">{config.join(" · ")}</div>
             </Field>
           </div>
+          <ModelsEditor models={models} setModels={setModels} />
           <div className="row gap-sm">
             <Button variant="primary" icon={Play} onClick={() => void start()} disabled={!model}>
-              Run {size} problems
+              {models.filter((m) => m.model.trim()).length > 1 ? `Compare ${models.filter((m) => m.model.trim()).length} models on ${size} problems` : `Run ${size} problems`}
             </Button>
             {!model && (
               <Button icon={ArrowRight} onClick={() => onGo("setup")}>
@@ -126,10 +135,21 @@ export function BenchmarkPage({ settings, onGo }: Props) {
         </section>
       )}
 
-      {live && <LiveRun run={live} status={status} open={open} setOpen={setOpen} />}
+      {live && <LiveRun run={live} status={status} open={open} setOpen={setOpen} queued={Math.max(0, queued.length - 1)} />}
+
+      {metrics && runs.find((r) => r.id === metrics) && <MetricsDialog run={runs.find((r) => r.id === metrics)!} onClose={() => setMetrics(null)} />}
+
+      {compare.length >= 2 && <Compare runs={compare.map((id) => runs.find((r) => r.id === id)).filter((r): r is BenchRun => !!r)} onClose={() => setCompare([])} />}
 
       <section className="wt-section">
-        <h2>Earlier runs</h2>
+        <div className="row gap-sm wt-head">
+          <h2>Earlier runs</h2>
+          {past.length > 1 && (
+            <span className="muted small">
+              <Columns3 size={13} /> Tick runs to compare them{compare.length ? ` (${compare.length} ticked)` : ""}.
+            </span>
+          )}
+        </div>
         {past.length === 0 ? (
           <EmptyState icon={Gauge} title="No runs yet">
             Start with 20 problems: with a cheap model it takes a while and costs little, and it gives the number every later change is compared with.
@@ -141,10 +161,17 @@ export function BenchmarkPage({ settings, onGo }: Props) {
               return (
                 <div key={r.id}>
                   <div className="run-row bench-row" role="button" tabIndex={0} onClick={() => setOpen(open === r.id ? null : r.id)}>
-                    <Gauge size={16} className={r.id === best?.id ? "accent" : "muted"} />
+                    <input
+                      type="checkbox"
+                      aria-label="Compare this run"
+                      checked={compare.includes(r.id)}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => setCompare((c) => (e.target.checked ? [...c, r.id] : c.filter((x) => x !== r.id)))}
+                    />
                     <span className="run-thm">
                       {sum.solved}/{sum.tried} solved · {pct(sum.rate)}
                       {r.id === best?.id && <span className="accent small"> best</span>}
+                      {r.group && <span className="muted small"> · comparison</span>}
                     </span>
                     <span className="muted small">
                       {r.config.model.split("/").pop()}
@@ -153,6 +180,16 @@ export function BenchmarkPage({ settings, onGo }: Props) {
                     <span className="run-meta muted small">
                       {formatUsd(sum.usd)} · {secs(sum.ms)} · {timeAgo(r.startedAt)}
                       {r.status === "stopped" ? " · stopped" : ""}
+                      <button
+                        className="icon-btn"
+                        title="This run's metrics"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setMetrics(r.id);
+                        }}
+                      >
+                        <BarChart3 size={13} />
+                      </button>
                       <button
                         className="icon-btn"
                         title="Delete this run"
@@ -182,7 +219,7 @@ export function BenchmarkPage({ settings, onGo }: Props) {
   );
 }
 
-function LiveRun({ run, status, open, setOpen }: { run: BenchRun; status: { id: string; message: string } | null; open: string | null; setOpen: (id: string | null) => void }) {
+function LiveRun({ run, status, open, setOpen, queued }: { run: BenchRun; status: { id: string; message: string } | null; open: string | null; setOpen: (id: string | null) => void; queued: number }) {
   const sum = summarize(run);
   const done = run.results.length;
   return (
@@ -190,7 +227,9 @@ function LiveRun({ run, status, open, setOpen }: { run: BenchRun; status: { id: 
       <div className="row gap-sm bench-live-head">
         <h2>
           Running: {done} of {run.sample.length}
+          {run.label ? <span className="muted"> · {run.label}</span> : null}
         </h2>
+        {queued > 0 && <span className="muted small">then {queued} more model{queued === 1 ? "" : "s"} on the same problems</span>}
         <span className="muted small">
           {sum.solved} solved ({pct(sum.rate)}) · {formatUsd(sum.usd)} spent{run.budget ? ` of ${formatUsd(run.budget)}` : ""}
         </span>
@@ -372,4 +411,303 @@ function kindMix(r: BenchResult): string {
     .sort((a, b) => b[1] - a[1])
     .map(([k, v]) => `${k} ${v}`)
     .join(", ");
+}
+
+/** The models a run uses, one row each: several rows compare them on the same problems, one after another. */
+function ModelsEditor({ models, setModels }: { models: BenchModels[]; setModels: (m: BenchModels[]) => void }) {
+  const set = (i: number, patch: Partial<BenchModels>) => setModels(models.map((m, j) => (j === i ? { ...m, ...patch } : m)));
+  return (
+    <div className="bench-models">
+      <p className="small">
+        <b>Models</b> <span className="muted">· the main model plans and, without a prover model, writes the attempts. Add rows to compare models: each runs the same problems with the same settings and budget, one after another.</span>
+      </p>
+      {models.map((m, i) => (
+        <div key={i} className="bench-model-row">
+          <select className="input" value={m.provider} onChange={(e) => set(i, { provider: e.target.value as ProviderId, proverProvider: e.target.value as ProviderId })} aria-label="Provider">
+            {PROVIDERS.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+          <input className="input" placeholder="main model id" value={m.model} onChange={(e) => set(i, { model: e.target.value })} aria-label="Main model" />
+          <input className="input" placeholder="prover models (optional, comma-separated)" value={m.proverModel} onChange={(e) => set(i, { proverModel: e.target.value })} aria-label="Prover models" />
+          {models.length > 1 && (
+            <button className="icon-btn" title="Remove this model" onClick={() => setModels(models.filter((_, j) => j !== i))}>
+              <X size={14} />
+            </button>
+          )}
+        </div>
+      ))}
+      {models.length < 6 && (
+        <button className="link small" onClick={() => setModels([...models, { ...models[models.length - 1], model: "", proverModel: "" }])}>
+          <Plus size={13} /> Add a model to compare
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Ticked runs side by side: their numbers, and which problems each solved, so models compare problem by problem. */
+function Compare({ runs, onClose }: { runs: BenchRun[]; onClose: () => void }) {
+  if (runs.length < 2) return null;
+  const sets = new Set(runs.map((r) => r.set));
+  const name = (r: BenchRun) => r.label ?? `${r.config.model.split("/").pop()}${r.config.prover ? ` + ${r.config.prover.split(",").map((m) => m.trim().split("/").pop()).join(", ")}` : ""}`;
+  const problems = [...new Set(runs.flatMap((r) => r.sample))];
+  const solved = (r: BenchRun, id: string) => r.results.find((x) => x.id === id)?.outcome;
+  const rows = problems.map((id) => ({ id, by: runs.map((r) => solved(r, id)) }));
+  const tried = rows.filter((row) => row.by.some((o) => o && o !== "skipped"));
+  const all = tried.filter((row) => row.by.every((o) => o === "solved")).length;
+  const none = tried.filter((row) => row.by.every((o) => o !== "solved")).length;
+  const only = tried.filter((row) => row.by.filter((o) => o === "solved").length === 1).length;
+  return (
+    <section className="settings-group bench-compare">
+      <div className="row gap-sm bench-live-head">
+        <h2>{runs.length === 2 ? "Head to head" : `Comparing ${runs.length} runs`}</h2>
+        {runs.length > 2 && (
+          <span className="muted small">
+            {tried.length} problems: {all} solved by every run, {none} by none, {only} by only one
+          </span>
+        )}
+        <button className="icon-btn" title="Close the comparison" onClick={onClose}>
+          <X size={14} />
+        </button>
+      </div>
+      {sets.size > 1 && <p className="bad small">These runs are on different problem sets, so their rates do not compare.</p>}
+      {runs.length === 2 && <HeadToHead a={runs[0]} b={runs[1]} name={name} />}
+      <div className="bench-table">
+        <table>
+          <thead>
+            <tr>
+              <th>Models</th>
+              <th>Method</th>
+              <th>Solved</th>
+              <th>Rate</th>
+              <th>Cost</th>
+              <th>Per solve</th>
+              <th>Time</th>
+            </tr>
+          </thead>
+          <tbody>
+            {runs.map((r) => {
+              const s = summarize(r);
+              return (
+                <tr key={r.id}>
+                  <td className="mono">{name(r)}</td>
+                  <td>{r.config.method ?? "single"}</td>
+                  <td>
+                    {s.solved}/{s.tried}
+                  </td>
+                  <td>
+                    <span className="bench-rate">
+                      {pct(s.rate)}
+                      <span className="bench-why-bar">
+                        <span style={{ width: `${s.rate * 100}%`, background: "var(--accent)", opacity: 1 }} />
+                      </span>
+                    </span>
+                  </td>
+                  <td>{formatUsd(s.usd)}</td>
+                  <td>{s.solved ? formatUsd(s.usd / s.solved) : "–"}</td>
+                  <td>{secs(s.ms)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="small">Problem by problem</p>
+      <div className="bench-table">
+        <table>
+          <thead>
+            <tr>
+              <th>Problem</th>
+              {runs.map((r, i) => (
+                <th key={r.id} title={name(r)}>
+                  {i + 1}. {name(r).slice(0, 24)}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {tried.map((row) => {
+              const n = row.by.filter((o) => o === "solved").length;
+              return (
+                <tr key={row.id} className={n === 1 ? "bench-only" : ""}>
+                  <td className="mono">{row.id}</td>
+                  {row.by.map((o, i) => (
+                    <td key={i}>{o === "solved" ? <CheckCircle2 size={14} className="ok" /> : o === "skipped" || !o ? <CircleDashed size={14} className="muted" /> : <XCircle size={14} className="bad" />}</td>
+                  ))}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="muted small">Highlighted rows were solved by only one run: what that model or method adds over the others.</p>
+    </section>
+  );
+}
+
+const num = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}k` : `${Math.round(n)}`);
+
+/** A run's numbers in a popup: the headline, how the attempts went, each model's share, and where it ran. */
+function MetricsDialog({ run, onClose }: { run: BenchRun; onClose: () => void }) {
+  const m = runMetrics(run);
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [onClose]);
+  const most = m.kinds[0]?.count ?? 1;
+  const c = run.config;
+  return (
+    <div className="bench-modal-back" onClick={onClose}>
+      <div className="bench-modal" role="dialog" aria-label="Run metrics" onClick={(e) => e.stopPropagation()}>
+        <div className="row gap-sm bench-live-head">
+          <h2>{run.label ?? c.model.split("/").pop()}</h2>
+          <span className="muted small">
+            {c.method ?? "single"} · {run.set} · {new Date(run.startedAt).toLocaleString()}
+          </span>
+          <button className="icon-btn" title="Close" onClick={onClose}>
+            <X size={14} />
+          </button>
+        </div>
+        <div className="bench-stats">
+          <Stat label="Solved" value={`${m.solved}/${m.tried}`} sub={pct(m.rate)} />
+          <Stat label="Cost" value={formatUsd(m.usd)} sub={m.perSolve !== null ? `${formatUsd(m.perSolve)} per solve` : "no solve"} />
+          <Stat label="Time" value={secs(m.ms)} sub={`${secs(m.msPerProblem)} per problem`} />
+          <Stat label="Attempts" value={`${m.attempts}`} sub={m.attemptsPerSolve !== null ? `${m.attemptsPerSolve.toFixed(1)} per solve` : "no solve"} />
+          <Stat label="Tokens" value={num(m.promptTokens + m.completionTokens)} sub={`${num(m.promptTokens)} in · ${num(m.completionTokens)} out`} />
+          <Stat label="By automation alone" value={`${m.byAutomation}`} sub={m.truncated ? `${m.truncated} replies cut at the token limit` : "no reply cut short"} />
+        </div>
+        {m.byModel.length > 0 && (
+          <>
+            <p className="small"><b>Each model</b></p>
+            <div className="bench-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Model</th>
+                    <th>Attempts</th>
+                    <th>Verified</th>
+                    <th>Hit rate</th>
+                    <th>Tokens out</th>
+                    <th>Avg time</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {m.byModel.map((x) => (
+                    <tr key={x.model}>
+                      <td className="mono">{x.model.split("/").pop()}</td>
+                      <td>{x.attempts}</td>
+                      <td>{x.verified}</td>
+                      <td>{pct(x.attempts ? x.verified / x.attempts : 0)}</td>
+                      <td>{num(x.completionTokens)}</td>
+                      <td>{secs(x.attempts ? x.ms / x.attempts : 0)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+        {m.kinds.length > 0 && (
+          <div className="bench-breakdown">
+            <p className="small">All attempts by how they ended</p>
+            {m.kinds.map((k) => (
+              <div key={k.kind} className="bench-why-row">
+                <span>{k.kind === "verified" ? "Verified" : FAILURES[k.kind].label}</span>
+                <span className="bench-why-bar">
+                  <span style={{ width: `${(k.count / most) * 100}%`, ...(k.kind === "verified" ? { background: "var(--ok)" } : {}) }} />
+                </span>
+                <span className="muted small">{k.count}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        <Breakdown results={run.results} />
+        <p className="muted small">
+          Model {c.model}
+          {c.prover ? `; prover ${c.prover}` : ""}. {c.maxAttempts} attempts, {c.parallel} at once, starting over after {c.revisions} revisions; automation {c.automation ? "on" : "off"}, premise selection {c.premises ? "on" : "off"}, easier versions first {c.easierFirst ? "on" : "off"}.
+          {run.env ? ` Mack ${run.env.app} on ${run.env.platform}${run.env.lean ? `, ${run.env.lean}` : ""}; Lean deadline ${secs(run.env.leanDeadlineMs)}, ${run.env.leanProcesses} Lean processes${run.env.remoteLean ? " on a remote machine" : ""}${run.env.repl ? ", REPL on" : ""}.` : ""}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function Stat({ label, value, sub }: { label: string; value: string; sub: string }) {
+  return (
+    <div className="bench-stat">
+      <span className="muted small">{label}</span>
+      <b>{value}</b>
+      <span className="muted small">{sub}</span>
+    </div>
+  );
+}
+
+/** Two runs on the problems both tried: what each solved that the other did not, and what that cost. */
+function HeadToHead({ a, b, name }: { a: BenchRun; b: BenchRun; name: (r: BenchRun) => string }) {
+  const h = headToHead(a, b);
+  const ma = runMetrics(a);
+  const mb = runMetrics(b);
+  const shared = h.both.length + h.onlyA.length + h.onlyB.length + h.neither.length;
+  const lead = h.onlyA.length === h.onlyB.length ? "Even on the shared problems." : `${name(h.onlyA.length > h.onlyB.length ? a : b)} wins by ${Math.abs(h.onlyA.length - h.onlyB.length)}.`;
+  const row = (label: string, x: string, y: string, better?: "lower" | "higher", vx?: number | null, vy?: number | null) => {
+    const win = better && vx != null && vy != null && vx !== vy ? ((better === "lower" ? vx < vy : vx > vy) ? "a" : "b") : "";
+    return (
+      <tr>
+        <td className="muted">{label}</td>
+        <td className={win === "a" ? "ok" : ""}>{x}</td>
+        <td className={win === "b" ? "ok" : ""}>{y}</td>
+      </tr>
+    );
+  };
+  return (
+    <div className="bench-h2h">
+      <div className="bench-h2h-score">
+        <div>
+          <b>{h.onlyA.length}</b>
+          <span className="muted small">only {name(a)}</span>
+        </div>
+        <div>
+          <b>{h.both.length}</b>
+          <span className="muted small">both</span>
+        </div>
+        <div>
+          <b>{h.onlyB.length}</b>
+          <span className="muted small">only {name(b)}</span>
+        </div>
+        <div>
+          <b>{h.neither.length}</b>
+          <span className="muted small">neither</span>
+        </div>
+      </div>
+      <p className="small">
+        {shared} problems both tried. {lead}
+        {h.onlyA.length ? ` Only ${name(a)}: ${h.onlyA.join(", ")}.` : ""}
+        {h.onlyB.length ? ` Only ${name(b)}: ${h.onlyB.join(", ")}.` : ""}
+      </p>
+      <div className="bench-table">
+        <table>
+          <thead>
+            <tr>
+              <th />
+              <th>{name(a)}</th>
+              <th>{name(b)}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {row("Solve rate", pct(ma.rate), pct(mb.rate), "higher", ma.rate, mb.rate)}
+            {row("Cost", formatUsd(ma.usd), formatUsd(mb.usd), "lower", ma.usd, mb.usd)}
+            {row("Cost per solve", ma.perSolve !== null ? formatUsd(ma.perSolve) : "–", mb.perSolve !== null ? formatUsd(mb.perSolve) : "–", "lower", ma.perSolve, mb.perSolve)}
+            {row("Attempts per solve", ma.attemptsPerSolve?.toFixed(1) ?? "–", mb.attemptsPerSolve?.toFixed(1) ?? "–", "lower", ma.attemptsPerSolve, mb.attemptsPerSolve)}
+            {row("Time per problem", secs(ma.msPerProblem), secs(mb.msPerProblem), "lower", ma.msPerProblem, mb.msPerProblem)}
+            {row("Tokens", num(ma.promptTokens + ma.completionTokens), num(mb.promptTokens + mb.completionTokens), "lower", ma.promptTokens + ma.completionTokens || null, mb.promptTokens + mb.completionTokens || null)}
+            {row("By automation alone", `${ma.byAutomation}`, `${mb.byAutomation}`)}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
 }

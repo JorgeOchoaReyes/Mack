@@ -29,9 +29,12 @@ export function sshArgs(r: RemoteLean, script: string): string[] {
   return ["-T", "-o", "BatchMode=yes", "-o", "ServerAliveInterval=30", r.host, `cd ${shq(r.workspace)} && ${PATH_FIX} && ${script}`];
 }
 
+/** Lean's style linters are off for Mack's checks: they only advise, cost time, and bury the real error in warnings. */
+export const LINTERS_OFF = "-Dlinter.all=false";
+
 /** The remote script for one fresh run: the source arrives on stdin, Lean checks it within `seconds`. */
 export function freshRunScript(seconds: number): string {
-  return `f=$(mktemp -d)/Probe.lean && cat > "$f" && timeout ${Math.max(1, Math.ceil(seconds))} lake env lean "$f"; c=$?; rm -rf "$(dirname "$f")"; exit $c`;
+  return `f=$(mktemp -d)/Probe.lean && cat > "$f" && timeout ${Math.max(1, Math.ceil(seconds))} lake env lean ${LINTERS_OFF} "$f"; c=$?; rm -rf "$(dirname "$f")"; exit $c`;
 }
 
 /** The remote script that starts the resident REPL. */

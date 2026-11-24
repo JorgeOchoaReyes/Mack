@@ -87,3 +87,25 @@ describe("error lines", () => {
     expect(errorHead("C:\\Users\\j\\AppData\\Local\\Temp\\mack-lean-1\\Probe.lean:3:1: error: type mismatch")).toBe("type mismatch");
   });
 });
+
+import { headToHead, runMetrics, splitReply } from "../core/bench/bench";
+
+describe("run metrics and head to head", () => {
+  it("measures a run from its results and every attempt, model by model", () => {
+    const m = runMetrics(run);
+    expect(m).toMatchObject({ solved: 1, tried: 2, rate: 0.5, attempts: 4, attemptsPerSolve: 2, completionTokens: 36 });
+    expect(m.byModel).toEqual([
+      { model: "x/prover-a", attempts: 2, verified: 0, completionTokens: 18, promptTokens: 0, ms: 10, truncated: 0 },
+      { model: "y/prover-b", attempts: 2, verified: 1, completionTokens: 18, promptTokens: 0, ms: 10, truncated: 0 },
+    ]);
+  });
+
+  it("puts two runs head to head on the problems both tried", () => {
+    const other = { results: [{ ...run.results[0], outcome: "failed" as const }, { ...run.results[1], outcome: "solved" as const }] };
+    expect(headToHead(run, other)).toEqual({ both: [], onlyA: [run.results[0].id], onlyB: [run.results[1].id], neither: [] });
+  });
+
+  it("separates a reply's thinking and prose from its proof", () => {
+    expect(splitReply("<think>try induction</think>Plan: induct.\n```lean\ntheorem t := by simp\n```\nDone.", "apart")).toEqual({ thinking: "apart\n\ntry induction", prose: "Plan: induct.\n\nDone." });
+  });
+});

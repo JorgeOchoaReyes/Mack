@@ -105,7 +105,7 @@ export class OpenAICompatibleProvider implements ModelProvider {
       return this.readStream(res.body, request.onDelta, markStreamed);
     }
     const json = (await res.json()) as {
-      choices?: { message?: { content?: string | null }; finish_reason?: string | null }[];
+      choices?: { message?: { content?: string | null; reasoning?: string | null; reasoning_content?: string | null }; finish_reason?: string | null }[];
       usage?: { prompt_tokens?: number; completion_tokens?: number };
       error?: { message?: string };
     };
@@ -113,8 +113,10 @@ export class OpenAICompatibleProvider implements ModelProvider {
     const content = json.choices?.[0]?.message?.content;
     if (typeof content !== "string") throw new Error(`${this.name} returned no message content`);
     request.onDelta?.(content);
+    const thinking = json.choices?.[0]?.message?.reasoning ?? json.choices?.[0]?.message?.reasoning_content;
     return {
       content,
+      ...(thinking ? { reasoning: thinking } : {}),
       usage: json.usage && { promptTokens: json.usage.prompt_tokens ?? 0, completionTokens: json.usage.completion_tokens ?? 0 },
       ...(json.choices?.[0]?.finish_reason === "length" ? { truncated: true } : {}),
     };
@@ -128,17 +130,20 @@ export class OpenAICompatibleProvider implements ModelProvider {
     let content = "";
     let usage: ChatResponse["usage"];
     let truncated = false;
+    let reasoning = "";
     const handle = (line: string) => {
       if (!line.startsWith("data:")) return;
       const data = line.slice(5).trim();
       if (!data || data === "[DONE]") return;
-      let j: { choices?: { delta?: { content?: string | null }; finish_reason?: string | null }[]; usage?: { prompt_tokens?: number; completion_tokens?: number }; error?: { message?: string } };
+      let j: { choices?: { delta?: { content?: string | null; reasoning?: string | null; reasoning_content?: string | null }; finish_reason?: string | null }[]; usage?: { prompt_tokens?: number; completion_tokens?: number }; error?: { message?: string } };
       try {
         j = JSON.parse(data);
       } catch {
         return;
       }
       if (j.error) throw new Error(`${this.name}: ${j.error.message ?? "error"}`);
+      const thought = j.choices?.[0]?.delta?.reasoning ?? j.choices?.[0]?.delta?.reasoning_content;
+      if (thought) reasoning += thought;
       const piece = j.choices?.[0]?.delta?.content;
       if (piece) {
         content += piece;
@@ -159,7 +164,7 @@ export class OpenAICompatibleProvider implements ModelProvider {
       }
     }
     handle(buffer);
-    return { content, usage, ...(truncated ? { truncated } : {}) };
+    return { content, usage, ...(truncated ? { truncated } : {}), ...(reasoning ? { reasoning } : {}) };
   }
 
   /** Prices the catalogue publishes, USD per million tokens (OpenRouter and LiteLLM give them per token, Cheaper Inference per million); empty when it gives none. */
