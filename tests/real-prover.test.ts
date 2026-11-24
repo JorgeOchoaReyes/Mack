@@ -53,8 +53,13 @@ describe.skipIf(!workspace)("the prover's Lean procedures against real Lean", ()
     "reads the goal at a sorry and states it as a lemma Lean accepts",
     async () => {
       const src = "import Mathlib\n\ntheorem goal_demo (a b : ℝ) (ha : 0 < a) (hb : 0 < b) : 0 < a * b + a := by\n  have h1 : 0 < a * b := by sorry\n  linarith\n";
-      const g = await goalAt(src, src.indexOf("sorry"), check);
-      expect(g, "no goal was read").not.toBeNull();
+      const at = src.indexOf("sorry");
+      const g = await goalAt(src, at, check);
+      if (!g) {
+        const raw = await run!(`${src.slice(0, at)}(trace_state; sorry)${src.slice(at + 5)}`);
+        const parsed = await check(`${src.slice(0, at)}(trace_state; sorry)${src.slice(at + 5)}`);
+        expect.fail(`no goal was read. Lean said:\n${JSON.stringify(raw)}\nparsed: ${JSON.stringify(parsed)}`);
+      }
       expect(g!.term).toBe(false);
       const lemma = goalToLemma(g!.goal);
       expect(lemma, g!.goal).not.toBeNull();

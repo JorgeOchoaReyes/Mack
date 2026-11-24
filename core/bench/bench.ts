@@ -77,8 +77,8 @@ export function classifyFailure(attempts: AttemptNote[], message = ""): FailureK
     if (a.outcome === "refused") return "statement";
     if (a.outcome === "rejected") return "rejected";
     if (a.outcome === "sorries") return "sorries";
-    if (/unknown (identifier|constant)|unknown namespace/.test(d)) return "names";
-    if (/type mismatch|has type|failed to synthesize|application type mismatch/.test(d)) return "types";
+    if (/unknown (identifier|constant)|unknown namespace/i.test(d)) return "names";
+    if (/type mismatch|has type|failed to synthesize|application type mismatch/i.test(d)) return "types";
     if (/unsolved goals|linarith failed|failed to prove|omega could not|nlinarith|positivity failed|simp made no progress|did not close/i.test(d)) return "gaps";
     return "other";
   };

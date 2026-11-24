@@ -10,7 +10,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import type { LeanCheck, LeanCheckRun, LeanMessage, OpenGoal } from "./check";
+import { usesSorry, type LeanCheck, type LeanCheckRun, type LeanMessage, type OpenGoal } from "./check";
 import { killTree, lakeCommand, leanEnv } from "./toolchain";
 import { REMOTE_REPL, remoteLean, sshArgs } from "./remote";
 
@@ -54,7 +54,7 @@ export function checkFromReply(reply: ReplReply): LeanCheck {
   for (const m of reply.messages ?? []) {
     out.push(`${m.pos.line}:${m.pos.column}: ${m.severity}: ${m.data}`);
     if (m.severity === "error") errors.push({ line: m.pos.line, col: m.pos.column, message: m.data });
-    else if (!m.data.startsWith("declaration uses 'sorry'")) notes.push({ line: m.pos.line, col: m.pos.column, message: m.data });
+    else if (!usesSorry(m.data)) notes.push({ line: m.pos.line, col: m.pos.column, message: m.data });
   }
   const sorries: OpenGoal[] = (reply.sorries ?? []).map((s) => ({ line: s.pos.line, col: s.pos.column, goal: s.goal }));
   for (const s of sorries) out.push(`${s.line}:${s.col}: sorry, goal:\n${s.goal}`);

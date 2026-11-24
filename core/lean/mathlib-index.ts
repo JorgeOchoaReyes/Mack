@@ -164,7 +164,7 @@ export function describeDecls(found: Decl[], query: string): string {
 /** The names Lean reported unknown in a check's output. */
 export function unknownNames(output: string): string[] {
   const out = new Set<string>();
-  for (const m of output.matchAll(/unknown (?:identifier|constant)\s+'([^']+)'/g)) out.add(m[1]);
+  for (const m of output.matchAll(/unknown (?:identifier|constant)\s+['`]([^'`]+)['`]/gi)) out.add(m[1]);
   return [...out].slice(0, 5);
 }
 

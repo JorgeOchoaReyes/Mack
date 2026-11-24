@@ -21,16 +21,23 @@ export type LeanCheck = {
 /** A source checked on a fresh `lake env lean` run or on the resident REPL. */
 export type LeanCheckRun = (source: string) => Promise<LeanCheck>;
 
+/** Lean's warning that a declaration uses `sorry`, in its older ('sorry') and newer (`sorry`) wording. */
+export const usesSorry = (msg: string) => /^declaration uses ['`]sorry['`]/i.test(msg);
+
+/** Whether Lean's output reports an error, with or without an error code after the severity. */
+export const hasLeanError = (output: string) => /(^|\s)error(\([^)\s]*\))?:/m.test(output);
+
 /** Parse `file:line:col: error: message` blocks of Lean's command-line output. */
 export function parseCliOutput(output: string): { errors: LeanMessage[]; sorryLines: number[]; notes: LeanMessage[] } {
   const errors: LeanMessage[] = [];
   const sorryLines: number[] = [];
   const notes: LeanMessage[] = [];
-  const re = /^.*?:(\d+):(\d+): (error|warning|info): ([\s\S]*?)(?=^.*?:\d+:\d+: (?:error|warning|info): |(?![\s\S]))/gm;
+  // Newer Lean names an error code after the severity: `error(lean.unknownIdentifier): …`.
+  const re = /^.*?:(\d+):(\d+): (error|warning|info)(?:\([^)\s]*\))?: ([\s\S]*?)(?=^.*?:\d+:\d+: (?:error|warning|info)(?:\([^)\s]*\))?: |(?![\s\S]))/gm;
   for (const m of output.replace(/\r\n/g, "\n").matchAll(re)) {
     const msg = m[4].trim();
     if (m[3] === "error") errors.push({ line: Number(m[1]), col: Number(m[2]), message: msg });
-    else if (msg.startsWith("declaration uses 'sorry'")) sorryLines.push(Number(m[1]));
+    else if (usesSorry(msg)) sorryLines.push(Number(m[1]));
     else notes.push({ line: Number(m[1]), col: Number(m[2]), message: msg });
   }
   return { errors, sorryLines, notes };
