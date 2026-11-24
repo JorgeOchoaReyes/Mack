@@ -353,8 +353,8 @@ function UpdatesSection({ settings, saveSettings }: { settings: Settings; saveSe
                   ? `Mack ${state.version} is ready and installs when you quit Mack.`
                   : state.state === "manual"
                     ? state.newer
-                      ? `Mack ${state.latest} is out. This copy cannot update itself, since it was not installed from a Mack release installer (those are built for Windows): update it the way you installed it.`
-                      : `${state.latest ? `Mack ${state.latest} is the latest release, so this copy is current. ` : ""}This copy cannot update itself, since it was not installed from a Mack release installer (those are built for Windows).`
+                      ? `Mack ${state.latest} is out. This copy cannot update itself, since it was not installed from a Mack release installer (the Windows installer and the Linux AppImage): update it the way you installed it.`
+                      : `${state.latest ? `Mack ${state.latest} is the latest release, so this copy is current. ` : ""}This copy cannot update itself, since it was not installed from a Mack release installer (the Windows installer and the Linux AppImage).`
                     : `Could not check for updates: ${state.message}`;
   return (
     <section className="settings-group">

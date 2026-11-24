@@ -55,7 +55,8 @@ export async function githubLogin(token: string): Promise<string> {
 /** A repository name from a project folder: `odd-perfect-numbers`. */
 export function repoName(folder: string): string {
   return (
-    basename(folder)
+    // The last part of the path, whichever separator it uses (a Windows path read on Linux too).
+    (folder.split(/[\\/]/).filter(Boolean).pop() ?? basename(folder))
       .toLowerCase()
       .replace(/[^a-z0-9._-]+/g, "-")
       .replace(/^[-.]+|[-.]+$/g, "")

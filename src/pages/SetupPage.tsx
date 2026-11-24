@@ -212,7 +212,7 @@ function ProviderStep({ health, settings, ready, saveSettings, onChanged }: { he
   return (
     <StepCard n={2} icon={KeyRound} title="Model provider and key" ready={ready}>
       <p className="muted">
-        Mack calls models with your own account. Keys are encrypted with Windows' credential protection and only sent to the provider they belong to. You can
+        Mack calls models with your own account. Keys are encrypted with your system's credential protection (Windows, or the Linux keyring) and only sent to the provider they belong to. You can
         set up several and switch per run on the Prove screen.
       </p>
       <div className="provider-tabs">

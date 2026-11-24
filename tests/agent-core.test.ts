@@ -215,23 +215,23 @@ describe("new tools", () => {
   const ctx = (h = hooks(), ask: ExecutorContext["ask"] = async () => true): ExecutorContext => ({ root, policy: {}, ask, session: h });
 
   it("runs approved shell commands in the project folder, and nothing when denied", async () => {
-    const ok = await execute({ name: "shell_exec", args: { command: "Write-Output hello-mack" } }, ctx());
+    const ok = await execute({ name: "shell_exec", args: { command: "echo hello-mack" } }, ctx());
     expect(ok).toMatchObject({ ok: true, decision: "approved" });
     expect(ok.output).toContain("hello-mack");
     expect(ok.output).toContain("exit code 0");
-    const denied = await execute({ name: "shell_exec", args: { command: "Write-Output nope" } }, ctx(hooks(), async () => false));
+    const denied = await execute({ name: "shell_exec", args: { command: "echo nope" } }, ctx(hooks(), async () => false));
     expect(denied).toMatchObject({ ok: false, decision: "denied" });
   }, 30_000);
 
   it("stops a command at its deadline", async () => {
-    const r = await runCommand(root, "Start-Sleep -Seconds 20", 1500);
+    const r = await runCommand(root, process.platform === "win32" ? "Start-Sleep -Seconds 20" : "sleep 20", 1500);
     expect(r.timedOut).toBe(true);
   }, 30_000);
 
   it("reports background jobs when they end", async () => {
     const ended = new Promise<string>((resolve) => {
       const jobs = new JobManager((j) => resolve(j.result!.output));
-      void execute({ name: "shell_exec", args: { command: "Write-Output bg-done", background: true } }, ctx(hooks({ jobs })));
+      void execute({ name: "shell_exec", args: { command: "echo bg-done", background: true } }, ctx(hooks({ jobs })));
     });
     expect(await ended).toContain("bg-done");
   }, 30_000);

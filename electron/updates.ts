@@ -23,7 +23,7 @@ export type UpdateState =
 
 const RELEASES = "https://github.com/JorgeOchoaReyes/Mack/releases";
 
-/** Whether this copy came with what electron-updater needs: only Mack's release installers (Windows) do. */
+/** Whether this copy came with what electron-updater needs: Mack's Windows installer and Linux AppImage do. */
 export function canSelfUpdate(resources = process.resourcesPath): boolean {
   return existsSync(join(resources, "app-update.yml"));
 }

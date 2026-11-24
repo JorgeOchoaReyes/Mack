@@ -1,13 +1,13 @@
 # Mack ⚡
 
 <p align="center">
-  <a href="https://github.com/JorgeOchoaReyes/Mack/releases/latest"><b>⬇ Download Mack for Windows</b></a> ·
+  <a href="https://github.com/JorgeOchoaReyes/Mack/releases/latest"><b>⬇ Download Mack for Windows or Linux</b></a> ·
   <a href="https://jorgeochoareyes.github.io/Mack/"><b>Benchmark leaderboard</b></a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="#contributing">Contribute</a>
 </p>
 
-A Windows desktop app for Lean-checked math research. Open models (through
+A desktop app for Windows and Linux for Lean-checked math research. Open models (through
 [Fireworks](https://fireworks.ai), [OpenRouter](https://openrouter.ai),
 [Cheaper Inference](https://www.cheaperinference.com), a
 [LiteLLM](https://docs.litellm.ai) proxy or any OpenAI-compatible server) propose proofs; **Lean decides** whether they hold.
@@ -254,34 +254,47 @@ The screenshots use sample runs; the site shows the real ones.
 
 ## Install
 
-You need Windows 10 or 11, [Git](https://git-scm.com) (Lake fetches Mathlib
-with it), about 10 GB of free disk, and **your own model provider key**
+You need Windows 10 or 11, or a 64-bit Linux (x86-64),
+[Git](https://git-scm.com) (Lake fetches Mathlib with it), about 10 GB of free disk, and **your own model provider key**
 (Fireworks, OpenRouter or Cheaper Inference), a LiteLLM proxy, or a local OpenAI-compatible
 server. No key or
 credential ships with Mack.
 
-Download `Mack-Setup-<version>.exe` from the
-[latest release](https://github.com/JorgeOchoaReyes/Mack/releases/latest).
-It updates itself after every merge to `main`.
+From the [latest release](https://github.com/JorgeOchoaReyes/Mack/releases/latest):
+
+- **Windows:** download `Mack-Setup-<version>.exe` and run it. It installs Mack
+  for your user and adds Start-menu and desktop shortcuts.
+- **Linux:** download `Mack-<version>.AppImage`, make it executable and run it:
+
+  ```bash
+  chmod +x Mack-*.AppImage
+  ./Mack-*.AppImage
+  ```
+
+  AppImages need FUSE 2; on Ubuntu 22.04 and later install it with
+  `sudo apt install libfuse2` (`libfuse2t64` on 24.04). Keys are stored with
+  the system keyring (GNOME Keyring or KWallet) when one is running.
+
+Both update themselves after every merge to `main`.
 
 Or from source:
 
-```powershell
+```bash
 git clone https://github.com/JorgeOchoaReyes/Mack.git
 cd Mack
 npm install
-npm run dist        # builds release\Mack-Setup-<version>.exe
+npm run dist        # Windows: release/Mack-Setup-<version>.exe
+npm run dist:linux  # Linux:   release/Mack-<version>.AppImage
 ```
 
-Run the installer. It installs Mack for your user and adds Start-menu and
-desktop shortcuts. Then open Mack and follow **Setup**:
+Then open Mack and follow **Setup**:
 
 1. **Lean and Mathlib**: click *Install*. It takes 5–20 minutes and about
    5 GB, mostly Mathlib's prebuilt cache.
 2. **Model provider and key**: pick Fireworks, OpenRouter, Cheaper Inference, LiteLLM (its
    address, default `http://localhost:4000/v1`) or a custom endpoint and paste
-   your key. It is encrypted with Windows' credential
-   protection and only sent to that provider. For development you can instead
+   your key. It is encrypted with the system's credential
+   protection (Windows, or the Linux keyring) and only sent to that provider. For development you can instead
    copy `.env.example` to `.env` and set `FIREWORKS_API_KEY`,
    `OPENROUTER_API_KEY`, `CHEAPER_INFERENCE_API_KEY` or `CUSTOM_API_KEY`;
    `.env` is gitignored.
