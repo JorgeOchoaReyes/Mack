@@ -6,11 +6,12 @@
 # - proofs: every solved proof re-verified with Lean and the strict verifier,
 #   against the Mathlib the run used (core/bench/recheck.ts), so a solve
 #   cannot be claimed by editing run.json.
-# Make both required so a run reaches the benchmark site only when they pass.
+# Both are required checks on main, so they run on every pull request (a
+# required check that never starts would block the merge): one that adds no
+# run passes in about a minute with "No shared runs in this change".
 name: Benchmark runs
 on:
   pull_request:
-    paths: ["benchmarks/runs/**", "core/bench/**", "scripts/validate-bench.ts", "scripts/recheck-bench.ts", ".github/workflows/benchmarks-check.yml"]
 permissions:
   contents: read
 jobs:
