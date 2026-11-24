@@ -71,6 +71,8 @@ export const api = {
   proofStats: () => m().proofStats() as Promise<{ count: number }>,
   exportProofs: () => m().exportProofs() as Promise<{ path: string; count: number } | null>,
   benchStop: () => m().benchStop() as Promise<void>,
+  benchReport: (id: string) => m().benchReport(id) as Promise<string>,
+  benchExport: (id: string) => m().benchExport(id) as Promise<string | null>,
   benchList: () => m().benchList() as Promise<BenchRun[]>,
   benchDelete: (id: string) => m().benchDelete(id) as Promise<void>,
   onBenchEvent: (cb: (e: BenchEvent) => void) => m().onBenchEvent((e) => cb(e as BenchEvent)),

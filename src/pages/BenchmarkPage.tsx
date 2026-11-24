@@ -3,12 +3,12 @@
 // attempt budget is measured instead of guessed. Earlier runs stay listed
 // with the settings they used, to compare.
 
-import { ArrowRight, CheckCircle2, CircleDashed, Gauge, Loader2, Play, Square, Trash2, XCircle, Zap } from "lucide-react";
+import { ArrowRight, CheckCircle2, CircleDashed, Copy, FileDown, Gauge, Loader2, Play, Square, Trash2, XCircle, Zap } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, errorText, type BenchResult, type BenchRun, type BenchSetInfo, type Settings } from "../api";
 import { Button, EmptyState, Field, timeAgo } from "../components/ui";
 import { formatUsd } from "../../core/model/metered";
-import { summarize } from "../../core/bench/bench";
+import { FAILURES, failureBreakdown, summarize } from "../../core/bench/bench";
 
 type Props = { settings: Settings; onGo: (page: "settings" | "setup") => void };
 
@@ -164,7 +164,13 @@ export function BenchmarkPage({ settings, onGo }: Props) {
                       </button>
                     </span>
                   </div>
-                  {open === r.id && <Results results={r.results} />}
+                  {open === r.id && (
+                    <div className="bench-detail">
+                      <Breakdown results={r.results} />
+                      <Share id={r.id} />
+                      <Results results={r.results} />
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -199,6 +205,7 @@ function LiveRun({ run, status, open, setOpen }: { run: BenchRun; status: { id: 
           <Loader2 size={13} className="spin" /> <span className="mono">{status.id}</span>: {status.message}
         </p>
       )}
+      <Breakdown results={run.results} />
       <Results results={run.results} open={open} setOpen={setOpen} />
     </section>
   );
@@ -213,17 +220,95 @@ function Results({ results, open, setOpen }: { results: BenchResult[]; open?: st
     <div className="bench-results">
       {results.map((r) => (
         <div key={r.id}>
-          <button className="bench-result" onClick={() => toggle(shown === r.id ? null : r.id)} disabled={!r.proof && !r.message}>
+          <button className="bench-result" onClick={() => toggle(shown === r.id ? null : r.id)} disabled={!r.proof && !r.message && !r.lastError}>
             {r.outcome === "solved" ? r.attempts === 0 ? <Zap size={14} className="ok" /> : <CheckCircle2 size={14} className="ok" /> : r.outcome === "skipped" ? <CircleDashed size={14} className="muted" /> : <XCircle size={14} className="bad" />}
             <span className="mono">{r.id}</span>
             <span className="muted small">
               {r.outcome === "solved" ? (r.attempts === 0 ? "closed by Lean's automation" : `solved in ${r.attempts} attempt${r.attempts === 1 ? "" : "s"}`) : r.outcome === "skipped" ? `skipped: ${r.message ?? ""}` : r.outcome === "error" ? "error" : `not solved in ${r.attempts} attempts`}
+              {r.failure && <span className="bench-reason"> · {FAILURES[r.failure].label}</span>}
             </span>
             <span className="muted small">{r.outcome === "skipped" ? "" : `${secs(r.ms)} · ${formatUsd(r.usd)}`}</span>
           </button>
-          {shown === r.id && (r.proof || r.message) && <pre className="bench-proof">{r.proof ?? r.message}</pre>}
+          {shown === r.id && (r.proof || r.message || r.lastError) && (
+            <div className="bench-why">
+              {r.proof ? (
+                <pre className="bench-proof">{r.proof}</pre>
+              ) : (
+                <>
+                  {r.outcomes && <p className="muted small">Attempts ended: {Object.entries(r.outcomes).map(([k, v]) => `${k} ${v}`).join(", ")}</p>}
+                  {r.lastError && (
+                    <>
+                      <p className="small">Lean&apos;s last feedback</p>
+                      <pre className="bench-proof">{r.lastError}</pre>
+                    </>
+                  )}
+                  {r.lastCandidate && (
+                    <>
+                      <p className="small">Last attempt</p>
+                      <pre className="bench-proof">{r.lastCandidate}</pre>
+                    </>
+                  )}
+                  {!r.lastError && r.message && <pre className="bench-proof">{r.message}</pre>}
+                </>
+              )}
+            </div>
+          )}
         </div>
       ))}
+    </div>
+  );
+}
+
+/** Unsolved problems by reason, with what would help each. */
+function Breakdown({ results }: { results: BenchResult[] }) {
+  const rows = failureBreakdown(results);
+  if (!rows.length) return null;
+  const most = rows[0].count;
+  return (
+    <div className="bench-breakdown">
+      <p className="small">Why problems were not solved</p>
+      {rows.map((b) => (
+        <div key={b.kind} className="bench-why-row" title={`${FAILURES[b.kind].fix}\n${b.ids.join(", ")}`}>
+          <span>{FAILURES[b.kind].label}</span>
+          <span className="bench-why-bar">
+            <span style={{ width: `${(b.count / most) * 100}%` }} />
+          </span>
+          <span className="muted small">{b.count}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Save a run's report, or copy it to paste into a chat. */
+function Share({ id }: { id: string }) {
+  const [note, setNote] = useState("");
+  const act = async (f: () => Promise<string>) => {
+    try {
+      setNote(await f());
+    } catch (e) {
+      setNote(errorText(e));
+    }
+  };
+  return (
+    <div className="bench-share">
+      <span className="muted small">Share this run to review where Mack loses problems: the report has the settings, the reasons, and each unsolved problem's last attempt and Lean feedback.</span>
+      <Button size="sm" icon={FileDown} onClick={() => void act(async () => ((await api.benchExport(id)) ? "Saved." : ""))}>
+        Save report
+      </Button>
+      <Button
+        size="sm"
+        icon={Copy}
+        onClick={() =>
+          void act(async () => {
+            await navigator.clipboard.writeText(await api.benchReport(id));
+            return "Copied: paste it into a chat.";
+          })
+        }
+      >
+        Copy report
+      </Button>
+      {note && <span className="muted small">{note}</span>}
     </div>
   );
 }

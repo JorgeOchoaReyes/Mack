@@ -1015,3 +1015,16 @@ body:has(.resizer.dragging) { cursor: col-resize; user-select: none; }
 .settings-tab.active { color: var(--text); border-bottom-color: var(--accent); }
 .settings-tab .nav-badge { position: static; margin-left: 2px; }
 .settings-head + .page { padding-top: 16px; }
+
+.bench-detail { border-top: 1px solid var(--border); background: var(--surface-2); }
+.bench-breakdown { display: grid; gap: 6px; padding: 12px 16px; }
+.bench-breakdown > p { margin: 0 0 2px; font-weight: 600; }
+.bench-why-row { display: grid; grid-template-columns: minmax(180px, 240px) 1fr 32px; align-items: center; gap: 10px; font-size: 13px; }
+.bench-why-bar { height: 6px; border-radius: 3px; background: var(--sunken); overflow: hidden; }
+.bench-why-bar > span { display: block; height: 100%; background: var(--bad); opacity: 0.7; }
+.bench-share { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 4px 16px 12px; }
+.bench-share > span:first-child { flex: 1 1 320px; }
+.bench-reason { color: var(--bad); }
+.bench-why { display: grid; gap: 4px; padding: 8px 16px 12px; background: var(--sunken); }
+.bench-why p { margin: 4px 0 0; }
+.bench-why .bench-proof { padding: 8px 10px; border-radius: 8px; background: var(--surface); }

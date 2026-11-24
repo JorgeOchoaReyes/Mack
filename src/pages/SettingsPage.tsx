@@ -96,6 +96,11 @@ export function SettingsPage({ settings, saveSettings }: Props) {
         />
         <ProofExport />
         <Toggle
+          checked={settings.premiseSelection}
+          onChange={(v) => void saveSettings({ premiseSelection: v })}
+          label="Give attempts the likely Mathlib theorems up front (premise selection): before the first attempt, the theorems that the statement's concepts point to (its functions, its notation, its number types) are looked up in Mathlib's source and listed for the prover."
+        />
+        <Toggle
           checked={settings.easierFirst}
           onChange={(v) => void saveSettings({ easierFirst: v })}
           label="Prove easier versions first: the model proposes special cases, weaker forms and the key lemma, each is tried with a few attempts, and the ones Lean verifies are offered to every attempt on the real statement. Costs a few model calls more per run."

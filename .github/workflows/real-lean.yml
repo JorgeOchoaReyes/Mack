@@ -1,0 +1,41 @@
+# Runs the opt-in tests against real Lean and Mathlib (tests/real-*.test.ts)
+# when the prover's Lean code changes: the automation sweep, goal reading,
+# decompose's assembly, premise selection and the strict verifier. Uses the
+# community proofs workspace, whose Mathlib is pinned and cached.
+name: Real Lean
+on:
+  pull_request:
+    paths: ["core/**", "tests/real-*.test.ts", ".github/workflows/real-lean.yml", "community/lean/**"]
+  push:
+    branches: [main]
+    paths: ["core/**", "tests/real-*.test.ts"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  real-lean:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install elan
+        shell: bash
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - uses: actions/cache@v4
+        with:
+          path: community/lean/.lake
+          key: community-lake-${{ hashFiles('community/lean/lake-manifest.json', 'community/lean/lean-toolchain') }}
+      - name: Mathlib
+        working-directory: community/lean
+        run: |
+          lake exe cache get
+          lake build Mathlib
+      - run: npm ci
+      - name: Tests against real Lean
+        shell: bash
+        run: MACK_LEAN_WORKSPACE="$PWD/community/lean" npx vitest run tests/real-lean.test.ts tests/real-prover.test.ts

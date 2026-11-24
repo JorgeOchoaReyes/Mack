@@ -38,7 +38,61 @@ export type BenchResult = {
   usd: number;
   message?: string;
   proof?: string;
+  /** Why an unsolved problem failed (see FAILURES), from its attempts. */
+  failure?: FailureKind;
+  /** How the attempts ended, by outcome. */
+  outcomes?: Record<string, number>;
+  /** The last Lean feedback and the last candidate, cut short, to read why. */
+  lastError?: string;
+  lastCandidate?: string;
 };
+
+/** The reasons a benchmark problem goes unsolved, each with what would help. */
+export const FAILURES = {
+  names: { label: "Wrong lemma names", fix: "names Mathlib does not have: premise selection and the name lookup should help; a stronger prover model guesses fewer" },
+  types: { label: "Type mismatch", fix: "terms of the wrong type, often casts between ℕ, ℤ and ℝ: push_cast/norm_cast hints, or a prover model" },
+  gaps: { label: "Tactics did not close goals", fix: "the proof idea is right but steps stay open: decompose, more attempts, or easier versions first" },
+  sorries: { label: "Gaps automation could not close", fix: "sorries left for automation were too hard: decompose turns each into a lemma of its own" },
+  timeout: { label: "Lean timed out", fix: "heavy tactics (nlinarith, decide, simp on big terms): a longer Lean deadline or lighter proofs" },
+  statement: { label: "Statement changed or forbidden", fix: "the attempts edited the theorem or used a banned shortcut: a prover model that follows the format" },
+  rejected: { label: "Verifier rejected", fix: "Lean accepted the file but the verifier did not (sorry, axioms, a different type)" },
+  split: { label: "Could not split", fix: "decompose's planner could not write steps Lean accepts, or a step's goal could not be stated as a lemma" },
+  budget: { label: "Budget or stop", fix: "the run's budget or a stop ended it: a larger budget" },
+  model: { label: "Model call failed", fix: "the provider refused or failed: the key, the model id or the provider's limits" },
+  other: { label: "Other Lean errors", fix: "read the last error below" },
+} as const;
+
+export type FailureKind = keyof typeof FAILURES;
+
+/** What one attempt left: its outcome and Lean's feedback. */
+export type AttemptNote = { outcome: string; detail: string };
+
+/** The likeliest reason a problem failed: the most common kind among its attempts, or what stopped the run. */
+export function classifyFailure(attempts: AttemptNote[], message = ""): FailureKind {
+  if (/budget|spending limit|cap reached|Stopped/i.test(message)) return "budget";
+  if (!attempts.length) return /Model call failed/i.test(message) ? "model" : /split|steps/i.test(message) ? "split" : "other";
+  const kindOf = (a: AttemptNote): FailureKind => {
+    const d = a.detail;
+    if (a.outcome === "no verdict" || /deadline|timeout|maximum recursion|heartbeats/i.test(d)) return "timeout";
+    if (a.outcome === "refused") return "statement";
+    if (a.outcome === "rejected") return "rejected";
+    if (a.outcome === "sorries") return "sorries";
+    if (/unknown (identifier|constant)|unknown namespace/.test(d)) return "names";
+    if (/type mismatch|has type|failed to synthesize|application type mismatch/.test(d)) return "types";
+    if (/unsolved goals|linarith failed|failed to prove|omega could not|nlinarith|positivity failed|simp made no progress|did not close/i.test(d)) return "gaps";
+    return "other";
+  };
+  const counts = new Map<FailureKind, number>();
+  for (const a of attempts) counts.set(kindOf(a), (counts.get(kindOf(a)) ?? 0) + 1);
+  return [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0];
+}
+
+/** Unsolved problems by reason, most common first. */
+export function failureBreakdown(results: BenchResult[]): { kind: FailureKind; count: number; ids: string[] }[] {
+  const by = new Map<FailureKind, string[]>();
+  for (const r of results) if ((r.outcome === "failed" || r.outcome === "error") && r.failure) by.set(r.failure, [...(by.get(r.failure) ?? []), r.id]);
+  return [...by.entries()].map(([kind, ids]) => ({ kind, count: ids.length, ids })).sort((a, b) => b.count - a.count);
+}
 
 export type BenchConfig = {
   model: string;
@@ -50,6 +104,7 @@ export type BenchConfig = {
   /** "single": attempts only; "decompose": attempts, then the statement split into lemmas. */
   method?: "single" | "decompose";
   easierFirst?: boolean;
+  premises?: boolean;
 };
 
 export type BenchRun = {
@@ -135,4 +190,49 @@ export async function runBench(o: {
   run.finishedAt = Date.now();
   o.onEvent({ type: "finished", run });
   return run;
+}
+
+const cut = (t: string | undefined, n: number) => (!t ? "" : t.length > n ? `${t.slice(0, n)}\n…` : t);
+
+/**
+ * A run as a Markdown report to share: the settings, the solve rate and cost,
+ * the failures by reason, and for each unsolved problem its statement, how its
+ * attempts ended, Lean's last feedback and the last attempt. Enough to see
+ * where Mack loses problems without the app.
+ */
+export function benchReport(run: BenchRun, set: BenchSet | undefined, appVersion = ""): string {
+  const sum = summarize(run);
+  const c = run.config;
+  const lines = [
+    `# Mack benchmark: ${set?.label ?? run.set}, ${sum.solved}/${sum.tried} solved (${(sum.rate * 100).toFixed(1)}%)`,
+    "",
+    `- Run ${run.id}, ${new Date(run.startedAt).toISOString()}${appVersion ? `, Mack ${appVersion}` : ""}, ${run.status}`,
+    `- Method: ${c.method ?? "single"}; model ${c.model}${c.prover ? `; prover ${c.prover}` : "; no prover model"}`,
+    `- ${c.maxAttempts} attempts, ${c.parallel} at once, revisions before starting over ${c.revisions}; automation ${c.automation ? "on" : "off"}; premise selection ${c.premises ? "on" : "off"}; easier versions first ${c.easierFirst ? "on" : "off"}`,
+    `- Spent $${sum.usd.toFixed(3)} in ${Math.round(sum.ms / 60000)} min; ${sum.byAutomation} solved by Lean's automation alone; budget ${run.budget ? `$${run.budget}` : "none"}`,
+    "",
+    "## Failures by reason",
+    "",
+  ];
+  const breakdown = failureBreakdown(run.results);
+  if (!breakdown.length) lines.push("None.");
+  for (const b of breakdown) lines.push(`- **${FAILURES[b.kind].label}**: ${b.count} (${b.ids.join(", ")}). ${FAILURES[b.kind].fix}.`);
+  const skipped = run.results.filter((r) => r.outcome === "skipped").length;
+  if (skipped) lines.push(`- Skipped: ${skipped}`);
+  lines.push("", "## Results", "", "| Problem | Outcome | Attempts | Time | Cost | Reason |", "|---|---|---|---|---|---|");
+  for (const r of run.results) {
+    lines.push(`| ${r.id} | ${r.outcome} | ${r.attempts} | ${Math.round(r.ms / 1000)}s | $${r.usd.toFixed(3)} | ${r.failure ? FAILURES[r.failure].label : r.outcome === "solved" && r.attempts === 0 ? "automation" : ""} |`);
+  }
+  const failed = run.results.filter((r) => r.outcome === "failed" || r.outcome === "error");
+  if (failed.length) lines.push("", "## Unsolved problems");
+  for (const r of failed) {
+    const source = set?.problems.find((p) => p.id === r.id)?.source;
+    lines.push("", `### ${r.id}: ${r.failure ? FAILURES[r.failure].label : r.outcome}`, "");
+    if (r.outcomes) lines.push(`Attempts ended: ${Object.entries(r.outcomes).map(([k, v]) => `${k} ${v}`).join(", ")}.`, "");
+    if (r.message) lines.push(`Run message: ${cut(r.message, 400)}`, "");
+    if (source) lines.push("Statement:", "```lean", cut(source.trim(), 1500), "```", "");
+    if (r.lastError) lines.push("Lean's last feedback:", "```", cut(r.lastError, 1500), "```", "");
+    if (r.lastCandidate) lines.push("Last attempt:", "```lean", cut(r.lastCandidate.trim(), 2500), "```");
+  }
+  return `${lines.join("\n")}\n`;
 }

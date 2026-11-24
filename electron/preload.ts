@@ -32,6 +32,8 @@ const api = {
   proofStats: () => ipcRenderer.invoke("proofs:stats"),
   exportProofs: () => ipcRenderer.invoke("proofs:export"),
   benchStop: () => ipcRenderer.invoke("bench:stop"),
+  benchReport: (id: string) => ipcRenderer.invoke("bench:report", id),
+  benchExport: (id: string) => ipcRenderer.invoke("bench:export", id),
   benchList: () => ipcRenderer.invoke("bench:list"),
   benchDelete: (id: string) => ipcRenderer.invoke("bench:delete", id),
   onBenchEvent: (cb: (e: unknown) => void) => subscribe("bench:event", cb),

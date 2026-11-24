@@ -231,3 +231,75 @@ export class MathlibIndex {
     return decls;
   }
 }
+
+/** Notation that names a Mathlib concept without spelling it. */
+const NOTATION: [RegExp, string][] = [
+  [/√/, "sqrt"],
+  [/∑/, "sum"],
+  [/∏/, "prod"],
+  [/∣/, "dvd"],
+  [/%/, "mod"],
+  [/⌊/, "floor"],
+  [/⌈/, "ceil"],
+  [/\|[^|]+\|/, "abs"],
+  [/!/, "factorial"],
+  [/\^/, "pow"],
+  [/∫/, "integral"],
+  [/deriv/, "deriv"],
+];
+const TYPE_NS: [RegExp, string][] = [
+  [/ℕ/, "nat"],
+  [/ℤ/, "int"],
+  [/ℝ/, "real"],
+  [/ℚ/, "rat"],
+  [/ℂ/, "complex"],
+  [/Finset/, "finset"],
+];
+const NOT_CONCEPTS = new Set(["theorem", "lemma", "fun", "by", "sorry", "have", "show", "from", "let", "in", "if", "then", "else", "and", "or", "not", "prop", "type", "true", "false", "open", "import", "mathlib", "set", "option", "max", "heartbeats", "real", "nat", "int", "rat", "complex"]);
+
+/**
+ * Premise selection: the Mathlib theorems a proof of `statement` is most
+ * likely to use, read before the first attempt rather than after Lean rejects
+ * a guessed name (the retrieval step of ReProver and the labs' provers). The
+ * statement's concepts are its constant names (`Nat.choose`, `Real.sqrt`,
+ * `Finset.range`) and its notation (`√`, `∑`, `∣`, `%`); a theorem scores by
+ * how many of them its name and statement mention, and by its namespace
+ * matching the statement's number types.
+ */
+export function premises(decls: Decl[], statement: string, limit = 20): Decl[] {
+  const known = new Set<string>();
+  for (const d of decls) {
+    const last = d.name.slice(d.name.lastIndexOf(".") + 1).toLowerCase();
+    if (last.length >= 3) known.add(last);
+  }
+  const concepts = new Set<string>();
+  for (const m of statement.matchAll(/[A-Za-z_][A-Za-z0-9_'.]*/g)) {
+    for (const part of m[0].split(".")) {
+      for (const w of words(part)) if (w.length >= 3 && !NOT_CONCEPTS.has(w) && known.has(w)) concepts.add(w);
+    }
+  }
+  for (const [re, w] of NOTATION) if (re.test(statement)) concepts.add(w);
+  if (!concepts.size) return [];
+  const spaces = new Set(TYPE_NS.filter(([re]) => re.test(statement)).map(([, ns]) => ns));
+  const scored: { d: Decl; s: number }[] = [];
+  for (const d of decls) {
+    if (d.kind !== "theorem") continue;
+    const parts = words(d.name);
+    let inName = 0;
+    for (const c of concepts) if (parts.includes(c)) inName++;
+    if (!inName) continue;
+    const sig = d.sig.toLowerCase();
+    let inSig = 0;
+    for (const c of concepts) if (sig.includes(c)) inSig++;
+    const ns = d.name.includes(".") ? d.name.slice(0, d.name.indexOf(".")).toLowerCase() : "";
+    scored.push({ d, s: inName * 3 + inSig + (spaces.has(ns) ? 1.5 : 0) - d.name.length / 60 - d.sig.length / 800 });
+  }
+  scored.sort((a, b) => b.s - a.s);
+  return scored.slice(0, limit).map((x) => x.d);
+}
+
+/** Premises as the attempts read them; empty when there are none. */
+export function describePremises(found: Decl[]): string {
+  if (!found.length) return "";
+  return `Mathlib theorems likely to help, found in Mathlib's source by the statement's concepts (their exact names and types are confirmed by Lean only when used):\n${found.map((d) => `- ${d.name} ${d.sig}`.slice(0, 320)).join("\n")}`;
+}
