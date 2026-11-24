@@ -1,0 +1,201 @@
+{
+  "id": "1795464848382",
+  "set": "minif2f-test",
+  "startedAt": 1795464848382,
+  "finishedAt": 1795480965179,
+  "status": "done",
+  "config": {
+    "model": "us/gpt-6-luna",
+    "maxAttempts": 8,
+    "parallel": 1,
+    "automation": true,
+    "revisions": 4,
+    "method": "single",
+    "easierFirst": false
+  },
+  "sample": [
+    "mathd_algebra_598",
+    "imo_1992_p1",
+    "imo_2001_p6",
+    "amc12a_2019_p12",
+    "aime_1997_p9",
+    "mathd_algebra_513",
+    "mathd_numbertheory_618",
+    "amc12_2001_p5",
+    "amc12b_2020_p22",
+    "amc12b_2020_p21",
+    "imo_1969_p2",
+    "numbertheory_notEquiv2i2jasqbsqdiv8",
+    "amc12b_2020_p13",
+    "induction_sumkexp3eqsumksq",
+    "imo_1963_p5",
+    "aime_1988_p8",
+    "imo_1983_p6",
+    "induction_pord1p1on2powklt5on2",
+    "mathd_numbertheory_728",
+    "aime_1989_p8"
+  ],
+  "results": [
+    {
+      "id": "mathd_algebra_598",
+      "outcome": "solved",
+      "attempts": 2,
+      "ms": 792404,
+      "usd": 0.003052,
+      "proof": "import Mathlib\n\nset_option maxHeartbeats 400000\n\nopen BigOperators Real Nat Topology Rat\n\ntheorem mathd_algebra_598\n  (a b c d : ℝ)\n  (h₁ : ((4:ℝ)^a) = 5)\n  (h₂ : ((5:ℝ)^b) = 6)\n  (h₃ : ((6:ℝ)^c) = 7)\n  (h₄ : ((7:ℝ)^d) = 8) :\n  a * b * c * d = 3 / 2 := by\n  have ha : a * Real.log 4 = Real.log 5 := by\n    have h := congrArg Real.log h₁\n    rw [Real.log_rpow (by norm_num : (0 : ℝ) < 4)] at h\n    exact h\n  have hb : b * Real.log 5 = Real.log 6 := by\n    have h := congrArg Real.log h₂\n    rw [Real.log_rpow (by norm_num : (0 : ℝ) < 5)] at h\n    exact h\n  have hc : c * Real.log 6 = Real.log 7 := by\n    have h := congrArg Real.log h₃\n    rw [Real.log_rpow (by norm_num : (0 : ℝ) < 6)] at h\n    exact h\n  have hd : d * Real.log 7 = Real.log 8 := by\n    have h := congrArg Real.log h₄\n    rw [Real.log_rpow (by norm_num : (0 : ℝ) < 7)] at h\n    exact h\n  have hlog4 : 0 < Real.log 4 := Real.log_pos (by norm_num)\n  have hlog5 : 0 < Real.log 5 := Real.log_pos (by norm_num)\n  have hlog6 : 0 < Real.log 6 := Real.log_pos (by norm_num)\n  have hlog7 : 0 < Real.log 7 := Real.log_pos (by norm_num)\n  have hlog2 : 0 < Real.log 2 := Real.log_pos (by norm_num)\n  have hlog4ne : Real.log 4 ≠ 0 := ne_of_gt hlog4\n  have hlog5ne : Real.log 5 ≠ 0 := ne_of_gt hlog5\n  have hlog6ne : Real.log 6 ≠ 0 := ne_of_gt hlog6\n  have hlog7ne : Real.log 7 ≠ 0 := ne_of_gt hlog7\n  have hlog2ne : Real.log 2 ≠ 0 := ne_of_gt hlog2\n  have ha' : a = Real.log 5 / Real.log 4 := by\n    field_simp [hlog4ne]\n    linarith [ha]\n  have hb' : b = Real.log 6 / Real.log 5 := by\n    field_simp [hlog5ne]\n    linarith [hb]\n  have hc' : c = Real.log 7 / Real.log 6 := by\n    field_simp [hlog6ne]\n    linarith [hc]\n  have hd' : d = Real.log 8 / Real.log 7 := by\n    field_simp [hlog7ne]\n    linarith [hd]\n  have ht : a * b * c * d = Real.log 8 / Real.log 4 := by\n    rw [ha', hb', hc', hd']\n    field_simp [hlog4ne, hlog5ne, hlog6ne, hlog7ne]\n    <;> ring\n  have hlog4eq : Real.log 4 = 2 * Real.log 2 := by\n    rw [show (4 : ℝ) = (2 : ℝ) ^ 2 by norm_num, Real.log_pow]\n    norm_num\n  have hlog8eq : Real.log 8 = 3 * Real.log 2 := by\n    rw [show (8 : ℝ) = (2 : ℝ) ^ 3 by norm_num, Real.log_pow]\n    norm_num\n  calc\n    a * b * c * d = Real.log 8 / Real.log 4 := ht\n    _ = 3 / 2 := by\n      rw [hlog8eq, hlog4eq]\n      field_simp [hlog2ne]\n      <;> ring\n"
+    },
+    {
+      "id": "imo_1992_p1",
+      "outcome": "failed",
+      "attempts": 8,
+      "ms": 1542428,
+      "usd": 0.0268348,
+      "message": "No verified proof after 8 attempts."
+    },
+    {
+      "id": "imo_2001_p6",
+      "outcome": "failed",
+      "attempts": 8,
+      "ms": 1236529,
+      "usd": 0.034890399999999995,
+      "message": "No verified proof after 8 attempts."
+    },
+    {
+      "id": "amc12a_2019_p12",
+      "outcome": "solved",
+      "attempts": 3,
+      "ms": 542971,
+      "usd": 0.0045515,
+      "proof": "import Mathlib\n\nset_option maxHeartbeats 400000\n\nopen BigOperators Real Nat Topology Rat\n\ntheorem amc12a_2019_p12 (x y : ℝ) (h : x > 0 ∧ y > 0) (h₀ : x ≠ 1 ∧ y ≠ 1)\n    (h₁ : Real.log x / Real.log 2 = Real.log 16 / Real.log y) (h₂ : x * y = 64) :\n    (Real.log (x / y) / Real.log 2) ^ 2 = 20 := by\n  have hL : Real.log 2 ≠ 0 := by\n    intro hlog\n    have heq : (2 : ℝ) = 1 := by\n      calc\n        (2 : ℝ) = Real.exp (Real.log 2) := by\n          rw [Real.exp_log (by norm_num : (0 : ℝ) < 2)]\n        _ = 1 := by rw [hlog, Real.exp_zero]\n    norm_num at heq\n  have hY : Real.log y ≠ 0 := by\n    intro hlog\n    have heq : y = 1 := by\n      calc\n        y = Real.exp (Real.log y) := (Real.exp_log h.2).symm\n        _ = 1 := by rw [hlog, Real.exp_zero]\n    exact h₀.2 heq\n  have h16 : Real.log (16 : ℝ) = 4 * Real.log 2 := by\n    rw [show (16 : ℝ) = 2 ^ 4 by norm_num, Real.log_pow]\n    norm_num\n  have h64 : Real.log (64 : ℝ) = 6 * Real.log 2 := by\n    rw [show (64 : ℝ) = 2 ^ 6 by norm_num, Real.log_pow]\n    norm_num\n  let a : ℝ := Real.log x / Real.log 2\n  let b : ℝ := Real.log y / Real.log 2\n  have hab : a * b = 4 := by\n    dsimp [a, b]\n    rw [h16] at h₁\n    field_simp [hL, hY] at h₁ ⊢\n    nlinarith [h₁]\n  have hsum : Real.log x + Real.log y = 6 * Real.log 2 := by\n    calc\n      Real.log x + Real.log y = Real.log (x * y) := by\n        rw [Real.log_mul (ne_of_gt h.1) (ne_of_gt h.2)]\n      _ = Real.log 64 := by rw [h₂]\n      _ = 6 * Real.log 2 := h64\n  have habsum : a + b = 6 := by\n    dsimp [a, b]\n    calc\n      Real.log x / Real.log 2 + Real.log y / Real.log 2 =\n          (Real.log x + Real.log y) / Real.log 2 := by\n            field_simp [hL]\n      _ = (6 * Real.log 2) / Real.log 2 := by rw [hsum]\n      _ = 6 := by field_simp [hL]\n  have hdiv : Real.log (x / y) / Real.log 2 = a - b := by\n    dsimp [a, b]\n    rw [Real.log_div (ne_of_gt h.1) (ne_of_gt h.2)]\n    field_simp [hL]\n  rw [hdiv]\n  nlinarith [hab, habsum]\n"
+    },
+    {
+      "id": "aime_1997_p9",
+      "outcome": "solved",
+      "attempts": 3,
+      "ms": 892185,
+      "usd": 0.0069941,
+      "proof": "import Mathlib\n\nset_option maxHeartbeats 400000\n\nopen BigOperators Real Nat Topology Rat\n\ntheorem aime_1997_p9\n  (a : ℝ)\n  (h₀ : 0 < a)\n  (h₁ : 1 / a - Int.floor (1 / a) = a^2 - Int.floor (a^2))\n  (h₂ : 2 < a^2)\n  (h₃ : a^2 < 3) :\n  a^12 - 144 * (1 / a) = 233 := by\n  have ha1 : 1 < a := by\n    nlinarith [h₀, h₂]\n  have ha0 : a ≠ 0 := ne_of_gt h₀\n  have hrecpos : 0 < 1 / a := by\n    positivity\n  have hreclt : 1 / a < 1 := by\n    exact (div_lt_one₀ h₀).2 ha1\n  have hfloorr : (-1 : ℝ) < (Int.floor (1 / a) : ℝ) := by\n    have h := Int.lt_floor_add_one (1 / a)\n    linarith [hrecpos]\n  have hfloorr' : (Int.floor (1 / a) : ℝ) < 1 := by\n    calc\n      (Int.floor (1 / a) : ℝ) ≤ 1 / a := Int.floor_le _\n      _ < 1 := hreclt\n  have hfloorsz : (-1 : ℤ) < Int.floor (1 / a) := by\n    exact_mod_cast hfloorr\n  have hfloorsz' : Int.floor (1 / a) < 1 := by\n    exact_mod_cast hfloorr'\n  have hf : Int.floor (1 / a) = 0 := by omega\n  have hgloorr : (1 : ℝ) < (Int.floor (a ^ 2) : ℝ) := by\n    have h := Int.lt_floor_add_one (a ^ 2)\n    linarith [h₂]\n  have hgloorr' : (Int.floor (a ^ 2) : ℝ) < 3 := by\n    calc\n      (Int.floor (a ^ 2) : ℝ) ≤ a ^ 2 := Int.floor_le _\n      _ < 3 := h₃\n  have hgloorsz : (1 : ℤ) < Int.floor (a ^ 2) := by\n    exact_mod_cast hgloorr\n  have hgloorsz' : Int.floor (a ^ 2) < 3 := by\n    exact_mod_cast hgloorr'\n  have hg : Int.floor (a ^ 2) = 2 := by omega\n  have hrel : 1 / a = a ^ 2 - 2 := by\n    rw [hf, hg] at h₁\n    norm_num at h₁\n    simpa [one_div] using h₁\n  have hmul : 1 = a * (a ^ 2 - 2) := by\n    calc\n      1 = (1 / a) * a := by field_simp [ha0]\n      _ = (a ^ 2 - 2) * a := by rw [hrel]\n      _ = a * (a ^ 2 - 2) := by ring\n  have hpoly : a ^ 3 - 2 * a - 1 = 0 := by\n    nlinarith [hmul]\n  have hfactor : (a + 1) * (a ^ 2 - a - 1) = 0 := by\n    nlinarith [hpoly]\n  have haquad : a ^ 2 - a - 1 = 0 := by\n    rcases mul_eq_zero.mp hfactor with h | h\n    · linarith [ha1]\n    · exact h\n  have ha2 : a ^ 2 = a + 1 := by\n    linarith [haquad]\n  have hpoly12 :\n      a ^ 12 - 144 * a - 89 =\n        (a ^ 2 - a - 1) *\n          (a ^ 10 + a ^ 9 + 2 * a ^ 8 + 3 * a ^ 7 + 5 * a ^ 6 +\n            8 * a ^ 5 + 13 * a ^ 4 + 21 * a ^ 3 + 34 * a ^ 2 +\n            55 * a + 89) := by\n    ring\n  have hz : a ^ 12 - 144 * a - 89 = 0 := by\n    rw [haquad] at hpoly12\n    norm_num at hpoly12\n    exact hpoly12\n  have hp12 : a ^ 12 = 144 * a + 89 := by\n    linarith [hz]\n  have hrec : 1 / a = a - 1 := by\n    field_simp [ha0]\n    nlinarith [ha2]\n  rw [hp12, hrec]\n  ring\n"
+    },
+    {
+      "id": "mathd_algebra_513",
+      "outcome": "solved",
+      "attempts": 1,
+      "ms": 450608,
+      "usd": 0.0003258,
+      "proof": "import Mathlib\n\nset_option maxHeartbeats 400000\n\nopen BigOperators Real Nat Topology Rat\n\ntheorem mathd_algebra_513\n  (a b : ℝ)\n  (h₀ : 3 * a + 2 * b = 5)\n  (h₁ : a + b = 2) :\n  a = 1 ∧ b = 1 := by\n  have hb : b = 1 := by\n    linarith\n  have ha : a = 1 := by\n    linarith\n  exact ⟨ha, hb⟩\n"
+    },
+    {
+      "id": "mathd_numbertheory_618",
+      "outcome": "failed",
+      "attempts": 8,
+      "ms": 1189414,
+      "usd": 0.024921999999999996,
+      "message": "No verified proof after 8 attempts."
+    },
+    {
+      "id": "amc12_2001_p5",
+      "outcome": "failed",
+      "attempts": 8,
+      "ms": 1172882,
+      "usd": 0.0160647,
+      "message": "No verified proof after 8 attempts."
+    },
+    {
+      "id": "amc12b_2020_p22",
+      "outcome": "solved",
+      "attempts": 5,
+      "ms": 814822,
+      "usd": 0.0060185,
+      "proof": "import Mathlib\n\nset_option maxHeartbeats 400000\n\nopen BigOperators Real Nat Topology Rat\n\ntheorem amc12b_2020_p22\n  (t : ℝ) :\n  ((2^t - 3 * t) * t) / (4^t) ≤ 1 / 12 := by\n  have hden : 0 < (4 : ℝ) ^ t := by\n    positivity\n  have hpow : (2 : ℝ) ^ t * 2 ^ t = (4 : ℝ) ^ t := by\n    rw [← Real.mul_rpow (by norm_num : 0 ≤ (2 : ℝ))\n      (by norm_num : 0 ≤ (2 : ℝ))]\n    norm_num\n  have hsquare : 0 ≤ ((2 : ℝ) ^ t - 6 * t) ^ 2 :=\n    sq_nonneg ((2 : ℝ) ^ t - 6 * t)\n  have hkey : 12 * t * (2 : ℝ) ^ t - 36 * t ^ 2 ≤ (4 : ℝ) ^ t := by\n    nlinarith [hpow, hsquare]\n  rw [div_le_iff₀ hden]\n  nlinarith [hkey]\n"
+    },
+    {
+      "id": "amc12b_2020_p21",
+      "outcome": "failed",
+      "attempts": 8,
+      "ms": 1268084,
+      "usd": 0.0242631,
+      "message": "No verified proof after 8 attempts."
+    },
+    {
+      "id": "imo_1969_p2",
+      "outcome": "failed",
+      "attempts": 8,
+      "ms": 1321946,
+      "usd": 0.022586099999999998,
+      "message": "No verified proof after 8 attempts."
+    },
+    {
+      "id": "numbertheory_notEquiv2i2jasqbsqdiv8",
+      "outcome": "solved",
+      "attempts": 1,
+      "ms": 415289,
+      "usd": 0.0005784,
+      "proof": "import Mathlib\n\nset_option maxHeartbeats 400000\n\nopen BigOperators Real Nat Topology Rat\n\ntheorem numbertheory_notEquiv2i2jasqbsqdiv8 :\n  ¬ (∀ a b : ℤ, (∃ i j, a = 2*i ∧ b=2*j) ↔ (∃ k, a^2 + b^2 = 8*k)) := by\n  intro h\n  have h₂ := h 2 0\n  have heven : ∃ i j : ℤ, (2 : ℤ) = 2*i ∧ 0 = 2*j := by\n    norm_num\n  obtain ⟨k, hk⟩ := h₂.mp heven\n  norm_num at hk\n  omega\n"
+    },
+    {
+      "id": "amc12b_2020_p13",
+      "outcome": "solved",
+      "attempts": 2,
+      "ms": 600226,
+      "usd": 0.0041301,
+      "proof": "import Mathlib\n\nset_option maxHeartbeats 400000\n\nopen BigOperators Real Nat Topology Rat\n\ntheorem amc12b_2020_p13 :\n  Real.sqrt (Real.log 6 / Real.log 2 + Real.log 6 / Real.log 3) = Real.sqrt (Real.log 3 / Real.log 2) + Real.sqrt (Real.log 2 / Real.log 3) := by\n  have ha : 0 < Real.log 2 := Real.log_pos (by norm_num)\n  have hb : 0 < Real.log 3 := Real.log_pos (by norm_num)\n  have h6 : Real.log 6 = Real.log 2 + Real.log 3 := by\n    rw [show (6 : ℝ) = 2 * 3 by norm_num]\n    exact Real.log_mul (by norm_num) (by norm_num)\n  let a : ℝ := Real.log 2\n  let b : ℝ := Real.log 3\n  let u : ℝ := b / a\n  let v : ℝ := a / b\n  have ha' : 0 < a := by simpa [a] using ha\n  have hb' : 0 < b := by simpa [b] using hb\n  have hu : 0 ≤ u := by positivity\n  have hv : 0 ≤ v := by positivity\n  have huv : u * v = 1 := by\n    dsimp [u, v]\n    field_simp [ne_of_gt ha', ne_of_gt hb']\n  have hrad :\n      Real.log 6 / Real.log 2 + Real.log 6 / Real.log 3 = u + v + 2 := by\n    calc\n      Real.log 6 / Real.log 2 + Real.log 6 / Real.log 3 =\n          (a + b) / a + (a + b) / b := by\n            simp only [h6, a, b]\n      _ = u + v + 2 := by\n        dsimp [u, v, a, b]\n        field_simp [ne_of_gt ha, ne_of_gt hb]\n        <;> ring\n  have hcross : Real.sqrt u * Real.sqrt v = 1 := by\n    rw [← Real.sqrt_mul hu, huv]\n    simp\n  have hsquare : (Real.sqrt u + Real.sqrt v) ^ 2 = u + v + 2 := by\n    nlinarith [Real.sq_sqrt hu, Real.sq_sqrt hv, hcross]\n  have hsum : 0 ≤ Real.sqrt u + Real.sqrt v :=\n    add_nonneg (Real.sqrt_nonneg _) (Real.sqrt_nonneg _)\n  have hfinal :\n      Real.sqrt (Real.log 6 / Real.log 2 + Real.log 6 / Real.log 3) =\n        Real.sqrt u + Real.sqrt v := by\n    calc\n      Real.sqrt (Real.log 6 / Real.log 2 + Real.log 6 / Real.log 3) =\n          Real.sqrt (u + v + 2) := by rw [hrad]\n      _ = Real.sqrt ((Real.sqrt u + Real.sqrt v) ^ 2) := by rw [← hsquare]\n      _ = Real.sqrt u + Real.sqrt v := by\n        rw [Real.sqrt_sq_eq_abs, abs_of_nonneg hsum]\n  simpa [u, v] using hfinal\n"
+    },
+    {
+      "id": "induction_sumkexp3eqsumksq",
+      "outcome": "solved",
+      "attempts": 1,
+      "ms": 311502,
+      "usd": 0.0018246,
+      "proof": "import Mathlib\n\nset_option maxHeartbeats 400000\n\nopen BigOperators Real Nat Topology Rat\n\nlemma sum_range_twice_add (n : ℕ) :\n    2 * (∑ k ∈ Finset.range n, k) + n = n^2 := by\n  induction n with\n  | zero => simp\n  | succ n ih =>\n      rw [Finset.sum_range_succ]\n      nlinarith\n\ntheorem induction_sumkexp3eqsumksq\n  (n : ℕ) :\n  ∑ k ∈ Finset.range n, k^3 = (∑ k ∈ Finset.range n, k)^2 := by\n  induction n with\n  | zero => simp\n  | succ n ih =>\n      rw [Finset.sum_range_succ, Finset.sum_range_succ, ih]\n      have haux := sum_range_twice_add n\n      have hmul := congrArg (fun x : ℕ => n * x) haux\n      nlinarith [hmul]\n"
+    },
+    {
+      "id": "imo_1963_p5",
+      "outcome": "solved",
+      "attempts": 3,
+      "ms": 669513,
+      "usd": 0.008592,
+      "proof": "import Mathlib\n\nset_option maxHeartbeats 400000\n\nopen BigOperators Real Nat Topology Rat\n\nlemma cos_add_sub_identity (a x : ℝ) :\n    Real.cos (a + x) + Real.cos (a - x) =\n      2 * Real.cos a * Real.cos x := by\n  rw [Real.cos_add, Real.cos_sub]\n  ring\n\ntheorem imo_1963_p5 :\n  Real.cos (π / 7) - Real.cos (2 * π / 7) + Real.cos (3 * π / 7) = 1 / 2 := by\n  let x : ℝ := π / 7\n  let c : ℝ := Real.cos x\n\n  have h2 : Real.cos (2 * x) = 2 * c ^ 2 - 1 := by\n    have hcos := Real.cos_two_mul x\n    dsimp [c]\n    nlinarith [Real.sin_sq_add_cos_sq x, hcos]\n\n  have hr3 : Real.cos (3 * x) + Real.cos x =\n      2 * Real.cos (2 * x) * Real.cos x := by\n    simpa only [show 3 * x = 2 * x + x by ring,\n      show 2 * x - x = x by ring] using cos_add_sub_identity (2 * x) x\n  have h3 : Real.cos (3 * x) = 4 * c ^ 3 - 3 * c := by\n    rw [h2] at hr3\n    nlinarith [hr3]\n\n  have hr4 : Real.cos (4 * x) + Real.cos (2 * x) =\n      2 * Real.cos (3 * x) * Real.cos x := by\n    simpa only [show 4 * x = 3 * x + x by ring,\n      show 3 * x - x = 2 * x by ring] using cos_add_sub_identity (3 * x) x\n  have h4 : Real.cos (4 * x) = 8 * c ^ 4 - 8 * c ^ 2 + 1 := by\n    rw [h3, h2] at hr4\n    nlinarith [hr4]\n\n  have hr5 : Real.cos (5 * x) + Real.cos (3 * x) =\n      2 * Real.cos (4 * x) * Real.cos x := by\n    simpa only [show 5 * x = 4 * x + x by ring,\n      show 4 * x - x = 3 * x by ring] using cos_add_sub_identity (4 * x) x\n  have h5 : Real.cos (5 * x) = 16 * c ^ 5 - 20 * c ^ 3 + 5 * c := by\n    rw [h4, h3] at hr5\n    nlinarith [hr5]\n\n  have hr6 : Real.cos (6 * x) + Real.cos (4 * x) =\n      2 * Real.cos (5 * x) * Real.cos x := by\n    simpa only [show 6 * x = 5 * x + x by ring,\n      show 5 * x - x = 4 * x by ring] using cos_add_sub_identity (5 * x) x\n  have h6 : Real.cos (6 * x) =\n      32 * c ^ 6 - 48 * c ^ 4 + 18 * c ^ 2 - 1 := by\n    rw [h5, h4] at hr6\n    nlinarith [hr6]\n\n  have hr7 : Real.cos (7 * x) + Real.cos (5 * x) =\n      2 * Real.cos (6 * x) * Real.cos x := by\n    simpa only [show 7 * x = 6 * x + x by ring,\n      show 6 * x - x = 5 * x by ring] using cos_add_sub_identity (6 * x) x\n  have h7 : Real.cos (7 * x) =\n      64 * c ^ 7 - 112 * c ^ 5 + 56 * c ^ 3 - 7 * c := by\n    rw [h6, h5] at hr7\n    nlinarith [hr7]\n\n  have hangle : 7 * x = π := by\n    dsimp [x]\n    ring\n  have hcos7 : Real.cos (7 * x) = -1 := by\n    rw [hangle, Real.cos_pi]\n\n  have hfactor :\n      Real.cos (7 * x) + 1 =\n        (c + 1) * (8 * c ^ 3 - 4 * c ^ 2 - 4 * c + 1) ^ 2 := by\n    rw [h7]\n    ring\n\n  have hx : x ∈ Set.Ioo (-(π / 2)) (π / 2) := by\n    rw [Set.mem_Ioo]\n    constructor <;> dsimp [x] <;> nlinarith [Real.pi_pos]\n  have hcpos : 0 < c := Real.cos_pos_of_mem_Ioo hx\n\n  have hzero :\n      (c + 1) * (8 * c ^ 3 - 4 * c ^ 2 - 4 * c + 1) ^ 2 = 0 := by\n    rw [← hfactor, hcos7]\n    norm_num\n  have hq : 8 * c ^ 3 - 4 * c ^ 2 - 4 * c + 1 = 0 := by\n    rcases mul_eq_zero.mp hzero with h | h\n    · nlinarith [hcpos]\n    · nlinarith\n\n  have ha1 : π / 7 = x := by\n    rfl\n  have ha2 : 2 * π / 7 = 2 * x := by\n    dsimp [x]\n    ring\n  have ha3 : 3 * π / 7 = 3 * x := by\n    dsimp [x]\n    ring\n  rw [ha1, ha2, ha3, h2, h3]\n  nlinarith [hq]\n"
+    },
+    {
+      "id": "aime_1988_p8",
+      "outcome": "solved",
+      "attempts": 1,
+      "ms": 396419,
+      "usd": 0.0027392,
+      "proof": "import Mathlib\n\nset_option maxHeartbeats 400000\n\nopen BigOperators Real Nat Topology Rat\n\ntheorem aime_1988_p8\n  (f : ℕ → ℕ → ℝ)\n  (h₀ : ∀ x, 0 < x → f x x = x)\n  (h₁ : ∀ x y, (0 < x ∧ 0 < y) → f x y = f y x)\n  (h₂ : ∀ x y, (0 < x ∧ 0 < y) → (↑x + ↑y) * f x y = y * (f x (x + y))) :\n  f 14 52 = 364 := by\n  have h22 : f 2 2 = 2 := h₀ 2 (by norm_num)\n  have heq224 := h₂ 2 2 (by norm_num)\n  have h24 : f 2 4 = 4 := by\n    norm_num at heq224\n    nlinarith [h22, heq224]\n  have h42 : f 4 2 = 4 := by\n    rw [h₁ 4 2 (by norm_num)]\n    exact h24\n  have heq426 := h₂ 4 2 (by norm_num)\n  have h46 : f 4 6 = 12 := by\n    norm_num at heq426\n    nlinarith [h42, heq426]\n  have heq4610 := h₂ 4 6 (by norm_num)\n  have h410 : f 4 10 = 20 := by\n    norm_num at heq4610\n    nlinarith [h46, heq4610]\n  have h104 : f 10 4 = f 4 10 := h₁ 10 4 (by norm_num)\n  have heq10414 := h₂ 10 4 (by norm_num)\n  have h1014 : f 10 14 = 70 := by\n    norm_num at heq10414\n    nlinarith [h104, h410, heq10414]\n  have h1410 : f 14 10 = f 10 14 := h₁ 14 10 (by norm_num)\n  have heq141024 := h₂ 14 10 (by norm_num)\n  have h1424 : f 14 24 = 168 := by\n    norm_num at heq141024\n    nlinarith [h1410, h1014, heq141024]\n  have heq142438 := h₂ 14 24 (by norm_num)\n  have h1438 : f 14 38 = 266 := by\n    norm_num at heq142438\n    nlinarith [h1424, heq142438]\n  have heq143852 := h₂ 14 38 (by norm_num)\n  norm_num at heq143852\n  nlinarith [h1438, heq143852]\n"
+    },
+    {
+      "id": "imo_1983_p6",
+      "outcome": "solved",
+      "attempts": 2,
+      "ms": 438560,
+      "usd": 0.004254099999999999,
+      "proof": "import Mathlib\n\nset_option maxHeartbeats 400000\n\nopen BigOperators Real Nat Topology Rat\n\ntheorem imo_1983_p6\n  (a b c : ℝ)\n  (h₀ : 0 < a ∧ 0 < b ∧ 0 < c)\n  (h₁ : c < a + b)\n  (h₂ : b < a + c)\n  (h₃ : a < b + c) :\n  0 ≤ a^2 * b * (a - b) + b^2 * c * (b - c) + c^2 * a * (c - a) := by\n  let x : ℝ := (a + b - c) / 2\n  let y : ℝ := (b + c - a) / 2\n  let z : ℝ := (c + a - b) / 2\n  have hx : 0 < x := by\n    dsimp [x]\n    linarith\n  have hy : 0 < y := by\n    dsimp [y]\n    linarith\n  have hz : 0 < z := by\n    dsimp [z]\n    linarith\n  have ha : a = x + z := by\n    dsimp [x, z]\n    ring\n  have hb : b = x + y := by\n    dsimp [x, y]\n    ring\n  have hc : c = y + z := by\n    dsimp [y, z]\n    ring\n  let S : ℝ := x + y + z\n  let Q : ℝ := x^2 / y + y^2 / z + z^2 / x\n  have hS : 0 < S := by\n    dsimp [S]\n    positivity\n  have hmain :\n      a^2 * b * (a - b) + b^2 * c * (b - c) + c^2 * a * (c - a) =\n        2 * x * y * z * (Q - S) := by\n    rw [ha, hb, hc]\n    dsimp [Q, S]\n    field_simp [ne_of_gt hx, ne_of_gt hy, ne_of_gt hz]\n    <;> ring\n  have hid :\n      S * Q - S^2 =\n        (x * z - y^2)^2 / (y * z) +\n          (x * y - z^2)^2 / (z * x) +\n          (y * z - x^2)^2 / (x * y) := by\n    dsimp [S, Q]\n    field_simp [ne_of_gt hx, ne_of_gt hy, ne_of_gt hz]\n    <;> ring\n  have hnonneg : 0 ≤ S * Q - S^2 := by\n    rw [hid]\n    positivity\n  have hbracket : 0 ≤ Q - S := by\n    by_contra h\n    have hneg : Q < S := by\n      linarith\n    have hprod : S * (Q - S) < 0 :=\n      mul_neg_of_pos_of_neg hS (sub_neg.mpr hneg)\n    nlinarith [hnonneg, hprod]\n  have hfactor : 0 ≤ 2 * x * y * z := by\n    positivity\n  rw [hmain]\n  exact mul_nonneg hfactor hbracket\n"
+    },
+    {
+      "id": "induction_pord1p1on2powklt5on2",
+      "outcome": "failed",
+      "attempts": 8,
+      "ms": 1223506,
+      "usd": 0.020946100000000002,
+      "message": "No verified proof after 8 attempts."
+    },
+    {
+      "id": "mathd_numbertheory_728",
+      "outcome": "solved",
+      "attempts": 1,
+      "ms": 495368,
+      "usd": 0.00043440000000000004,
+      "proof": "import Mathlib\n\nset_option maxHeartbeats 400000\n\nopen BigOperators Real Nat Topology Rat\n\ntheorem mathd_numbertheory_728 :\n  (29^13 - 5^13) % 7 = 3 := by\n  norm_num\n"
+    },
+    {
+      "id": "aime_1989_p8",
+      "outcome": "solved",
+      "attempts": 1,
+      "ms": 342004,
+      "usd": 0.0010203,
+      "proof": "import Mathlib\n\nset_option maxHeartbeats 400000\n\nopen BigOperators Real Nat Topology Rat\n\ntheorem aime_1989_p8\n  (a b c d e f g : ℝ)\n  (h₀ : a + 4 * b + 9 * c + 16 * d + 25 * e + 36 * f + 49 * g = 1)\n  (h₁ : 4 * a + 9 * b + 16 * c + 25 * d + 36 * e + 49 * f + 64 * g = 12)\n  (h₂ : 9 * a + 16 * b + 25 * c + 36 * d + 49 * e + 64 * f + 81 * g = 123) :\n  16 * a + 25 * b + 36 * c + 49 * d + 64 * e + 81 * f + 100 * g = 334 := by\n  linear_combination h₀ - 3 * h₁ + 3 * h₂\n"
+    }
+  ],
+  "budget": 5
+}
