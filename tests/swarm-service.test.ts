@@ -119,3 +119,15 @@ describe("Ultramath driven from a chat", () => {
     expect(recs.some((r) => r.event === "direction" && r.state === "abandoned")).toBe(true);
   });
 });
+
+import { rmSync as rmFolder } from "node:fs";
+
+describe("a swarm whose folder is deleted mid-turn", () => {
+  it("does not crash when a member finishes after its folder is gone", () => {
+    const svc = new SwarmService({} as never) as unknown as { saveTranscript: (m: { dir: string }, s: { messages: unknown[] }) => void; record: (s: { dir: string; seq: number }, r: object) => void };
+    const gone = join(tmpdir(), `mack-gone-${Date.now()}`);
+    rmFolder(gone, { recursive: true, force: true });
+    expect(() => svc.saveTranscript({ dir: join(gone, "m1") }, { messages: [] })).not.toThrow();
+    expect(() => svc.record({ dir: gone, seq: 0 }, { event: "usage", calls: 1 })).not.toThrow();
+  });
+});
