@@ -43,7 +43,7 @@ import { remoteLean, setRemoteLean } from "../core/lean/remote";
 import { describeExamples, ProofStore, trainingData } from "../core/proof-store";
 import { decompose } from "../core/decompose";
 import { easierVersions } from "../core/variants";
-import { BENCH_SETS, BENCH_SHARE_DIR, benchReport, benchSet, benchShare, benchSlug, classifyFailure, pickSample, runBench, type AttemptNote, type BenchEvent, type BenchResult, type BenchRun } from "../core/bench/bench";
+import { attemptKind, attemptsDataset, BENCH_SETS, BENCH_SHARE_DIR, benchReport, benchSet, benchShare, benchSlug, classifyFailure, LOG_LIMITS, type AttemptLog, pickSample, runBench, type AttemptNote, type BenchEvent, type BenchResult, type BenchRun } from "../core/bench/bench";
 import { newerMackRelease } from "../core/upstream";
 import type { ApprovalPolicy } from "../core/chat/executor";
 import type { ReasoningEffort } from "../core/model/provider";
@@ -844,6 +844,8 @@ async function benchOne(s: Settings, p: { id: string; source: string }, bench: B
   // How each attempt ended, to say afterwards why the problem was not solved.
   const notes: AttemptNote[] = [];
   let lastCandidate = "";
+  const log: AttemptLog[] = [];
+  const timeline: { t: number; message: string }[] = [];
   await attemptProof(s, bench.config.method ?? "single", p.source, {
     provider,
     model,
@@ -854,6 +856,20 @@ async function benchOne(s: Settings, p: { id: string; source: string }, bench: B
     prepare: { checkStatement: false, idea: s.proofIdea },
     signal: AbortSignal.any([signal, ctl.signal]),
     onEvent: (ev) => {
+      if (ev.type === "attempt") {
+        if (log.length < LOG_LIMITS.attempts) {
+          log.push({
+            n: ev.n,
+            outcome: ev.outcome,
+            kind: ev.outcome === "verified" ? "verified" : attemptKind(ev),
+            ...(ev.model ? { model: ev.model } : {}),
+            ms: ev.ms,
+            tokens: ev.tokens,
+            detail: ev.detail.slice(0, LOG_LIMITS.detail),
+            candidate: ev.candidate.slice(0, LOG_LIMITS.candidate),
+          });
+        }
+      }
       if (ev.type === "attempt" && ev.n > 0) {
         attempts++;
         if (ev.outcome !== "verified") {
@@ -863,10 +879,14 @@ async function benchOne(s: Settings, p: { id: string; source: string }, bench: B
       }
       if (ev.type === "solved") proof = ev.proof;
       if (ev.type === "failed") message = ev.message;
-      if (ev.type === "status") status(ev.message);
+      if (ev.type === "status") {
+        status(ev.message);
+        // The run's own steps, once each: what it tried, in order.
+        if (timeline.length < LOG_LIMITS.timeline && timeline[timeline.length - 1]?.message !== ev.message) timeline.push({ t: Date.now() - t0, message: ev.message.slice(0, 300) });
+      }
     },
   });
-  if (proof) return { id: p.id, outcome: "solved", attempts, ms: Date.now() - t0, usd: meter.spent, proof };
+  if (proof) return { id: p.id, outcome: "solved", attempts, ms: Date.now() - t0, usd: meter.spent, proof, log, timeline };
   const outcomes: Record<string, number> = {};
   for (const n of notes) outcomes[n.outcome] = (outcomes[n.outcome] ?? 0) + 1;
   const failure = classifyFailure(notes, message);
@@ -880,6 +900,8 @@ async function benchOne(s: Settings, p: { id: string; source: string }, bench: B
     failure,
     outcomes,
     ...(notes.length ? { lastError: notes[notes.length - 1].detail.slice(0, 2000), lastCandidate: lastCandidate.slice(0, 4000) } : {}),
+    log,
+    timeline,
   };
 }
 
@@ -970,14 +992,27 @@ ipcMain.handle("bench:export", async (e, id: string) => {
   return r.filePath;
 });
 // A run shared as a pull request on the Mack repo, so its results can be reviewed there.
-ipcMain.handle("bench:share", async (_e, id: string) => {
+ipcMain.handle("bench:share", async (_e, id: string, logs?: boolean) => {
   const run = readBench(String(id));
   if (!run) throw new Error("That benchmark run is gone.");
   if (run.status === "running") throw new Error("Wait for the run to finish, or stop it, before sharing it.");
   const { token } = await githubAuth();
   if (!token) throw new Error("Connect GitHub first: Settings → GitHub, or log in with the GitHub CLI (gh auth login).");
   const set = benchSet(run.set);
-  return openCommunityPr(token, { ...COMMUNITY_REPO, dir: BENCH_SHARE_DIR }, benchSlug(run), (_slug, login) => benchShare(run, set, app.getVersion(), login), "benchmark");
+  return openCommunityPr(token, { ...COMMUNITY_REPO, dir: BENCH_SHARE_DIR }, benchSlug(run), (_slug, login) => benchShare(run, set, app.getVersion(), login, { logs: logs !== false }), "benchmark");
+});
+// Every attempt of a run as a JSON Lines dataset, saved where the person chooses.
+ipcMain.handle("bench:dataset", async (e, id: string) => {
+  const run = readBench(String(id));
+  if (!run) throw new Error("That benchmark run is gone.");
+  const data = attemptsDataset(run);
+  if (!data) throw new Error("This run kept no attempt log: runs from Mack 0.2.19 on keep one.");
+  const win = BrowserWindow.fromWebContents(e.sender);
+  const opts = { title: "Save every attempt of the run", defaultPath: `mack-attempts-${run.set}-${run.id}.jsonl`, filters: [{ name: "JSON Lines", extensions: ["jsonl"] }] };
+  const r = win ? await dialog.showSaveDialog(win, opts) : await dialog.showSaveDialog(opts);
+  if (r.canceled || !r.filePath) return null;
+  writeFileSync(r.filePath, data, "utf8");
+  return r.filePath;
 });
 ipcMain.handle("bench:delete", (_e, id: string) => {
   if (/^\d+$/.test(id)) rmSync(join(benchDir(), `${id}.json`), { force: true });

@@ -15,7 +15,7 @@ export type AttemptOutcome = "refused" | "no verdict" | "errors" | "sorries" | "
 
 export type ProveEvent =
   | { type: "status"; message: string }
-  | { type: "attempt"; n: number; candidate: string; outcome: AttemptOutcome; detail: string; ms: number; tokens: number }
+  | { type: "attempt"; n: number; candidate: string; outcome: AttemptOutcome; detail: string; ms: number; tokens: number; model?: string }
   | { type: "solved"; n: number; proof: string; axioms: string[] }
   | { type: "failed"; message: string }
   | PrepareEvent;
@@ -155,7 +155,7 @@ export async function prove(o: ProveOptions): Promise<void> {
       if (solved) return;
       messages.push({ role: "assistant", content: reply });
       let candidate = extractLean(reply);
-      const attempt = (outcome: AttemptOutcome, detail: string) => emit({ type: "attempt", n, candidate, outcome, detail, ms: Date.now() - t0, tokens });
+      const attempt = (outcome: AttemptOutcome, detail: string) => emit({ type: "attempt", n, candidate, outcome, detail, ms: Date.now() - t0, tokens, model: writer.model });
 
       const feedback = async (): Promise<string | null> => {
         const textual = protocolObjection(statement, candidate);

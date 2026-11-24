@@ -3,10 +3,10 @@
 // attempt budget is measured instead of guessed. Earlier runs stay listed
 // with the settings they used, to compare.
 
-import { ArrowRight, CheckCircle2, CircleDashed, Copy, ExternalLink, FileDown, Gauge, GitPullRequest, Loader2, Play, Square, Trash2, XCircle, Zap } from "lucide-react";
+import { ArrowRight, CheckCircle2, CircleDashed, Copy, Database, ExternalLink, FileDown, Gauge, GitPullRequest, Loader2, Play, Square, Trash2, XCircle, Zap } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, errorText, type BenchResult, type BenchRun, type BenchSetInfo, type Settings } from "../api";
-import { Button, EmptyState, Field, timeAgo } from "../components/ui";
+import { Button, EmptyState, Field, timeAgo, Toggle } from "../components/ui";
 import { formatUsd } from "../../core/model/metered";
 import { FAILURES, failureBreakdown, summarize } from "../../core/bench/bench";
 import { COMMUNITY_REPO } from "../../core/community";
@@ -237,6 +237,7 @@ function Results({ results, open, setOpen }: { results: BenchResult[]; open?: st
               ) : (
                 <>
                   {r.outcomes && <p className="muted small">Attempts ended: {Object.entries(r.outcomes).map(([k, v]) => `${k} ${v}`).join(", ")}</p>}
+                  {r.log && r.log.length > 0 && <p className="muted small">By reason: {kindMix(r)}</p>}
                   {r.lastError && (
                     <>
                       <p className="small">Lean&apos;s last feedback</p>
@@ -286,6 +287,7 @@ function Share({ id }: { id: string }) {
   const [note, setNote] = useState("");
   const [confirm, setConfirm] = useState(false);
   const [pr, setPr] = useState("");
+  const [logs, setLogs] = useState(true);
   const act = async (f: () => Promise<string>) => {
     try {
       setNote(await f());
@@ -311,6 +313,9 @@ function Share({ id }: { id: string }) {
       >
         Copy report
       </Button>
+      <Button size="sm" icon={Database} onClick={() => void act(async () => ((await api.benchDataset(id)) ? "Saved." : ""))} title="Every attempt as JSON Lines: the model, how it ended, why, Lean's feedback and the candidate">
+        Save attempts dataset
+      </Button>
       <Button size="sm" icon={GitPullRequest} onClick={() => setConfirm(true)} disabled={!!pr}>
         Share as a PR
       </Button>
@@ -325,6 +330,11 @@ function Share({ id }: { id: string }) {
           <p className="small">
             This opens a <b>public</b> pull request on {COMMUNITY_REPO.owner}/{COMMUNITY_REPO.repo} under your GitHub account, with this run&apos;s report and data: the settings and model names, each problem&apos;s result, and the unsolved problems&apos; last attempts and Lean feedback. No keys or project files are included.
           </p>
+          <Toggle
+            checked={logs}
+            onChange={setLogs}
+            label="Include every attempt (attempts.jsonl): each attempt's model, outcome, reason and Lean feedback, and the attempt itself, so the run can be analysed fully, not from its last attempts alone"
+          />
           <div className="row gap-sm">
             <Button
               size="sm"
@@ -333,7 +343,7 @@ function Share({ id }: { id: string }) {
               onClick={() => {
                 setConfirm(false);
                 setNote("Opening the pull request…");
-                void api.benchShare(id).then(
+                void api.benchShare(id, logs).then(
                   (r) => (setPr(r.url), setNote("")),
                   (e) => setNote(errorText(e)),
                 );
@@ -349,4 +359,17 @@ function Share({ id }: { id: string }) {
       )}
     </div>
   );
+}
+
+/** Every attempt of one problem by reason, most common first: what the single label summarizes. */
+function kindMix(r: BenchResult): string {
+  const counts = new Map<string, number>();
+  for (const a of r.log ?? []) {
+    const label = a.kind === "verified" ? "verified" : FAILURES[a.kind].label.toLowerCase();
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([k, v]) => `${k} ${v}`)
+    .join(", ");
 }
