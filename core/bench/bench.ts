@@ -5,6 +5,7 @@
 // verifier accepts the proof, as in every other Mack run.
 
 import { MINIF2F_TEST } from "./minif2f-test";
+import { maskSecrets } from "../secrets";
 import { PUTNAMBENCH } from "./putnambench";
 
 export type BenchProblem = { id: string; source: string };
@@ -387,7 +388,9 @@ export function benchShare(run: BenchRun, set: BenchSet | undefined, appVersion:
   const results = run.results.map(({ log, timeline, ...r }) => (opts.logs ? { ...r, ...(timeline ? { timeline } : {}) } : r));
   const shared = { ...run, results, ...(contributor ? { sharedBy: contributor } : {}), appVersion, attemptsLogged: !!opts.logs };
   const dataset = opts.logs ? attemptsDataset(run) : "";
-  const files: Record<string, string> = { "REPORT.md": benchReport(run, set, appVersion), "run.json": `${JSON.stringify(shared, null, 2)}\n`, ...(dataset ? { "attempts.jsonl": dataset } : {}) };
+  const raw: Record<string, string> = { "REPORT.md": benchReport(run, set, appVersion), "run.json": `${JSON.stringify(shared, null, 2)}\n`, ...(dataset ? { "attempts.jsonl": dataset } : {}) };
+  // A model's thinking or Lean's output could quote a key: anything that looks like one is masked before it is published.
+  const files = Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, maskSecrets(v)]));
   return { files, title, body: dataset ? `${body}\n\n\`attempts.jsonl\` has every attempt (${dataset.trim().split("\n").length}): the model, how it ended, why, and Lean's feedback.` : body };
 }
 

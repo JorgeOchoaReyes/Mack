@@ -587,7 +587,7 @@ function Compare({ runs, onClose }: { runs: BenchRun[]; onClose: () => void }) {
               return (
                 <tr key={r.id}>
                   <td className="mono">{name(r)}</td>
-                  <td>{r.config.method ?? "single"}</td>
+                  <td>{METHOD_LABELS[r.config.method ?? "single"]}</td>
                   <td>
                     {s.solved}/{s.tried}
                   </td>
@@ -659,7 +659,7 @@ function MetricsDialog({ run, onClose }: { run: BenchRun; onClose: () => void })
         <div className="row gap-sm bench-live-head">
           <h2>{run.label ?? c.model.split("/").pop()}</h2>
           <span className="muted small">
-            {c.method ?? "single"} · {run.set} · {new Date(run.startedAt).toLocaleString()}
+            {METHOD_LABELS[c.method ?? "single"]} · {run.set} · {new Date(run.startedAt).toLocaleString()}
           </span>
           <button className="icon-btn" title="Close" onClick={onClose}>
             <X size={14} />

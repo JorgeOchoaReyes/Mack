@@ -1,5 +1,12 @@
 # Mack ⚡
 
+<p align="center">
+  <a href="https://github.com/JorgeOchoaReyes/Mack/releases/latest"><b>⬇ Download Mack for Windows</b></a> ·
+  <a href="https://jorgeochoareyes.github.io/Mack/"><b>Benchmark leaderboard</b></a> ·
+  <a href="#how-it-works">How it works</a> ·
+  <a href="#contributing">Contribute</a>
+</p>
+
 A Windows desktop app for Lean-checked math research. Open models (through
 [Fireworks](https://fireworks.ai), [OpenRouter](https://openrouter.ai),
 [Cheaper Inference](https://www.cheaperinference.com), a
@@ -140,6 +147,84 @@ do: its file tools resolve every path inside the project folder (links
 included), writes and proof runs wait for your approval, and memory is kept
 outside the project folder where no tool reaches.
 
+## How it works
+
+```
+ your statement ──► plausible tries to break it ──► model plans the proof in words
+                                                          │
+          ┌───────────────────────────────────────────────┘
+          ▼
+   Lean automation (aesop, omega, nlinarith, …) ── closes it? ──► done
+          │ no
+          ▼
+   model writes a proof ──► Lean checks it ──► errors and goals go back ──┐
+          ▲                                                               │
+          └───────────────────── revise, or start over ◄──────────────────┘
+          │ (or: split into lemmas proved in parallel, a search tree, an Ultramath swarm)
+          ▼
+   strict verifier: same statement, no sorry or extra axiom, Lean's kernel accepts
+```
+
+1. **A statement goes in.** You write it in Lean (or ask the chat to), in a
+   project folder. Mack freezes it: the proof that comes back must prove
+   exactly that statement.
+2. **Cheap things first.** Lean's random tester looks for a counterexample,
+   and Lean's own automation tries a set of tactics on the statement in one
+   Lean run. Only what is left goes to a model.
+3. **Models propose, Lean disposes.** The model writes a proof; Lean's errors
+   and the goals left at each gap go back to it, and it revises. Several
+   chains run at once, with one model or several (a planner and prover
+   models). Hard statements can be split into lemmas proved in parallel
+   (*Decompose*), searched as a tree of partial proofs (*Search tree*), or
+   attacked by a swarm (*Ultramath*).
+4. **Only Lean decides.** The strict verifier (below) accepts a proof only
+   when the statement is unchanged, nothing is assumed, and Lean's kernel
+   checks it. A model saying "proved" counts for nothing.
+
+## Benchmark
+
+The **Benchmark** screen measures how strong Mack is with your models and
+settings, on problems everyone uses:
+[miniF2F](https://github.com/openai/miniF2F) (244 competition problems) and
+[PutnamBench](https://github.com/trishullab/PutnamBench) (Putnam problems
+since 1962), already stated in Lean 4. The same number of problems always picks
+the same problems, so runs compare. Add several models to run them on the same
+problems one after another.
+
+<p align="center"><img src="docs/images/app-bench.png" width="760" alt="The Benchmark screen: problem set, method, budget and the models to compare"></p>
+
+Every run keeps everything: each attempt's proof, Lean's verdict, the model's
+thinking, tokens, cost and timestamps, and a timeline of every step the agent
+took on each problem. Open a run's **metrics** for its numbers, each model's
+hit rate and why problems were not solved, or tick two runs for a
+**head to head**.
+
+<p align="center">
+  <img src="docs/images/app-metrics.png" width="49%" alt="A run's metrics: solved, cost, time, each model and how attempts ended">
+  <img src="docs/images/app-compare.png" width="49%" alt="Two runs head to head on the same problems">
+</p>
+
+<p align="center"><img src="docs/images/app-run.png" width="760" alt="A run opened: why problems were not solved, sharing, and each problem's result"></p>
+
+### The public leaderboard
+
+Press **Share as a PR** on a run and Mack opens a pull request adding it to
+[`benchmarks/runs/`](benchmarks/runs) (the report, the run, and every attempt,
+with anything that looks like a secret masked). CI checks the run is well
+formed and safe to publish; once merged, it appears on the
+**[benchmark site](https://jorgeochoareyes.github.io/Mack/)** with its
+failures, every attempt, and each problem's trace. The Benchmark screen tracks
+the pull request: open, merged or closed.
+
+<p align="center"><img src="docs/images/site-leaderboard.png" width="760" alt="The benchmark site: headline numbers and the leaderboard"></p>
+
+<p align="center">
+  <img src="docs/images/site-run.png" width="49%" alt="One run on the site: its numbers, each model, and why problems were not solved">
+  <img src="docs/images/site-dark.png" width="49%" alt="The leaderboard by model, and how it works, in dark mode">
+</p>
+
+The screenshots use sample runs; the site shows the real ones.
+
 ## Install
 
 You need Windows 10 or 11, [Git](https://git-scm.com) (Lake fetches Mathlib
@@ -184,6 +269,41 @@ npm run typecheck
 $env:MACK_LEAN_WORKSPACE="$env:USERPROFILE\mack-lean"; npm test   # also run the verifier against real Lean
 npm run setup:lean   # the same Lean setup as the app, from the terminal
 ```
+
+## Contributing
+
+Contributions are welcome, and three kinds need no code at all.
+
+- **Share a benchmark run.** Run the Benchmark (20 problems is a good start)
+  and press **Share as a PR**. You need GitHub access (`gh auth login`, or a token
+  with the `repo` scope in Settings); Mack forks the repo for you when
+  you cannot push to it. A run is merged when CI's *Benchmark runs* check
+  passes: only `REPORT.md`, `run.json` and `attempts.jsonl`, problems that
+  belong to the set, a proof for every solved problem, and nothing that looks
+  like a secret.
+- **Add a proof to the community library.** Put `Statement.lean` and
+  `Proof.lean` in `community/proofs/<name>/` (see
+  [community/README.md](community/README.md)). CI checks the proof with the
+  strict verifier against the Mathlib pinned in `community/lean`, so an entry
+  merges only when Lean accepts it.
+- **Report where Mack loses.** A run's report lists each unsolved problem's
+  attempts and Lean's feedback; open an issue with it, or with what went wrong
+  in the app (the Feedback screen opens the issue for you).
+
+For code:
+
+1. Fork the repo, create a branch from `main`, and make your change.
+2. Run `npm run typecheck` and `npm test` (and, with a Lean workspace, the
+   real-Lean tests: see Development). Add a test for a fix or a feature.
+3. Open a pull request against `main`. CI runs the tests on Windows, the
+   real-Lean tests, and the checks for community proofs and benchmark runs as
+   they apply. Nothing is pushed to `main` directly; every merge to `main`
+   publishes a release, and installed copies update themselves.
+
+The code is in three parts: `core/` (the prover, verifier, agent and
+benchmark, with no Electron), `electron/` (the main process and IPC), and
+`src/` (the React screens). [docs/UPSTREAM.md](docs/UPSTREAM.md) describes what
+is ported from Open Math Harness and how Mack follows it.
 
 ## License
 

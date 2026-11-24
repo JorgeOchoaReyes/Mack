@@ -1,0 +1,39 @@
+import { describe, expect, it } from "vitest";
+import { BENCH_SETS, benchShare, type BenchRun } from "../core/bench/bench";
+import { validateRun } from "../core/bench/validate";
+
+const set = BENCH_SETS[0];
+const run: BenchRun = {
+  id: "1",
+  set: set.id,
+  startedAt: 0,
+  finishedAt: 1,
+  status: "done",
+  config: { model: "m", maxAttempts: 2, parallel: 1, automation: true, revisions: 4 },
+  sample: [set.problems[0].id, set.problems[1].id],
+  budget: 0,
+  results: [
+    { id: set.problems[0].id, outcome: "solved", attempts: 1, ms: 1, usd: 0, proof: "theorem …" },
+    { id: set.problems[1].id, outcome: "failed", attempts: 2, ms: 1, usd: 0, log: [{ n: 1, outcome: "errors", kind: "gaps", ms: 1, tokens: 1, detail: "x", candidate: "y", thinking: "my key is sk-or-v1-0123456789abcdef0123456789abcdef0123456789abcdef" }] },
+  ],
+};
+
+describe("validating a shared run before it is merged", () => {
+  it("passes what a share writes, with secrets masked before upload", () => {
+    const files = benchShare(run, set, "0.2.22", "me", { logs: true }).files;
+    expect(files["attempts.jsonl"]).not.toContain("0123456789abcdef0123456789abcdef");
+    expect(validateRun("minif2f-test-single-202611240000", files)).toEqual([]);
+  });
+
+  it("refuses unknown files, bad folders, missing proofs, foreign problems and secrets", () => {
+    const good = benchShare(run, set, "0.2.22", "me").files;
+    expect(validateRun("Bad Folder", good)[0]).toContain("folder name");
+    expect(validateRun("ok", { ...good, "evil.sh": "rm -rf /" })).toContain("unexpected file evil.sh: a shared run holds only REPORT.md, run.json, attempts.jsonl");
+    const noProof = JSON.stringify({ ...run, results: [{ ...run.results[0], proof: undefined }] });
+    expect(validateRun("ok", { ...good, "run.json": noProof }).join("\n")).toContain("solved problems without their proof");
+    const foreign = JSON.stringify({ ...run, results: [{ ...run.results[1], id: "made_up_problem" }] });
+    expect(validateRun("ok", { ...good, "run.json": foreign }).join("\n")).toContain("not in miniF2F test: made_up_problem");
+    expect(validateRun("ok", { ...good, "REPORT.md": "token ghp_0123456789abcdefghijABCDEFGHIJ012345" }).join("\n")).toContain("looks like a secret");
+    expect(validateRun("ok", { "run.json": "{" }).join("\n")).toContain("missing REPORT.md");
+  });
+});
