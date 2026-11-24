@@ -175,8 +175,11 @@ outside the project folder where no tool reaches.
    and the goals left at each gap go back to it, and it revises. Several
    chains run at once, with one model or several (a planner and prover
    models). Hard statements can be split into lemmas proved in parallel
-   (*Decompose*), searched as a tree of partial proofs (*Search tree*), or
-   attacked by a swarm (*Ultramath*).
+   (*Decompose*), built one tactic at a time on Lean's live proof states
+   (*Step by step*), searched as a tree of partial proofs (*Search tree*), or
+   attacked by a swarm (*Ultramath*). A lemma name Mathlib does not have is
+   corrected to the real one when there is a single clear match, before the
+   model is asked again.
 4. **Only Lean decides.** The strict verifier (below) accepts a proof only
    when the statement is unchanged, nothing is assumed, and Lean's kernel
    checks it. A model saying "proved" counts for nothing.
@@ -224,6 +227,30 @@ the pull request: open, merged or closed.
 </p>
 
 The screenshots use sample runs; the site shows the real ones.
+
+### How far the numbers can be trusted
+
+- **Solves are re-checked.** Before a shared run is merged, CI re-verifies
+  every solved proof with Lean and the strict verifier, against Mack's own copy
+  of each problem and the Mathlib version the run recorded. A solve cannot be
+  added by editing `run.json`.
+- **Nothing is left out.** A run must list every problem of the fixed sample
+  for its size; a skipped problem counts as unsolved on the site.
+- **Ranges, not just rates.** Each rate has its 95% range (13 of 20 is
+  43–82%), and only runs on a whole set are ranked; smaller runs are listed
+  apart.
+- **Self-reported numbers are marked.** Cost, time, tokens and the model a
+  provider served come from the person's machine and cannot be checked.
+- **A contamination check.** The latest Putnam competitions form a set of
+  their own (*Recent Putnam*), and every PutnamBench run is split by year on
+  the site: a model much weaker on recent problems was probably helped by
+  having seen the older ones in training.
+- **Close to the labs' measure.** Each run shows how many problems were solved
+  within 1, 4, 16 and 64 attempts, like pass@k (Mack's attempts learn from
+  Lean's errors, so it is close, not equal).
+- **Reproducible settings.** Benchmark runs never use your own past proofs as
+  examples, since nobody else could reproduce that; every procedure a run used
+  is listed with it.
 
 ## Install
 

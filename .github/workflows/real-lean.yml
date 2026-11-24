@@ -35,7 +35,13 @@ jobs:
         run: |
           lake exe cache get
           lake build Mathlib
+      - name: Lean REPL (as Mack's setup builds it)
+        shell: bash
+        run: |
+          tag=$(cut -d: -f2 community/lean/lean-toolchain)
+          git clone --depth 1 --branch "$tag" https://github.com/leanprover-community/repl community/lean/.mack/repl
+          (cd community/lean/.mack/repl && lake build)
       - run: npm ci
       - name: Tests against real Lean
         shell: bash
-        run: MACK_LEAN_WORKSPACE="$PWD/community/lean" npx vitest run tests/real-lean.test.ts tests/real-prover.test.ts
+        run: MACK_LEAN_WORKSPACE="$PWD/community/lean" npx vitest run tests/real-lean.test.ts tests/real-prover.test.ts tests/real-repl.test.ts

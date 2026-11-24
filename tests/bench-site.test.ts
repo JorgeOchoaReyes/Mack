@@ -70,7 +70,9 @@ describe("the benchmark site", () => {
     expect(Object.keys(site).sort()).toEqual(["index.html", "runs/a-run.html", ...run.results.map((r) => `runs/a-run/${r.id}.html`).sort(), "runs/b-run.html"].sort());
     const index = site["index.html"];
     expect(index.indexOf("runs/a-run.html")).toBeLessThan(index.indexOf("runs/b-run.html"));
-    expect(index).toContain("BEST");
+    // Two problems are a quick run: listed, never ranked.
+    expect(index).not.toContain("BEST");
+    expect(index).toContain("Quick runs on part of the set (2), not ranked");
     expect(index).toContain("big + prover-a, prover-b");
     const page = site["runs/a-run.html"];
     expect(page).toContain("All 4 attempts by how they ended");
@@ -159,7 +161,7 @@ describe("the harness a run used", () => {
     const h = harnessOf({ ...run.config, method: "decompose", easierFirst: true }, "0.2.21", "687f2a20dc6ff552d3c881e10910b46c13e84e2a");
     expect(h.mack).toBe("0.2.21");
     expect(h.openMathHarness).toBe("687f2a2");
-    expect(h.procedures).toEqual(["strict verifier", "linters off", "dead-tactic repair", "automation sweep", "premise selection", "easier versions first", "decompose", "prover ensemble", "restart after 4 revisions"]);
+    expect(h.procedures).toEqual(["strict verifier", "linters off", "dead-tactic repair", "name repair", "automation sweep", "premise selection", "easier versions first", "decompose", "prover ensemble", "restart after 4 revisions"]);
     expect(harnessLabel(h)).toBe("Mack 0.2.21 · OMH 687f2a2");
     expect(harnessLabel(undefined, "0.2.18")).toBe("Mack 0.2.18");
   });
@@ -185,5 +187,30 @@ describe("Open Math Harness's own methods in the benchmark", () => {
     expect(benchReport({ ...run, config: { ...run.config, method: "search" } }, set)).toContain(`- Method: ${METHOD_LABELS.search};`);
     expect(METHOD_LABELS.single).toContain("Mack");
     expect(METHOD_LABELS.ultramath).toContain("Open Math Harness");
+  });
+
+  it("ranks only runs on the whole set, with a 95% range, and splits PutnamBench by year", () => {
+    const whole = (id: string, solvedEvery: number): BenchRun => ({
+      ...run,
+      id,
+      sample: set.problems.map((p) => p.id),
+      results: set.problems.map((p, i) => (i % solvedEvery === 0 ? { id: p.id, outcome: "solved" as const, attempts: (i % 5) + 1, ms: 1, usd: 0.01, proof: "…" } : { id: p.id, outcome: "failed" as const, attempts: 4, ms: 1, usd: 0.01 })),
+    });
+    const putnam = BENCH_SETS.find((s) => s.id === "putnambench")!;
+    const recent = BENCH_SETS.find((s) => s.id === "putnam-recent")!;
+    expect(recent.problems.length).toBeGreaterThan(0);
+    expect(recent.problems.every((p) => putnam.problems.some((q) => q.id === p.id))).toBe(true);
+    const putnamRun: BenchRun = { ...run, id: "p", set: "putnambench", sample: putnam.problems.slice(0, 3).map((p) => p.id).concat(recent.problems.slice(0, 2).map((p) => p.id)), results: [...putnam.problems.slice(0, 3), ...recent.problems.slice(0, 2)].map((p, i) => ({ id: p.id, outcome: i === 0 ? ("solved" as const) : ("failed" as const), attempts: 1, ms: 1, usd: 0, ...(i === 0 ? { proof: "…" } : {}) })) };
+    const site = buildSite([{ ...whole("a", 2), folder: "half" }, { ...whole("b", 4), folder: "quarter" }, { ...putnamRun, folder: "putnam" }], "https://github.com/o/r");
+    const index = site["index.html"];
+    expect(index).toContain("BEST");
+    expect(index.indexOf("runs/half.html")).toBeLessThan(index.indexOf("runs/quarter.html"));
+    expect(index).toContain("95% range");
+    expect(index).toContain("Recent problems: the contamination check");
+    expect(index).toMatch(/1\/3 \(33\.3%\)<\/td><td>0\/2 \(0\.0%\)/);
+    const page = site["runs/half.html"];
+    expect(page).toContain("Solved within k attempts");
+    expect(page).toContain("within 64 attempts");
+    expect(page).toContain("As the run reported it");
   });
 });
