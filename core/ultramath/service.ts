@@ -156,11 +156,21 @@ export class SwarmService {
 
   private record(s: Swarm, r: RecordBody): void {
     const full = { seq: ++s.seq, at_ms: Date.now(), ...r } as SwarmRecord;
-    appendFileSync(join(s.dir, "records.jsonl"), `${JSON.stringify(full)}\n`);
+    try {
+      appendFileSync(join(s.dir, "records.jsonl"), `${JSON.stringify(full)}\n`);
+    } catch (e) {
+      // The swarm's folder was deleted while a member was still finishing: there is no record left to add to.
+      if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+    }
   }
 
   private saveTranscript(m: Member, session: ChatSession): void {
-    writeFileSync(join(m.dir, ".transcript.json"), JSON.stringify(session.messages));
+    try {
+      writeFileSync(join(m.dir, ".transcript.json"), JSON.stringify(session.messages));
+    } catch (e) {
+      // A member still finishing its turn after the swarm's folder was deleted has nowhere to keep its transcript.
+      if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+    }
   }
 
   private loadTranscript(m: Member): StoredMessage[] {

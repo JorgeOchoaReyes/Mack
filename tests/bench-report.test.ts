@@ -37,7 +37,7 @@ describe("why a benchmark problem failed", () => {
   it("writes a report with the settings, the reasons and each unsolved problem's statement, feedback and attempt", () => {
     const md = benchReport(run, set, "0.2.18");
     expect(md).toContain("1/3 solved (33.3%)");
-    expect(md).toContain("Method: decompose; model m; prover p");
+    expect(md).toContain("Method: Decompose into lemmas (Mack); model m; prover p");
     expect(md).toContain("**Wrong lemma names**: 2");
     expect(md).toContain(`### ${set.problems[1].id}: Wrong lemma names`);
     expect(md).toContain("unknown identifier 'Nat.foo'");

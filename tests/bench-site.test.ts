@@ -151,3 +151,39 @@ describe("the basics of reading a run", () => {
     expect(buildSite([{ ...run, folder: "r" }], "https://github.com/o/r")["index.html"]).toContain("How to read these results");
   });
 });
+
+import { harnessLabel, harnessOf } from "../core/bench/bench";
+
+describe("the harness a run used", () => {
+  it("names Mack's version, the Open Math Harness commit and the procedures the settings turned on", () => {
+    const h = harnessOf({ ...run.config, method: "decompose", easierFirst: true }, "0.2.21", "687f2a20dc6ff552d3c881e10910b46c13e84e2a");
+    expect(h.mack).toBe("0.2.21");
+    expect(h.openMathHarness).toBe("687f2a2");
+    expect(h.procedures).toEqual(["strict verifier", "linters off", "dead-tactic repair", "automation sweep", "premise selection", "easier versions first", "decompose", "prover ensemble", "restart after 4 revisions"]);
+    expect(harnessLabel(h)).toBe("Mack 0.2.21 · OMH 687f2a2");
+    expect(harnessLabel(undefined, "0.2.18")).toBe("Mack 0.2.18");
+  });
+
+  it("is on the report, the leaderboard and the run's page", () => {
+    const marked = { ...run, harness: harnessOf(run.config, "0.2.21", "687f2a2") };
+    expect(benchReport(marked, set)).toContain("- Harness: Mack 0.2.21, Open Math Harness 687f2a2; procedures: strict verifier");
+    const site = buildSite([{ ...marked, folder: "h" }], "https://github.com/o/r");
+    expect(site["index.html"]).toContain("0.2.21 · OMH 687f2a2");
+    expect(site["runs/h.html"]).toContain("Open Math Harness <b>687f2a2</b>");
+  });
+});
+
+import { METHOD_LABELS } from "../core/bench/bench";
+
+describe("Open Math Harness's own methods in the benchmark", () => {
+  it("mark a search or swarm run with only the harness's procedures, none of Mack's additions", () => {
+    expect(harnessOf({ ...run.config, method: "search" }, "0.2.21", "687f2a2").procedures).toEqual(["strict verifier", "linters off", "OMH search tree"]);
+    expect(harnessOf({ ...run.config, method: "ultramath" }, "0.2.21", "687f2a2").procedures).toEqual(["strict verifier", "linters off", "OMH ultramath swarm"]);
+  });
+
+  it("name the method in full in the report", () => {
+    expect(benchReport({ ...run, config: { ...run.config, method: "search" } }, set)).toContain(`- Method: ${METHOD_LABELS.search};`);
+    expect(METHOD_LABELS.single).toContain("Mack");
+    expect(METHOD_LABELS.ultramath).toContain("Open Math Harness");
+  });
+});

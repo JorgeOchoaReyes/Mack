@@ -1077,3 +1077,5 @@ body:has(.resizer.dragging) { cursor: col-resize; user-select: none; }
 .bench-basics dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px 20px; margin: 12px 0 4px; }
 .bench-basics dt { font-weight: 600; font-size: 13px; }
 .bench-basics dd { margin: 2px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+
+.bench-harness { display: inline-block; padding: 1px 6px; margin-right: 4px; border-radius: 99px; background: var(--sunken); font-size: 11px; font-family: var(--mono); color: var(--muted); }

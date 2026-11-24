@@ -68,7 +68,7 @@ export const api = {
   stopProve: () => m().stopProve(),
   onProveEvent: (cb: (e: RunEvent) => void) => m().onProveEvent((e) => cb(e as RunEvent)),
   benchSets: () => m().benchSets() as Promise<BenchSetInfo[]>,
-  benchStart: (setId: string, n: number, budget: number, method: "single" | "decompose", models: BenchModels[]) => m().benchStart(setId, n, budget, method, models) as Promise<BenchRun[]>,
+  benchStart: (setId: string, n: number, budget: number, method: string, models: BenchModels[]) => m().benchStart(setId, n, budget, method, models) as Promise<BenchRun[]>,
   proofStats: () => m().proofStats() as Promise<{ count: number }>,
   exportProofs: () => m().exportProofs() as Promise<{ path: string; count: number } | null>,
   benchStop: () => m().benchStop() as Promise<void>,
