@@ -35,6 +35,7 @@ const api = {
   benchReport: (id: string) => ipcRenderer.invoke("bench:report", id),
   benchExport: (id: string) => ipcRenderer.invoke("bench:export", id),
   benchShare: (id: string, logs: boolean) => ipcRenderer.invoke("bench:share", id, logs),
+  benchPrs: () => ipcRenderer.invoke("bench:prs"),
   benchDataset: (id: string) => ipcRenderer.invoke("bench:dataset", id),
   benchList: () => ipcRenderer.invoke("bench:list"),
   benchDelete: (id: string) => ipcRenderer.invoke("bench:delete", id),

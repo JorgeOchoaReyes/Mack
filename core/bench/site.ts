@@ -289,7 +289,7 @@ ${body}
 </tbody></table></div>
 ${
   x.timeline?.length
-    ? `<h2>What the run did</h2><div class="card small"><ol>${x.timeline.map((t) => `<li><span class="muted">${clock(t.t)}</span> ${esc(t.message)}</li>`).join("")}</ol></div>`
+    ? `<h2>What the run did</h2><div class="card small"><ol>${x.timeline.map((t) => `<li style="white-space:pre-wrap"><span class="muted">${clock(t.t)}</span> ${esc(t.message)}</li>`).join("")}</ol></div>`
     : ""
 }
 ${x.proof ? `<h2>The verified proof</h2><pre class="card">${esc(x.proof)}</pre>` : ""}

@@ -182,10 +182,13 @@ export async function openCommunityPr(
   for (let i = 2; taken.has(slug); i++) slug = `${baseSlug}-${i}`;
   const o = make(slug, me.login);
   const baseTree = (await api<{ tree: { sha: string } }>(token, "GET", `/repos/${head.owner}/${head.repo}/git/commits/${baseSha}`)).tree.sha;
-  const tree = await api<{ sha: string }>(token, "POST", `/repos/${head.owner}/${head.repo}/git/trees`, {
-    base_tree: baseTree,
-    tree: Object.entries(o.files).map(([name, content]) => ({ path: `${target.dir}/${slug}/${name}`, mode: "100644", type: "blob", content })),
-  });
+  // Each file goes up as a blob of its own: a run's attempt log can be megabytes, too large to send inline in the tree.
+  const entries = [];
+  for (const [name, content] of Object.entries(o.files)) {
+    const blob = await api<{ sha: string }>(token, "POST", `/repos/${head.owner}/${head.repo}/git/blobs`, { content: Buffer.from(content, "utf8").toString("base64"), encoding: "base64" });
+    entries.push({ path: `${target.dir}/${slug}/${name}`, mode: "100644", type: "blob", sha: blob.sha });
+  }
+  const tree = await api<{ sha: string }>(token, "POST", `/repos/${head.owner}/${head.repo}/git/trees`, { base_tree: baseTree, tree: entries });
   const commit = await api<{ sha: string }>(token, "POST", `/repos/${head.owner}/${head.repo}/git/commits`, { message: o.title, tree: tree.sha, parents: [baseSha] });
   const branch = `${branchPrefix}/${slug}-${Date.now().toString(36)}`;
   await api(token, "POST", `/repos/${head.owner}/${head.repo}/git/refs`, { ref: `refs/heads/${branch}`, sha: commit.sha });
@@ -197,4 +200,10 @@ export async function openCommunityPr(
     maintainer_can_modify: true,
   });
   return { url: pr.html_url, slug };
+}
+
+/** Where a pull request stands: open, merged, or closed without merging. */
+export async function pullState(token: string, owner: string, repo: string, number: number): Promise<"open" | "merged" | "closed"> {
+  const pr = await api<{ state: string; merged?: boolean; merged_at?: string | null }>(token, "GET", `/repos/${owner}/${repo}/pulls/${number}`);
+  return pr.merged || pr.merged_at ? "merged" : pr.state === "open" ? "open" : "closed";
 }

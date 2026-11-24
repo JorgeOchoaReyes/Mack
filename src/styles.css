@@ -1079,3 +1079,14 @@ body:has(.resizer.dragging) { cursor: col-resize; user-select: none; }
 .bench-basics dd { margin: 2px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
 
 .bench-harness { display: inline-block; padding: 1px 6px; margin-right: 4px; border-radius: 99px; background: var(--sunken); font-size: 11px; font-family: var(--mono); color: var(--muted); }
+.bench-steps li { white-space: pre-wrap; }
+.bench-warning { padding: 10px 12px; border-radius: 10px; border: 1px solid var(--warn); background: var(--warn-soft); font-size: 13px; line-height: 1.5; }
+
+.bench-status-box { flex: 1 1 100%; display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border-strong); background: var(--surface); font-size: 13px; line-height: 1.5; }
+.bench-status-box > svg { flex: none; margin-top: 2px; }
+.bench-status-box.ok-box { border-color: var(--ok); background: var(--ok-soft); }
+.bench-status-box.bad-box { border-color: var(--bad); background: var(--bad-soft); }
+.bench-pr { display: inline-flex; align-items: center; gap: 3px; padding: 1px 7px; margin-right: 4px; border: 0; border-radius: 99px; font-size: 11px; font-weight: 600; cursor: pointer; background: var(--sunken); color: var(--muted); }
+.bench-pr.pr-open { background: var(--ok-soft); color: var(--ok); }
+.bench-pr.pr-merged { background: var(--accent-soft); color: var(--accent-text); }
+.bench-pr.pr-closed { background: var(--bad-soft); color: var(--bad); }

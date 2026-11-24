@@ -13,7 +13,7 @@ import { DEFAULT_WORKSPACE, hasMathlib, hasProject, runSetup, verifyWorkspace, t
 import { lakeVersion } from "../core/lean/toolchain";
 import { OpenAICompatibleProvider } from "../core/model/openai-compatible";
 import { PROVIDERS, providerInfo, type ProviderId } from "../core/model/providers";
-import { ghCliToken, githubLogin, openCommunityPr, type GitHubTokenSource } from "../core/github";
+import { ghCliToken, githubLogin, openCommunityPr, pullState, type GitHubTokenSource } from "../core/github";
 import { COMMUNITY_REPO } from "../core/community";
 import { prove, type ProveEvent } from "../core/prove";
 import { lemmaSource, type Lemma } from "../core/prepare";
@@ -846,6 +846,10 @@ async function benchOne(s: Settings, p: { id: string; source: string }, bench: B
   let lastCandidate = "";
   const log: AttemptLog[] = [];
   const timeline: { t: number; message: string }[] = [];
+  // The run's own steps, once each and in order: everything the agent did besides its attempts.
+  const trace = (message: string) => {
+    if (timeline.length < LOG_LIMITS.timeline && timeline[timeline.length - 1]?.message !== message) timeline.push({ t: Date.now() - t0, message: message.slice(0, LOG_LIMITS.step) });
+  };
   // Every method's attempts land in one log: a Mack attempt, a search node, or a swarm member's turn.
   const onEvent = (ev: ProveEvent) => {
       if (ev.type === "attempt") {
@@ -879,9 +883,10 @@ async function benchOne(s: Settings, p: { id: string; source: string }, bench: B
       if (ev.type === "failed") message = ev.message;
       if (ev.type === "status") {
         status(ev.message);
-        // The run's own steps, once each: what it tried, in order.
-        if (timeline.length < LOG_LIMITS.timeline && timeline[timeline.length - 1]?.message !== ev.message) timeline.push({ t: Date.now() - t0, message: ev.message.slice(0, 300) });
+        trace(ev.message);
       }
+      if (ev.type === "idea") trace(`The plan in words, which every attempt was given:\n${ev.text}`);
+      if (ev.type === "statementCheck") trace(`Statement check: ${JSON.stringify(ev.check).slice(0, 400)}`);
   };
   const both = AbortSignal.any([signal, ctl.signal]);
   const method = bench.config.method ?? "single";
@@ -906,7 +911,9 @@ async function benchOne(s: Settings, p: { id: string; source: string }, bench: B
           const n = ev.node;
           const outcome = n.status === "invalid" ? "refused" : n.status === "complete" ? "rejected" : n.status;
           onEvent({ type: "attempt", n: n.id + 1, candidate: n.file, outcome, detail: n.detail, ms: ev.ms, tokens: ev.tokens, model, at: Date.now() - ev.ms });
-        } else if (ev.type === "solved" || ev.type === "failed" || ev.type === "status") onEvent(ev);
+          trace(`Node ${n.id + 1}${n.parent !== null ? ` (from node ${n.parent + 1})` : ""}, round ${n.round}: ${n.status}, score ${n.score.toFixed(2)}${n.approach ? `. Approach: ${n.approach}` : ""}`);
+        } else if (ev.type === "round") trace(`Round ${ev.round}: continuing node${ev.batch.length === 1 ? "" : "s"} ${ev.batch.map((b) => b + 1).join(", ")}`);
+        else if (ev.type === "solved" || ev.type === "failed" || ev.type === "status" || ev.type === "idea" || ev.type === "statementCheck") onEvent(ev);
       },
     });
   } else if (method === "ultramath") {
@@ -925,7 +932,12 @@ async function benchOne(s: Settings, p: { id: string; source: string }, bench: B
           const said = ev.check ?? "";
           const outcome = !said ? "no verdict" : /error/i.test(said) ? "errors" : /sorry/i.test(said) ? "sorries" : "rejected";
           onEvent({ type: "attempt", n: ++turn, candidate: ev.summary, outcome, detail: said || "(the member ran no Lean check this turn)", ms: 0, tokens: ev.tokens, model: `${model} · member ${ev.member}`, at: Date.now() });
-        } else if (ev.type === "solved" || ev.type === "failed" || ev.type === "status") onEvent(ev);
+          trace(`Member ${ev.member}, round ${ev.round}: ${ev.summary}`);
+        } else if (ev.type === "direction") trace(`A member registered a direction: ${JSON.stringify(ev.direction).slice(0, 600)}`);
+        else if (ev.type === "refused") trace(`Member ${ev.member}'s direction was refused (${ev.reason}): ${ev.text}`);
+        else if (ev.type === "post") trace(`Board post: ${JSON.stringify(ev.post).slice(0, 800)}`);
+        else if (ev.type === "report") trace(`Member ${ev.member} reported (${ev.accepted ? "accepted" : "not accepted"}: ${ev.reason}): ${ev.report}`);
+        else if (ev.type === "solved" || ev.type === "failed" || ev.type === "status") onEvent(ev);
       },
     });
   } else {
@@ -1007,7 +1019,7 @@ ipcMain.handle("bench:start", async (e, setId: string, n: number, budget: number
     lean: (await lakeVersion(base.leanWorkspace).catch(() => null)) ?? undefined,
     leanDeadlineMs: base.timeoutMs,
     leanProcesses: leanProcesses(base),
-    repl: base.useRepl,
+    repl: base.useRepl && (remoteOn(base) ? base.remoteLean.repl : hasRepl(base.leanWorkspace)),
     remoteLean: remoteOn(base),
     proofIdea: base.proofIdea,
   };
@@ -1114,8 +1126,31 @@ ipcMain.handle("bench:share", async (_e, id: string, logs?: boolean) => {
   if (run.status === "running") throw new Error("Wait for the run to finish, or stop it, before sharing it.");
   const { token } = await githubAuth();
   if (!token) throw new Error("Connect GitHub first: Settings → GitHub, or log in with the GitHub CLI (gh auth login).");
+  if (run.sharedPr) throw new Error(`This run is already shared: ${run.sharedPr.url}`);
   const set = benchSet(run.set);
-  return openCommunityPr(token, { ...COMMUNITY_REPO, dir: BENCH_SHARE_DIR }, benchSlug(run), (_slug, login) => benchShare(run, set, app.getVersion(), login, { logs: logs !== false }), "benchmark");
+  const opened = await openCommunityPr(token, { ...COMMUNITY_REPO, dir: BENCH_SHARE_DIR }, benchSlug(run), (_slug, login) => benchShare(run, set, app.getVersion(), login, { logs: logs !== false }), "benchmark");
+  // The run remembers its pull request, so the screen can show it and follow whether it was merged.
+  run.sharedPr = { url: opened.url, number: Number(/\/pull\/(\d+)/.exec(opened.url)?.[1] ?? 0), at: Date.now(), logs: logs !== false };
+  saveBench(run);
+  return run.sharedPr;
+});
+// Where each shared run's pull request stands, for the runs that have one.
+ipcMain.handle("bench:prs", async (): Promise<Record<string, "open" | "merged" | "closed" | "unknown">> => {
+  const shared = readdirSync(benchDir())
+    .filter((f) => f.endsWith(".json"))
+    .flatMap((f) => {
+      try {
+        const r = JSON.parse(readFileSync(join(benchDir(), f), "utf8")) as BenchRun;
+        return r.sharedPr?.number ? [r] : [];
+      } catch {
+        return [];
+      }
+    });
+  if (!shared.length) return {};
+  const { token } = await githubAuth();
+  const out: Record<string, "open" | "merged" | "closed" | "unknown"> = {};
+  for (const r of shared) out[r.id] = token ? await pullState(token, COMMUNITY_REPO.owner, COMMUNITY_REPO.repo, r.sharedPr!.number).catch(() => "unknown" as const) : "unknown";
+  return out;
 });
 // Every attempt of a run as a JSON Lines dataset, saved where the person chooses.
 ipcMain.handle("bench:dataset", async (e, id: string) => {

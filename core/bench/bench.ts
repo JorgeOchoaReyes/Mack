@@ -73,7 +73,7 @@ export type AttemptLog = {
 };
 
 /** How many attempts, and how much of each, a problem's log keeps. */
-export const LOG_LIMITS = { attempts: 60, detail: 1500, candidate: 3000, thinking: 6000, prose: 2000, timeline: 200 } as const;
+export const LOG_LIMITS = { attempts: 60, detail: 1500, candidate: 3000, thinking: 6000, prose: 2000, timeline: 400, step: 2000 } as const;
 
 /** A reply's thinking (`<think>` blocks, or what the provider sent apart) and the prose outside its last code block. */
 export function splitReply(reply: string, reasoning?: string): { thinking: string; prose: string } {
@@ -218,6 +218,8 @@ export type BenchRun = {
   env?: BenchEnv;
   /** The harness the run used: Mack's version, the Open Math Harness commit it implements, and its own procedures in play. */
   harness?: BenchHarness;
+  /** The pull request that shared the run on the Mack repo, once opened. */
+  sharedPr?: { url: string; number: number; at: number; logs: boolean };
 };
 
 export type BenchEvent = { type: "started"; run: BenchRun } | { type: "status"; id: string; message: string } | { type: "result"; result: BenchResult } | { type: "finished"; run: BenchRun };
@@ -304,7 +306,8 @@ export function benchReport(run: BenchRun, set: BenchSet | undefined, appVersion
   const lines = [
     `# Mack benchmark: ${set?.label ?? run.set}, ${sum.solved}/${sum.tried} solved (${(sum.rate * 100).toFixed(1)}%)`,
     "",
-    `- Run ${run.id}, ${new Date(run.startedAt).toISOString()}${appVersion ? `, Mack ${appVersion}` : ""}, ${run.status}`,
+    `- Run ${run.id}, ${new Date(run.startedAt).toISOString()}, ${run.status}; run with Mack ${run.harness?.mack ?? run.env?.app ?? "(an earlier version, before runs recorded it)"}${appVersion ? `, report by Mack ${appVersion}` : ""}`,
+    ...(run.env ? [`- Ran on ${run.env.platform}${run.env.lean ? `, ${run.env.lean}` : ""}; Lean REPL ${run.env.repl ? "on" : "OFF (every check reloaded Mathlib, so the run was several times slower)"}; Lean deadline ${Math.round(run.env.leanDeadlineMs / 1000)}s; ${run.env.leanProcesses} Lean processes${run.env.remoteLean ? " on a remote machine" : ""}`] : []),
     ...(run.harness ? [`- Harness: Mack ${run.harness.mack}, Open Math Harness ${run.harness.openMathHarness}; procedures: ${run.harness.procedures.join(", ")}`] : []),
     `- Method: ${METHOD_LABELS[c.method ?? "single"]}; model ${c.model}${c.prover ? `; prover ${c.prover}` : "; no prover model"}`,
     `- ${c.maxAttempts} attempts, ${c.parallel} at once, revisions before starting over ${c.revisions}; automation ${c.automation ? "on" : "off"}; premise selection ${c.premises ? "on" : "off"}; easier versions first ${c.easierFirst ? "on" : "off"}`,

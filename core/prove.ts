@@ -9,7 +9,10 @@ import { describeRejection, excerpt, pristineType, verifyText, type LeanRun } fr
 import type { ChatMessage, ModelProvider } from "./model/provider";
 import { prepare, type Lemma, type PrepareEvent } from "./prepare";
 import { unknownNames } from "./lean/mathlib-index";
-import { sweep } from "./lean/analysis";
+import { closeByAutomation, sweep } from "./lean/analysis";
+
+/** The sweep's tactics (core/lean/analysis.ts SWEEP_SUITE), for the trace. */
+const SWEEP_NAMES = "rfl, assumption, decide, omega, norm_num, simp, linarith, positivity, ring, simp_all, nlinarith, tauto, then aesop, grind, exact?";
 import { dropDeadTactics } from "./lean/repair";
 
 export type AttemptOutcome = "refused" | "no verdict" | "errors" | "sorries" | "rejected" | "verified";
@@ -65,7 +68,11 @@ export type ProveOptions = {
   examples?: string;
   /** Premise selection: the Mathlib theorems likely to help prove this statement, as a note for every attempt; empty for none. */
   premises?: (frozen: string) => Promise<string>;
-  /** Try Lean's automation on the statement before any model call, and on every `sorry` an attempt leaves (default on). */
+  /**
+   * Try Lean's automation on the statement before any model call (one Lean run), and on every `sorry` an attempt
+   * leaves (default on). The sorry sweep needs the quick check (`check`, the REPL): without it, each tactic would
+   * reload Mathlib, so the sorries go back to the model instead.
+   */
   automation?: boolean;
   signal?: AbortSignal;
   onEvent: (e: ProveEvent) => void;
@@ -111,13 +118,17 @@ export async function prove(o: ProveOptions): Promise<void> {
   if (automation) {
     o.onEvent({ type: "status", message: "Trying Lean's automation on the statement before asking a model…" });
     const t0 = Date.now();
-    const swept = await sweep(o.frozen, quick, { wallMs: 60_000, maxSorries: 1 }).catch(() => null);
-    if (swept?.completed && !o.signal?.aborted) {
-      const verdict = await verifyText(o.frozen, pristine.type, swept.completed, o.run);
+    // Every tactic of the sweep in one Lean run: without the REPL, one Mathlib load instead of one per tactic.
+    const closed = await closeByAutomation(o.frozen, quick).catch(() => null);
+    if (closed && !o.signal?.aborted) {
+      const verdict = await verifyText(o.frozen, pristine.type, closed, o.run);
       if (verdict.ok) {
-        o.onEvent({ type: "attempt", n: 0, candidate: swept.completed, outcome: "verified", detail: "closed by Lean's automation, no model call", ms: Date.now() - t0, tokens: 0 });
-        return o.onEvent({ type: "solved", n: 0, proof: swept.completed, axioms: verdict.axioms });
+        o.onEvent({ type: "attempt", n: 0, candidate: closed, outcome: "verified", detail: "closed by Lean's automation, no model call", ms: Date.now() - t0, tokens: 0 });
+        return o.onEvent({ type: "solved", n: 0, proof: closed, axioms: verdict.axioms });
       }
+      o.onEvent({ type: "status", message: `Lean's automation closed the statement, but the verifier refused it: ${describeRejection(verdict.rejection)}` });
+    } else if (!o.signal?.aborted) {
+      o.onEvent({ type: "status", message: `Lean's automation did not close the statement (tried, in one run: ${SWEEP_NAMES}); asking the model.` });
     }
   }
   const premises = o.premises ? await o.premises(o.frozen).catch(() => "") : "";
@@ -192,7 +203,7 @@ export async function prove(o: ProveOptions): Promise<void> {
         emit({ type: "status", message: `${label(n)}: Lean is checking the proof…` });
         let check = await quick(candidate);
         let swept = "";
-        if (automation && check.status === "sorries") {
+        if (automation && o.check && check.status === "sorries") {
           emit({ type: "status", message: `${label(n)}: trying Lean's automation on each sorry…` });
           const sw = await sweep(candidate, quick).catch(() => null);
           if (sw && sw.closed > 0) {
