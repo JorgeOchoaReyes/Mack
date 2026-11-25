@@ -8,6 +8,7 @@ import { Fragment, useEffect, useState } from "react";
 import { api, errorText, type BenchModels, type BenchResult, type BenchRun, type BenchSetInfo, type ProviderId, type Settings } from "../api";
 import { PROVIDERS } from "../../core/model/providers";
 import { Button, EmptyState, Field, timeAgo, Toggle } from "../components/ui";
+import { GitHubAccounts } from "../components/GitHubAccounts";
 import { formatUsd } from "../../core/model/metered";
 import { BENCH_BASICS, METHOD_LABELS, type BenchMethod, FAILURES, failureBreakdown, harnessLabel, headToHead, rateRange, runMetrics, solvedWithin, summarize, timelineOf } from "../../core/bench/bench";
 import { COMMUNITY_REPO } from "../../core/community";
@@ -268,7 +269,7 @@ export function BenchmarkPage({ settings, onGo }: Props) {
                   {open === r.id && (
                     <div className="bench-detail">
                       <Breakdown results={r.results} />
-                      <Share run={r} prState={prs[r.id]} onShared={refresh} />
+                      <Share run={r} prState={prs[r.id]} onShared={refresh} onGoSettings={() => onGo("settings")} />
                       <Results results={r.results} />
                     </div>
                   )}
@@ -391,7 +392,8 @@ function Breakdown({ results }: { results: BenchResult[] }) {
 }
 
 /** Save a run's report or attempts, copy the report, or share the run as a pull request on the Mack repo, with every step shown. */
-function Share({ run, prState, onShared }: { run: BenchRun; prState?: string; onShared: () => void }) {
+function Share({ run, prState, onShared, onGoSettings }: { run: BenchRun; prState?: string; onShared: () => void; onGoSettings: () => void }) {
+  const [canPublish, setCanPublish] = useState(true);
   const id = run.id;
   const [note, setNote] = useState("");
   const [logs, setLogs] = useState(true);
@@ -450,15 +452,16 @@ function Share({ run, prState, onShared }: { run: BenchRun; prState?: string; on
       {stage.kind === "confirm" && (
         <div className="bench-confirm">
           <p className="small">
-            This opens a <b>public</b> pull request on {COMMUNITY_REPO.owner}/{COMMUNITY_REPO.repo} under your GitHub account, with this run&apos;s report and data: the settings and model names, each problem&apos;s result, and the unsolved problems&apos; attempts and Lean feedback. No keys or project files are included.
+            This opens a <b>public</b> pull request on {COMMUNITY_REPO.owner}/{COMMUNITY_REPO.repo} under the GitHub account chosen below, with this run&apos;s report and data: the settings and model names, each problem&apos;s result, and the unsolved problems&apos; attempts and Lean feedback. No keys or project files are included.
           </p>
           <Toggle
             checked={logs}
             onChange={setLogs}
             label="Include every attempt (attempts.jsonl): each attempt's model, outcome, reason, Lean feedback, the model's thinking and the attempt itself, so the run can be analysed fully"
           />
+          <GitHubAccounts compact onGoSettings={onGoSettings} onChange={(s) => setCanPublish(s.source !== "none")} />
           <div className="row gap-sm">
-            <Button size="sm" variant="primary" icon={GitPullRequest} onClick={share}>
+            <Button size="sm" variant="primary" icon={GitPullRequest} onClick={share} disabled={!canPublish}>
               Open the pull request
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setStage({ kind: "idle" })}>

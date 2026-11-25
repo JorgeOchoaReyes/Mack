@@ -21,6 +21,7 @@ import type { SwarmRecord } from "../core/ultramath/service";
 import type { SearchNode } from "../core/search/tree";
 import type { ChangedFile } from "../core/git";
 import type { GitHubTokenSource, PullRequest } from "../core/github";
+import type { GitHubAccount } from "../core/github-accounts";
 import type { UpdateState } from "../electron/updates";
 import type { UpstreamReport } from "../core/upstream";
 import type { BenchModels, Health, KeySource, ProjectFiles, RunEvent, RunMode, RunOrigin, RunRecord, RunSummary, Settings } from "../electron/main";
@@ -36,7 +37,7 @@ declare global {
   }
 }
 
-export type GitHubStatus = { source: GitHubTokenSource; login?: string; error?: string };
+export type GitHubStatus = { source: GitHubTokenSource; login?: string; error?: string; accounts: GitHubAccount[]; signIn: boolean };
 export type { PullRequest };
 export type Upstream = (UpstreamReport & { dismissed?: boolean }) | { kind: "off" };
 export type { Plan, PlanStep, Proved, StepKind, StepStatus, StepVia, PathStep, ProofPath };
@@ -120,7 +121,11 @@ export const api = {
   reviewInit: (projectId: string) => m().reviewInit(projectId),
   githubStatus: () => m().githubStatus() as Promise<GitHubStatus>,
   githubSetToken: (token: string) => m().githubSetToken(token) as Promise<GitHubStatus>,
-  githubClearToken: () => m().githubClearToken() as Promise<GitHubStatus>,
+  githubUse: (login: string) => m().githubUse(login) as Promise<GitHubStatus>,
+  githubRemove: (login: string) => m().githubRemove(login) as Promise<GitHubStatus>,
+  githubSignInStart: () => m().githubSignInStart() as Promise<{ userCode: string; verificationUri: string; expiresIn: number }>,
+  githubSignInWait: () => m().githubSignInWait() as Promise<GitHubStatus>,
+  githubSignInCancel: () => m().githubSignInCancel() as Promise<void>,
   openPr: (projectId: string, sessionId: string | null, title: string) => m().openPr(projectId, sessionId, title) as Promise<PullRequest>,
   listPlugins: (sessionId: string) => m().listPlugins(sessionId),
   swarmRecords: (projectId: string, sessionId: string) => m().swarmRecords(projectId, sessionId) as Promise<{ id: string; records: SwarmRecord[] }[]>,
