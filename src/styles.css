@@ -1090,3 +1090,12 @@ body:has(.resizer.dragging) { cursor: col-resize; user-select: none; }
 .bench-pr.pr-open { background: var(--ok-soft); color: var(--ok); }
 .bench-pr.pr-merged { background: var(--accent-soft); color: var(--accent-text); }
 .bench-pr.pr-closed { background: var(--bad-soft); color: var(--bad); }
+/* GitHub accounts (Settings → GitHub, and the picker in a share dialog). */
+.gh-accounts { display: flex; flex-direction: column; gap: 10px; }
+.gh-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.gh-list li { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+.gh-list li:last-child { border-bottom: 0; }
+.gh-list li.chosen { background: var(--accent-soft); }
+.gh-list img { border-radius: 50%; flex: none; }
+.gh-pick { display: flex; flex-direction: column; gap: 6px; margin: 6px 0; }
+.input-sm { padding: 3px 8px; font-size: 12px; height: auto; width: auto; }

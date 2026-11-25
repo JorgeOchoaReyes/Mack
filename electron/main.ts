@@ -14,6 +14,7 @@ import { lakeVersion } from "../core/lean/toolchain";
 import { OpenAICompatibleProvider } from "../core/model/openai-compatible";
 import { PROVIDERS, providerInfo, type ProviderId } from "../core/model/providers";
 import { ghCliToken, githubLogin, openCommunityPr, pullState, type GitHubTokenSource } from "../core/github";
+import { activeAccount, ghAccounts, ghToken, type GitHubAccount } from "../core/github-accounts";
 import { COMMUNITY_REPO } from "../core/community";
 import { prove, type ProveEvent } from "../core/prove";
 import { lemmaSource, type Lemma } from "../core/prepare";
@@ -441,42 +442,113 @@ ipcMain.handle("key:clear", (_e, id: ProviderId) => {
   return keySource(id);
 });
 
-/** The GitHub token for project PRs: GITHUB_TOKEN or GH_TOKEN, then the one saved in Mack (encrypted), then the GitHub CLI's login. */
-async function githubAuth(): Promise<{ token: string; source: GitHubTokenSource }> {
+// ---- GitHub accounts ----
+// Several accounts can be connected (pasted tokens, or the GitHub CLI's
+// logins) and one is chosen: shared benchmark runs,
+// community proofs and project pull requests go out under it.
+
+type AccountStore = { active?: string; mack: string[] };
+const accountsFile = () => userData("github-accounts.json");
+const accountKey = (login: string) => userData(`github-${login.toLowerCase().replace(/[^a-z0-9-]/g, "")}.key`);
+
+function readAccounts(): AccountStore {
+  try {
+    const j = JSON.parse(readFileSync(accountsFile(), "utf8")) as AccountStore;
+    return { active: j.active, mack: Array.isArray(j.mack) ? j.mack : [] };
+  } catch {
+    return { mack: [] };
+  }
+}
+const writeAccounts = (s: AccountStore) => writeFileSync(accountsFile(), JSON.stringify(s, null, 2));
+
+/** Keep a token in Mack's store (encrypted) under the account it belongs to, and choose that account. */
+async function addAccount(token: string): Promise<string> {
+  if (!safeStorage.isEncryptionAvailable()) throw new Error("OS encryption is unavailable; set GITHUB_TOKEN in .env instead");
+  const login = await githubLogin(token);
+  writeFileSync(accountKey(login), safeStorage.encryptString(token));
+  const s = readAccounts();
+  writeAccounts({ active: login, mack: [...s.mack.filter((l) => l.toLowerCase() !== login.toLowerCase()), login] });
+  return login;
+}
+
+/** The token saved before accounts existed (one, unnamed) moves into the store under its account. */
+let migrated = false;
+async function migrateOldToken(): Promise<void> {
+  if (migrated) return;
+  migrated = true;
+  const old = userData("github.key");
+  if (!existsSync(old)) return;
+  try {
+    const token = safeStorage.decryptString(readFileSync(old));
+    const before = readAccounts().active;
+    await addAccount(token);
+    if (before) writeAccounts({ ...readAccounts(), active: before });
+    rmSync(old, { force: true });
+  } catch {
+    // Unreadable or refused: left in place, and ignored.
+  }
+}
+
+/** Every connected account: Mack's own first, then the GitHub CLI's that Mack does not hold. */
+async function githubAccounts(): Promise<GitHubAccount[]> {
+  await migrateOldToken();
+  const mine = readAccounts().mack.filter((l) => existsSync(accountKey(l))).map((login) => ({ login, source: "mack" as const }));
+  const cli = (await ghAccounts()).filter((l) => !mine.some((m) => m.login.toLowerCase() === l.toLowerCase())).map((login) => ({ login, source: "gh" as const }));
+  return [...mine, ...cli];
+}
+
+async function tokenOf(a: GitHubAccount): Promise<string> {
+  if (a.source === "gh") return ghToken(a.login);
+  try {
+    return safeStorage.decryptString(readFileSync(accountKey(a.login)));
+  } catch {
+    return "";
+  }
+}
+
+/** The GitHub token to publish with: GITHUB_TOKEN or GH_TOKEN when set, else the chosen account's, else the GitHub CLI's login. */
+async function githubAuth(): Promise<{ token: string; source: GitHubTokenSource; login?: string }> {
   const env = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
   if (env) return { token: env, source: "env" };
-  if (existsSync(userData("github.key"))) {
-    try {
-      return { token: safeStorage.decryptString(readFileSync(userData("github.key"))), source: "saved" };
-    } catch {
-      // An unreadable saved token falls through to the CLI.
-    }
+  const chosen = activeAccount(await githubAccounts(), readAccounts().active);
+  if (chosen) {
+    const token = await tokenOf(chosen);
+    if (token) return { token, source: chosen.source === "gh" ? "gh" : "saved", login: chosen.login };
   }
   const gh = await ghCliToken();
   return gh ? { token: gh, source: "gh" } : { token: "", source: "none" };
 }
 
-async function githubStatus(): Promise<{ source: GitHubTokenSource; login?: string; error?: string }> {
+async function githubStatus(): Promise<{ source: GitHubTokenSource; login?: string; error?: string; accounts: GitHubAccount[] }> {
+  const accounts = await githubAccounts().catch(() => [] as GitHubAccount[]);
   const a = await githubAuth();
-  if (!a.token) return { source: "none" };
+  if (!a.token) return { source: "none", accounts };
   try {
-    return { source: a.source, login: await githubLogin(a.token) };
+    return { source: a.source, login: await githubLogin(a.token), accounts };
   } catch (e) {
-    return { source: a.source, error: (e as Error).message };
+    return { source: a.source, login: a.login, error: (e as Error).message, accounts };
   }
 }
 
 ipcMain.handle("github:status", () => githubStatus());
 ipcMain.handle("github:setToken", async (_e, token: string) => {
-  if (!safeStorage.isEncryptionAvailable()) throw new Error("OS encryption is unavailable; set GITHUB_TOKEN in .env instead");
-  await githubLogin(String(token).trim());
-  writeFileSync(userData("github.key"), safeStorage.encryptString(String(token).trim()));
+  await addAccount(String(token).trim());
   return githubStatus();
 });
-ipcMain.handle("github:clearToken", async () => {
-  rmSync(userData("github.key"), { force: true });
+ipcMain.handle("github:use", async (_e, login: string) => {
+  const accounts = await githubAccounts();
+  const a = accounts.find((x) => x.login === String(login));
+  if (!a) throw new Error(`${login} is not connected.`);
+  writeAccounts({ ...readAccounts(), active: a.login });
   return githubStatus();
 });
+ipcMain.handle("github:remove", async (_e, login: string) => {
+  const s = readAccounts();
+  rmSync(accountKey(String(login)), { force: true });
+  writeAccounts({ active: s.active?.toLowerCase() === String(login).toLowerCase() ? undefined : s.active, mack: s.mack.filter((l) => l.toLowerCase() !== String(login).toLowerCase()) });
+  return githubStatus();
+});
+
 
 ipcMain.handle("health:get", async (): Promise<Health> => {
   const s = readSettings();
