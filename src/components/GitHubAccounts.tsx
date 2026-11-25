@@ -11,6 +11,43 @@ import { Button } from "./ui";
 
 const SOURCE = { mack: "token saved in Mack", gh: "GitHub CLI login" } as const;
 
+/** GitHub's form for a new classic token, with Mack's name and the `repo` scope already filled in. */
+export const NEW_TOKEN_URL = "https://github.com/settings/tokens/new?scopes=repo&description=Mack";
+const TOKEN_DOCS = "https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#creating-a-personal-access-token-classic";
+
+/** How to make a token, step by step: open when no account is connected yet. */
+function TokenGuide({ open }: { open: boolean }) {
+  return (
+    <details className="gh-guide" open={open}>
+      <summary>How to create a token (about a minute)</summary>
+      <ol>
+        <li>
+          On github.com, sign in as the account Mack should publish as. For a second account, switch to it on GitHub first (your avatar → <i>Switch account</i>).
+        </li>
+        <li>
+          <Button size="sm" icon={ExternalLink} onClick={() => void api.openExternal(NEW_TOKEN_URL)}>
+            Open GitHub&apos;s token page
+          </Button>{" "}
+          The name (<code>Mack</code>) and the <code>repo</code> scope are already filled in.
+        </li>
+        <li>
+          Pick an <b>Expiration</b> (90 days is a good choice; when it runs out, add a new token here), scroll down and click <b>Generate token</b>.
+        </li>
+        <li>
+          Copy the token (it starts with <code>ghp_</code>; GitHub shows it only once), paste it below and click <b>Add account</b>.
+        </li>
+      </ol>
+      <p className="muted small">
+        Why <code>repo</code>: Mack forks the Mack repository and opens pull requests from your fork (shared runs, community proofs), and creates private repositories for your
+        projects. The token is stored encrypted on this computer and only sent to GitHub.{" "}
+        <button className="link small" onClick={() => void api.openExternal(TOKEN_DOCS)}>
+          GitHub&apos;s guide to tokens <ExternalLink size={11} />
+        </button>
+      </p>
+    </details>
+  );
+}
+
 export function GitHubAccounts({ compact = false, onChange, onGoSettings }: { compact?: boolean; onChange?: (s: GitHubStatus) => void; onGoSettings?: () => void }) {
   const [status, setStatus] = useState<GitHubStatus | null>(null);
   const [token, setToken] = useState("");
@@ -65,9 +102,13 @@ export function GitHubAccounts({ compact = false, onChange, onGoSettings }: { co
         ) : (
           <span className="small">
             No GitHub account is connected.{" "}
+            <button className="link small" onClick={() => void api.openExternal(NEW_TOKEN_URL)}>
+              Create a token <ExternalLink size={11} />
+            </button>{" "}
+            (name and scope are filled in), then{" "}
             {onGoSettings && (
               <button className="link small" onClick={onGoSettings}>
-                Connect one in Settings → GitHub
+                add it in Settings → GitHub
               </button>
             )}
           </span>
@@ -125,12 +166,10 @@ export function GitHubAccounts({ compact = false, onChange, onGoSettings }: { co
         </ul>
       )}
       <p className="muted small">
-        {accounts.length ? "Add another account: paste" : "Paste"} a token with access to create repositories and pull requests (a classic token with the <code>repo</code> scope),
-        or log in with the GitHub CLI (<code>gh auth login</code>; every account it is logged in to shows here).{" "}
-        <button className="link small" onClick={() => void api.openExternal("https://github.com/settings/tokens/new?scopes=repo&description=Mack")}>
-          Create a token <ExternalLink size={11} />
-        </button>
+        {accounts.length ? "Add another account: paste" : "Paste"} a GitHub token (a classic token with the <code>repo</code> scope). Accounts you are logged in to with the GitHub
+        CLI (<code>gh auth login</code>) show here too.
       </p>
+      <TokenGuide open={!accounts.length} />
       <form
         className="row gap-sm"
         onSubmit={(e) => {
