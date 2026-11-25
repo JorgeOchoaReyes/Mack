@@ -315,9 +315,12 @@ npm run setup:lean   # the same Lean setup as the app, from the terminal
 Contributions are welcome, and three kinds need no code at all.
 
 - **Share a benchmark run.** Run the Benchmark (20 problems is a good start)
-  and press **Share as a PR**. You need GitHub access (`gh auth login`, or a token
-  with the `repo` scope in Settings); Mack forks the repo for you when
-  you cannot push to it. A run is merged when CI's *Benchmark runs* check
+  and press **Share as a PR**, choosing the GitHub account to publish as. To
+  connect an account, [create a token](https://github.com/settings/tokens/new?scopes=repo&description=Mack)
+  (the name and the `repo` scope are filled in: pick an expiration, click
+  *Generate token*, copy it) and paste it in Settings → GitHub; add as many
+  accounts as you like, or log in with the GitHub CLI (`gh auth login`). Mack
+  forks the repo for you when you cannot push to it. A run is merged when CI's *Benchmark runs* check
   passes: only `REPORT.md`, `run.json` and `attempts.jsonl`, problems that
   belong to the set, a proof for every solved problem, and nothing that looks
   like a secret.

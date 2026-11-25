@@ -603,7 +603,7 @@ ipcMain.handle("upstream:check", async () => {
 });
 
 ipcMain.handle("open:external", (_e, url: string) => {
-  if (!/^https:\/\/(github\.com|fireworks\.ai|app\.fireworks\.ai|openrouter\.ai|platform\.cheaperinference\.com|www\.cheaperinference\.com|leanprover-community\.github\.io)\//.test(url)) {
+  if (!/^https:\/\/(github\.com|docs\.github\.com|fireworks\.ai|app\.fireworks\.ai|openrouter\.ai|platform\.cheaperinference\.com|www\.cheaperinference\.com|leanprover-community\.github\.io)\//.test(url)) {
     throw new Error("Mack only opens known links");
   }
   return shell.openExternal(url);
