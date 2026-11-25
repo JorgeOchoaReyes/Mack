@@ -1102,3 +1102,7 @@ body:has(.resizer.dragging) { cursor: col-resize; user-select: none; }
 .gh-guide { border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; }
 .gh-guide summary { cursor: pointer; font-weight: 600; font-size: 13px; }
 .gh-guide ol { margin: 8px 0 4px; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; line-height: 1.5; }
+.model-select { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.model-select .input { flex: 1; min-width: 0; }
+.model-select .link { white-space: nowrap; }
+.bench-model-row select.input { min-width: 0; text-overflow: ellipsis; }

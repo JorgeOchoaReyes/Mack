@@ -516,8 +516,68 @@ function kindMix(r: BenchResult): string {
 }
 
 /** The models a run uses, one row each: several rows compare them on the same problems, one after another. */
+/** The models each provider offers, listed once per provider (with its key), or why they could not be listed. */
+function useModelLists(providers: ProviderId[]): Record<string, string[] | { error: string } | undefined> {
+  const [lists, setLists] = useState<Record<string, string[] | { error: string } | undefined>>({});
+  const wanted = [...new Set(providers)].join(",");
+  useEffect(() => {
+    for (const p of new Set(providers)) {
+      if (lists[p]) continue;
+      void api.listModels(p).then(
+        (ms: string[]) => setLists((l) => ({ ...l, [p]: [...ms].sort((a, b) => a.localeCompare(b)) })),
+        (e: unknown) => setLists((l) => ({ ...l, [p]: { error: errorText(e) } })),
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wanted]);
+  return lists;
+}
+
+const OTHER = "__other__";
+
+/**
+ * A model chosen from the provider's list, or typed when it is not there
+ * ("Other…") or the list cannot be read (no key yet). `none` is the label of
+ * an empty choice, for optional fields.
+ */
+function ModelSelect({ value, onChange, list, placeholder, none, label }: { value: string; onChange: (v: string) => void; list: string[] | { error: string } | undefined; placeholder: string; none?: string; label: string }) {
+  const listed = Array.isArray(list) ? list : null;
+  const [typing, setTyping] = useState(false);
+  const known = !value || !!listed?.includes(value);
+  if (!listed || typing || !known) {
+    return (
+      <span className="model-select">
+        <input className="input" placeholder={placeholder} value={value} onChange={(e) => onChange(e.target.value)} aria-label={label} title={list && !Array.isArray(list) ? `Could not list the models: ${list.error}` : undefined} />
+        {listed && (
+          <button
+            className="link small"
+            onClick={() => {
+              setTyping(false);
+              if (!known) onChange("");
+            }}
+          >
+            choose from the list
+          </button>
+        )}
+      </span>
+    );
+  }
+  return (
+    <select className="input" value={value} aria-label={label} onChange={(e) => (e.target.value === OTHER ? setTyping(true) : onChange(e.target.value))}>
+      <option value="">{none ?? "Choose a model…"}</option>
+      {listed.map((m) => (
+        <option key={m} value={m}>
+          {m}
+        </option>
+      ))}
+      <option value={OTHER}>Other (type a model id)…</option>
+    </select>
+  );
+}
+
 function ModelsEditor({ models, setModels }: { models: BenchModels[]; setModels: (m: BenchModels[]) => void }) {
   const set = (i: number, patch: Partial<BenchModels>) => setModels(models.map((m, j) => (j === i ? { ...m, ...patch } : m)));
+  const lists = useModelLists(models.flatMap((m) => [m.provider, m.proverProvider]));
   return (
     <div className="bench-models">
       <p className="small">
@@ -532,8 +592,15 @@ function ModelsEditor({ models, setModels }: { models: BenchModels[]; setModels:
               </option>
             ))}
           </select>
-          <input className="input" placeholder="main model id" value={m.model} onChange={(e) => set(i, { model: e.target.value })} aria-label="Main model" />
-          <input className="input" placeholder="prover models (optional, comma-separated)" value={m.proverModel} onChange={(e) => set(i, { proverModel: e.target.value })} aria-label="Prover models" />
+          <ModelSelect label="Main model" placeholder="main model id" value={m.model} onChange={(v) => set(i, { model: v })} list={lists[m.provider]} />
+          <ModelSelect
+            label="Prover model"
+            placeholder="prover models (optional, comma-separated)"
+            none="No prover model"
+            value={m.proverModel}
+            onChange={(v) => set(i, { proverModel: v })}
+            list={lists[m.proverProvider] ?? lists[m.provider]}
+          />
           {models.length > 1 && (
             <button className="icon-btn" title="Remove this model" onClick={() => setModels(models.filter((_, j) => j !== i))}>
               <X size={14} />
