@@ -1,30 +1,27 @@
 // The GitHub accounts Mack can publish from, and the one it uses: shared
 // benchmark runs, community proofs and project pull requests go out under the
-// chosen account. Accounts come from signing in through the browser, a pasted
-// token, or the GitHub CLI's logins. `compact` is the picker inside a share
+// chosen account. Accounts come from pasted tokens, or the GitHub CLI's
+// logins. `compact` is the picker inside a share
 // dialog; the full form is Settings → GitHub.
 
-import { Check, ExternalLink, LogIn, Trash2 } from "lucide-react";
+import { Check, ExternalLink, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, errorText, type GitHubStatus } from "../api";
 import { Button } from "./ui";
 
-const SOURCE = { mack: "signed in through Mack", gh: "GitHub CLI login" } as const;
+const SOURCE = { mack: "token saved in Mack", gh: "GitHub CLI login" } as const;
 
 export function GitHubAccounts({ compact = false, onChange, onGoSettings }: { compact?: boolean; onChange?: (s: GitHubStatus) => void; onGoSettings?: () => void }) {
   const [status, setStatus] = useState<GitHubStatus | null>(null);
   const [token, setToken] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [signIn, setSignIn] = useState<{ userCode: string; verificationUri: string } | null>(null);
-  const [copied, setCopied] = useState(false);
   const update = (s: GitHubStatus) => {
     setStatus(s);
     onChange?.(s);
   };
   useEffect(() => {
     void api.githubStatus().then(update);
-    return () => void api.githubSignInCancel();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const act = async (f: () => Promise<GitHubStatus>) => {
@@ -38,20 +35,6 @@ export function GitHubAccounts({ compact = false, onChange, onGoSettings }: { co
       setBusy(false);
     }
   };
-  const startSignIn = async () => {
-    setError("");
-    try {
-      const s = await api.githubSignInStart();
-      setSignIn(s);
-      setCopied(false);
-      update(await api.githubSignInWait());
-    } catch (e) {
-      if (!/cancelled/i.test(errorText(e))) setError(errorText(e));
-    } finally {
-      setSignIn(null);
-    }
-  };
-
   if (!status) return <p className="muted small">Looking for GitHub accounts…</p>;
   const accounts = status.accounts;
   const active = status.source === "env" ? undefined : status.login;
@@ -60,7 +43,9 @@ export function GitHubAccounts({ compact = false, onChange, onGoSettings }: { co
     return (
       <div className="gh-pick">
         {status.source === "env" ? (
-          <span className="small">Publishing as <b>{status.login ?? "the GITHUB_TOKEN account"}</b> (from GITHUB_TOKEN in the environment).</span>
+          <span className="small">
+            Publishing as <b>{status.login ?? "the GITHUB_TOKEN account"}</b> (from GITHUB_TOKEN in the environment).
+          </span>
         ) : accounts.length ? (
           <label className="row gap-sm small">
             Publish as
@@ -96,10 +81,15 @@ export function GitHubAccounts({ compact = false, onChange, onGoSettings }: { co
     <div className="gh-accounts">
       {status.source === "env" && (
         <div className="notice">
-          GITHUB_TOKEN is set in the environment{status.login ? ` (@${status.login})` : ""}, so Mack publishes with it whatever account is chosen below.
+          GITHUB_TOKEN is set in the environment
+          {status.login ? ` (@${status.login})` : ""}, so Mack publishes with it whatever account is chosen below.
         </div>
       )}
-      {status.error && <div className="notice notice-bad">GitHub refused the token for {status.login ? `@${status.login}` : "the chosen account"}: {status.error}</div>}
+      {status.error && (
+        <div className="notice notice-bad">
+          GitHub refused the token for {status.login ? `@${status.login}` : "the chosen account"}: {status.error}
+        </div>
+      )}
       {accounts.length > 0 && (
         <ul className="gh-list">
           {accounts.map((a) => {
@@ -134,60 +124,25 @@ export function GitHubAccounts({ compact = false, onChange, onGoSettings }: { co
           })}
         </ul>
       )}
-      {signIn ? (
-        <div className="gh-signin">
-          <p className="small">
-            GitHub opened in your browser. Enter this code there and approve Mack:
-          </p>
-          <div className="row gap-sm">
-            <code className="gh-code">{signIn.userCode}</code>
-            <Button
-              onClick={() => {
-                void navigator.clipboard?.writeText(signIn.userCode);
-                setCopied(true);
-              }}
-            >
-              {copied ? "Copied" : "Copy code"}
-            </Button>
-            <button className="link small" onClick={() => void api.openExternal(signIn.verificationUri)}>
-              Open the page again <ExternalLink size={11} />
-            </button>
-            <button className="link small" onClick={() => void api.githubSignInCancel()}>
-              Cancel
-            </button>
-          </div>
-          <p className="muted small">Waiting for you to approve it… Sign in to GitHub as the account you want first; to add another account, sign out on github.com and do this again.</p>
-        </div>
-      ) : (
-        <>
-          {status.signIn && (
-            <div className="row gap-sm">
-              <Button variant="primary" icon={LogIn} onClick={() => void startSignIn()}>
-                {accounts.length ? "Sign in with another GitHub account" : "Sign in with GitHub"}
-              </Button>
-            </div>
-          )}
-          <p className="muted small">
-            {status.signIn ? "Or paste" : "Paste"} a token with access to create repositories and pull requests (a classic token with the <code>repo</code> scope), or log in with the GitHub CLI (
-            <code>gh auth login</code>; every account it is logged in to shows here).{" "}
-            <button className="link small" onClick={() => void api.openExternal("https://github.com/settings/tokens/new?scopes=repo&description=Mack")}>
-              Create a token <ExternalLink size={11} />
-            </button>
-          </p>
-          <form
-            className="row gap-sm"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void act(() => api.githubSetToken(token)).then(() => setToken(""));
-            }}
-          >
-            <input className="input grow mono" type="password" placeholder="ghp_…" value={token} onChange={(e) => setToken(e.target.value)} />
-            <Button type="submit" disabled={!token.trim() || busy}>
-              Add account
-            </Button>
-          </form>
-        </>
-      )}
+      <p className="muted small">
+        {accounts.length ? "Add another account: paste" : "Paste"} a token with access to create repositories and pull requests (a classic token with the <code>repo</code> scope),
+        or log in with the GitHub CLI (<code>gh auth login</code>; every account it is logged in to shows here).{" "}
+        <button className="link small" onClick={() => void api.openExternal("https://github.com/settings/tokens/new?scopes=repo&description=Mack")}>
+          Create a token <ExternalLink size={11} />
+        </button>
+      </p>
+      <form
+        className="row gap-sm"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void act(() => api.githubSetToken(token)).then(() => setToken(""));
+        }}
+      >
+        <input className="input grow mono" type="password" placeholder="ghp_…" value={token} onChange={(e) => setToken(e.target.value)} />
+        <Button type="submit" disabled={!token.trim() || busy}>
+          Add account
+        </Button>
+      </form>
       {error && <div className="notice notice-bad">{error}</div>}
     </div>
   );

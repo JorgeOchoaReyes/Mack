@@ -1097,7 +1097,5 @@ body:has(.resizer.dragging) { cursor: col-resize; user-select: none; }
 .gh-list li:last-child { border-bottom: 0; }
 .gh-list li.chosen { background: var(--accent-soft); }
 .gh-list img { border-radius: 50%; flex: none; }
-.gh-signin { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
-.gh-code { font-size: 20px; letter-spacing: 0.12em; padding: 4px 10px; border-radius: 8px; background: var(--sunken); }
 .gh-pick { display: flex; flex-direction: column; gap: 6px; margin: 6px 0; }
 .input-sm { padding: 3px 8px; font-size: 12px; height: auto; width: auto; }

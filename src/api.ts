@@ -37,7 +37,7 @@ declare global {
   }
 }
 
-export type GitHubStatus = { source: GitHubTokenSource; login?: string; error?: string; accounts: GitHubAccount[]; signIn: boolean };
+export type GitHubStatus = { source: GitHubTokenSource; login?: string; error?: string; accounts: GitHubAccount[] };
 export type { PullRequest };
 export type Upstream = (UpstreamReport & { dismissed?: boolean }) | { kind: "off" };
 export type { Plan, PlanStep, Proved, StepKind, StepStatus, StepVia, PathStep, ProofPath };
@@ -123,9 +123,6 @@ export const api = {
   githubSetToken: (token: string) => m().githubSetToken(token) as Promise<GitHubStatus>,
   githubUse: (login: string) => m().githubUse(login) as Promise<GitHubStatus>,
   githubRemove: (login: string) => m().githubRemove(login) as Promise<GitHubStatus>,
-  githubSignInStart: () => m().githubSignInStart() as Promise<{ userCode: string; verificationUri: string; expiresIn: number }>,
-  githubSignInWait: () => m().githubSignInWait() as Promise<GitHubStatus>,
-  githubSignInCancel: () => m().githubSignInCancel() as Promise<void>,
   openPr: (projectId: string, sessionId: string | null, title: string) => m().openPr(projectId, sessionId, title) as Promise<PullRequest>,
   listPlugins: (sessionId: string) => m().listPlugins(sessionId),
   swarmRecords: (projectId: string, sessionId: string) => m().swarmRecords(projectId, sessionId) as Promise<{ id: string; records: SwarmRecord[] }[]>,

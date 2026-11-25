@@ -14,7 +14,7 @@ import { lakeVersion } from "../core/lean/toolchain";
 import { OpenAICompatibleProvider } from "../core/model/openai-compatible";
 import { PROVIDERS, providerInfo, type ProviderId } from "../core/model/providers";
 import { ghCliToken, githubLogin, openCommunityPr, pullState, type GitHubTokenSource } from "../core/github";
-import { activeAccount, finishDeviceFlow, GITHUB_CLIENT_ID, ghAccounts, ghToken, startDeviceFlow, type DeviceCode, type GitHubAccount } from "../core/github-accounts";
+import { activeAccount, ghAccounts, ghToken, type GitHubAccount } from "../core/github-accounts";
 import { COMMUNITY_REPO } from "../core/community";
 import { prove, type ProveEvent } from "../core/prove";
 import { lemmaSource, type Lemma } from "../core/prepare";
@@ -443,8 +443,8 @@ ipcMain.handle("key:clear", (_e, id: ProviderId) => {
 });
 
 // ---- GitHub accounts ----
-// Several accounts can be connected (signed in through the browser, a pasted
-// token, or the GitHub CLI's logins) and one is chosen: shared benchmark runs,
+// Several accounts can be connected (pasted tokens, or the GitHub CLI's
+// logins) and one is chosen: shared benchmark runs,
 // community proofs and project pull requests go out under it.
 
 type AccountStore = { active?: string; mack: string[] };
@@ -519,15 +519,14 @@ async function githubAuth(): Promise<{ token: string; source: GitHubTokenSource;
   return gh ? { token: gh, source: "gh" } : { token: "", source: "none" };
 }
 
-async function githubStatus(): Promise<{ source: GitHubTokenSource; login?: string; error?: string; accounts: GitHubAccount[]; signIn: boolean }> {
+async function githubStatus(): Promise<{ source: GitHubTokenSource; login?: string; error?: string; accounts: GitHubAccount[] }> {
   const accounts = await githubAccounts().catch(() => [] as GitHubAccount[]);
-  const signIn = !!GITHUB_CLIENT_ID;
   const a = await githubAuth();
-  if (!a.token) return { source: "none", accounts, signIn };
+  if (!a.token) return { source: "none", accounts };
   try {
-    return { source: a.source, login: await githubLogin(a.token), accounts, signIn };
+    return { source: a.source, login: await githubLogin(a.token), accounts };
   } catch (e) {
-    return { source: a.source, login: a.login, error: (e as Error).message, accounts, signIn };
+    return { source: a.source, login: a.login, error: (e as Error).message, accounts };
   }
 }
 
@@ -549,30 +548,7 @@ ipcMain.handle("github:remove", async (_e, login: string) => {
   writeAccounts({ active: s.active?.toLowerCase() === String(login).toLowerCase() ? undefined : s.active, mack: s.mack.filter((l) => l.toLowerCase() !== String(login).toLowerCase()) });
   return githubStatus();
 });
-// Sign in through the browser (GitHub's device flow): Mack shows a code, opens github.com/login/device, and waits for approval.
-let signingIn: { code: DeviceCode; ctl: AbortController } | null = null;
-ipcMain.handle("github:signInStart", async () => {
-  signingIn?.ctl.abort();
-  const code = await startDeviceFlow();
-  signingIn = { code, ctl: new AbortController() };
-  void shell.openExternal(code.verificationUri);
-  return { userCode: code.userCode, verificationUri: code.verificationUri, expiresIn: code.expiresIn };
-});
-ipcMain.handle("github:signInWait", async () => {
-  const pending = signingIn;
-  if (!pending) throw new Error("No sign-in is in progress.");
-  try {
-    const token = await finishDeviceFlow(pending.code, { signal: pending.ctl.signal });
-    await addAccount(token);
-    return githubStatus();
-  } finally {
-    if (signingIn === pending) signingIn = null;
-  }
-});
-ipcMain.handle("github:signInCancel", () => {
-  signingIn?.ctl.abort();
-  signingIn = null;
-});
+
 
 ipcMain.handle("health:get", async (): Promise<Health> => {
   const s = readSettings();
