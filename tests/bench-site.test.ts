@@ -75,7 +75,7 @@ describe("the benchmark site", () => {
     expect(index).not.toContain("BEST");
     // Quick runs are listed openly, marked, and not numbered.
     expect(index).toContain('<span class="pill">quick</span>');
-    expect(index).toContain("Quick runs (part of the set) are listed, unranked.");
+    expect(index).toContain("A run on part of the set. Listed, not ranked");
     expect(index).not.toContain("<details class=\"quick\"");
     expect(index).toContain('href="models/big-prover-a-prover-b.html"');
     const model = site["models/big-prover-a-prover-b.html"];
@@ -219,7 +219,7 @@ describe("Open Math Harness's own methods in the benchmark", () => {
     const page = site["runs/half.html"];
     expect(page).toContain("Solved within k attempts");
     expect(page).toContain("within 64 attempts");
-    expect(page).toContain("As the run reported it");
+    expect(page).toContain("Self-reported by the run");
   });
 });
 
@@ -241,7 +241,7 @@ describe("the problem deep dive", () => {
     const site = buildSite([{ ...auto, folder: "auto" }], "https://github.com/o/r");
     const page = site[`runs/auto/${p.id}.html`];
     expect(page).toContain("Solved by automation");
-    expect(page).toContain("with <code>grind</code>");
+    expect(page).toContain("(<code>grind</code>)");
     expect(page).toContain("before any model wrote a proof");
     expect(site["runs/auto.html"]).toContain("Time per problem");
     expect(site["runs/auto.html"]).toContain(`${p.id}: solved by automation, 1m 30s`);
