@@ -97,6 +97,28 @@ nav.links .btn { color: #17150a; }
 .kv { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px 18px; font-size: 13.5px; }
 .kv div span { display: block; color: var(--muted); font-size: 11.5px; text-transform: uppercase; letter-spacing: .04em; }
 .kv div b { font-weight: 600; word-break: break-word; }
+.status { display: inline-block; padding: 3px 10px; border-radius: 99px; font-size: 12.5px; font-weight: 700; vertical-align: middle; margin-left: 8px; }
+.status.ok { background: var(--ok-soft); color: var(--ok); }
+.status.auto { background: var(--ok-soft); color: var(--ok); }
+.status.bad { background: var(--bad-soft); color: var(--bad); }
+.story { font-size: 15px; line-height: 1.6; }
+.story p { margin: 4px 0; }
+.explain { background: var(--surface-2); border: 1px dashed var(--border); border-radius: 10px; padding: 10px 12px; font-size: 13px; color: var(--muted); margin-top: 10px; }
+.explain b { color: var(--text); }
+.timebar { display: flex; height: 26px; border-radius: 8px; overflow: hidden; background: var(--bar); margin: 6px 0; }
+.timebar > span { display: block; height: 100%; border-right: 2px solid var(--surface); min-width: 3px; }
+.timebar .t-auto { background: color-mix(in srgb, var(--ok) 55%, var(--surface)); } .timebar .t-ok { background: var(--ok); } .timebar .t-bad { background: var(--bad); opacity: .75; } .timebar .t-other { background: var(--bar); }
+.attempts { display: flex; flex-direction: column; gap: 10px; }
+.attempt { border: 1px solid var(--border); border-left: 4px solid var(--bad); border-radius: 12px; background: var(--surface); padding: 10px 14px; }
+.attempt.ok { border-left-color: var(--ok); }
+.attempt .head { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; font-size: 13.5px; }
+.attempt .head b { font-size: 14px; }
+.attempt .err { font-family: ui-monospace, "Cascadia Code", Menlo, monospace; font-size: 12.5px; margin: 6px 0 2px; word-break: break-word; }
+.steps-list { margin: 0; padding-left: 0; list-style: none; border-left: 2px solid var(--border); }
+.steps-list li { position: relative; padding: 4px 0 8px 16px; font-size: 13.5px; white-space: pre-wrap; }
+.steps-list li::before { content: ""; position: absolute; left: -6px; top: 10px; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); }
+.steps-list .t { color: var(--muted); font-variant-numeric: tabular-nums; margin-right: 6px; }
+pre.code { white-space: pre-wrap; font-size: 12.5px; font-family: ui-monospace, "Cascadia Code", Menlo, monospace; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; overflow: auto; margin: 0; }
 .bullets { margin: 0; padding-left: 18px; color: var(--muted); font-size: 14px; }
 .bullets li { margin: 4px 0; }
 .bullets b { color: var(--text); }
@@ -143,7 +165,8 @@ tr.first .rank { color: var(--accent-text); }
 .pill.omh { background: var(--ok-soft); color: var(--ok); }
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 16px 0; }
 .stat b { display: block; font-size: 24px; font-variant-numeric: tabular-nums; }
-.why { display: grid; grid-template-columns: minmax(120px, 200px) 1fr 36px; gap: 12px; align-items: center; margin: 7px 0; font-size: 13.5px; }
+.why { display: grid; grid-template-columns: minmax(120px, 200px) 1fr minmax(36px, auto); gap: 12px; align-items: center; margin: 7px 0; font-size: 13.5px; }
+.why > span:last-child { white-space: nowrap; text-align: right; }
 pre.card { white-space: pre-wrap; font-size: 12.5px; overflow: auto; font-family: ui-monospace, "Cascadia Code", Menlo, monospace; }
 details summary { cursor: pointer; color: var(--accent-text); font-size: 13px; }
 details pre { white-space: pre-wrap; font-size: 12px; background: var(--bar); padding: 10px; border-radius: 10px; max-height: 320px; overflow: auto; font-family: ui-monospace, "Cascadia Code", Menlo, monospace; }
@@ -223,6 +246,20 @@ function rateCell(rate: number, best = false, i = 0): string {
 
 /** A rate's 95% range, as text: `43–82%`. */
 const range = (low: number, high: number) => `${Math.round(low * 100)}–${Math.round(high * 100)}%`;
+
+/** A duration as people read it: 45s, 3m 20s, 1h 05m. */
+const dur = (ms: number) => {
+  const sec = Math.round(ms / 1000);
+  if (sec < 60) return `${sec}s`;
+  if (sec < 3600) return `${Math.floor(sec / 60)}m ${String(sec % 60).padStart(2, "0")}s`;
+  return `${Math.floor(sec / 3600)}h ${String(Math.floor((sec % 3600) / 60)).padStart(2, "0")}m`;
+};
+
+/** What "solved by automation" means, in two sentences. */
+const AUTOMATION = `<b>Solved by automation</b> means Lean's own tactics closed the problem before any model wrote a proof: Mack first tries <code>omega</code>, <code>norm_num</code>, <code>simp</code>, <code>linarith</code>, <code>nlinarith</code>, <code>positivity</code>, <code>aesop</code>, <code>grind</code> and <code>exact?</code> on the statement, all in one Lean run. No proof attempts are spent (at most the short proof plan, when that setting is on), and the proof is checked by the same strict verifier.`;
+
+/** The tactic that closed a problem by automation, read from its proof. */
+const closingTactic = (proof?: string) => (proof ? (/:=\s*by\s*\n\s*(.+)\s*$/.exec(proof.trim())?.[1] ?? "").trim() : "");
 
 /** What cannot be checked in a shared run, said once under each table that shows it. */
 const SELF_REPORTED = `<p class="note">* As the run reported it: cost, time, tokens and the model served cannot be checked from here. Solves can: CI re-checks every solved proof with Lean before a run is merged.</p>`;
@@ -438,8 +475,8 @@ export function runPage(r: SharedRun, repo: string): string {
     .map((x) => {
       const cls = x.outcome === "solved" ? (x.attempts === 0 ? "auto" : "ok") : x.outcome === "skipped" ? "" : "bad";
       const what = x.outcome === "solved" ? (x.attempts === 0 ? "solved by automation" : `solved in ${x.attempts} attempt${x.attempts === 1 ? "" : "s"}`) : x.outcome === "skipped" ? "skipped" : `not solved${x.failure ? `: ${FAILURES[x.failure].label}` : ""}`;
-      const title = `${x.id}: ${what}`;
-      return x.log?.length ? `<a class="tile ${cls}" href="${esc(r.folder)}/${esc(x.id)}.html" title="${esc(title)}"></a>` : `<span class="tile ${cls}" title="${esc(title)}"></span>`;
+      const title = `${x.id}: ${what}, ${dur(x.ms)}`;
+      return hasPage(x) ? `<a class="tile ${cls}" href="${esc(r.folder)}/${esc(x.id)}.html" title="${esc(title)}"></a>` : `<span class="tile ${cls}" title="${esc(title)}"></span>`;
     })
     .join("");
   const rows = r.results
@@ -450,7 +487,7 @@ export function runPage(r: SharedRun, repo: string): string {
         x.lastError || x.lastCandidate
           ? `<details><summary>${esc(why || "details")}</summary>${x.lastError ? `<p class="small">Lean's last feedback</p><pre>${esc(x.lastError)}</pre>` : ""}${x.lastCandidate ? `<p class="small">Last attempt</p><pre>${esc(x.lastCandidate)}</pre>` : ""}</details>`
           : esc(why);
-      return `<tr><td>${x.log?.length ? `<a href="${esc(r.folder)}/${esc(x.id)}.html">${esc(x.id)}</a>` : esc(x.id)}</td><td>${outcome}</td><td>${x.attempts}</td><td>${Math.round(x.ms / 1000)}s</td><td>${usd(x.usd)}</td><td class="wrap">${detail}</td></tr>`;
+      return `<tr><td>${hasPage(x) ? `<a href="${esc(r.folder)}/${esc(x.id)}.html">${esc(x.id)}</a>` : esc(x.id)}</td><td>${outcome}</td><td>${x.attempts}</td><td>${Math.round(x.ms / 1000)}s</td><td>${usd(x.usd)}</td><td class="wrap">${detail}</td></tr>`;
     })
     .join("\n");
   const kv = (label: string, value: string) => `<div><span>${label}</span><b>${value}</b></div>`;
@@ -472,8 +509,10 @@ ${m.attempts ? kpi(`${tokens(m.promptTokens)} / ${tokens(m.completionTokens)}`, 
 </div>
 <section class="reveal"><h2>Problems</h2>
 <div class="card"><div class="tiles">${tiles}</div>
-<div class="legend"><span><i style="background:var(--ok)"></i>solved</span><span><i style="background:color-mix(in srgb, var(--ok) 55%, var(--surface))"></i>by automation</span><span><i style="background:var(--bad)"></i>not solved</span><span><i style="background:var(--bar)"></i>skipped</span><span>Click a square for every attempt.</span></div></div>
+<div class="legend"><span><i style="background:var(--ok)"></i>solved by a model</span><span><i style="background:color-mix(in srgb, var(--ok) 55%, var(--surface))"></i>solved by automation</span><span><i style="background:var(--bad)"></i>not solved</span><span><i style="background:var(--bar)"></i>skipped</span><span>Hover for the time; click for the deep dive.</span></div>
+${s.byAutomation ? `<div class="explain">${AUTOMATION}</div>` : ""}</div>
 </section>
+${timeSection(r)}
 <section class="reveal grid2">
 ${
   p.solved
@@ -533,6 +572,30 @@ ${SELF_REPORTED}
   );
 }
 
+/** How long problems took: median, slowest, and the slowest few as bars. */
+function timeSection(r: SharedRun): string {
+  const tried = r.results.filter((x) => x.outcome !== "skipped" && x.ms > 0);
+  if (!tried.length) return "";
+  const times = tried.map((x) => x.ms).sort((a, b) => a - b);
+  const q = (f: number) => times[Math.min(times.length - 1, Math.floor(f * (times.length - 1)))];
+  const solved = tried.filter((x) => x.outcome === "solved");
+  const slowest = [...tried].sort((a, b) => b.ms - a.ms).slice(0, 8);
+  const max = slowest[0].ms || 1;
+  const avg = (xs: BenchResult[]) => (xs.length ? xs.reduce((a, x) => a + x.ms, 0) / xs.length : 0);
+  return `<section class="reveal"><h2>Time per problem</h2>
+<div class="kpis">
+${kpi(dur(q(0.5)), "median")}
+${kpi(dur(q(0.9)), "90th percentile")}
+${kpi(dur(times[times.length - 1]), "slowest")}
+${solved.length ? kpi(dur(avg(solved)), "average when solved") : ""}
+${tried.length > solved.length ? kpi(dur(avg(tried.filter((x) => x.outcome !== "solved"))), "average when not solved") : ""}
+</div>
+<div class="card"><h3>Slowest problems</h3>${slowest
+    .map((x, i) => `<div class="why"><span>${hasPage(x) ? `<a href="${esc(r.folder)}/${esc(x.id)}.html">${esc(x.id)}</a>` : esc(x.id)}</span>${bar(x.ms / max, i, x.outcome === "solved" ? "okbar" : "badbar")}<span class="muted">${dur(x.ms)}</span></div>`)
+    .join("\n")}<p class="note">Time is wall-clock per problem*: model calls, Lean checks and automation together.</p></div>
+</section>`;
+}
+
 /** Every attempt of a run by how it ended, as a card; empty without a log. */
 function attemptsSection(r: SharedRun): string {
   const kinds = attemptKinds(r);
@@ -561,49 +624,94 @@ const clock = (ms: number | null) => (ms === null ? "" : `+${ms < 60_000 ? `${Ma
 /** One problem of a run: its statement, then every attempt in order, each opening to Lean's feedback, the model's thinking and the attempt. */
 export function problemPage(r: SharedRun, x: BenchResult, source: string | undefined, repo: string): string {
   const rows = timelineOf(x);
-  const body = rows
+  const auto = x.outcome === "solved" && x.attempts === 0;
+  const status = x.outcome === "solved" ? (auto ? '<span class="status auto">Solved by automation</span>' : '<span class="status ok">Solved</span>') : x.outcome === "skipped" ? '<span class="status">Skipped</span>' : '<span class="status bad">Not solved</span>';
+  const autoRows = rows.filter((row) => row.n === 0);
+  const autoMs = autoRows.reduce((a, row) => a + row.ms, 0);
+  const modelMs = rows.filter((row) => row.n > 0).reduce((a, row) => a + row.ms, 0);
+  const otherMs = Math.max(0, x.ms - modelMs - autoMs);
+  const tokIn = rows.reduce((a, row) => a + (row.promptTokens ?? 0), 0);
+  const tokOut = rows.reduce((a, row) => a + (row.tokens ?? 0), 0);
+  const verified = rows.find((row) => row.kind === "verified");
+  const failedRows = rows.filter((row) => row.kind !== "verified" && row.n > 0);
+  const reasons = new Map<string, number>();
+  for (const row of failedRows) reasons.set(row.label, (reasons.get(row.label) ?? 0) + 1);
+  const reasonText = [...reasons.entries()].sort((a, b) => b[1] - a[1]).map(([k, n]) => `${n}× ${k.toLowerCase()}`).join(", ");
+  const repeated = rows.filter((a) => a.repeats).length;
+
+  // How it went, in a few sentences.
+  const story: string[] = [];
+  if (auto) {
+    const tactic = closingTactic(x.proof);
+    story.push(`Lean's automation proved it on its own${tactic ? `, with <code>${esc(tactic)}</code>` : ""}, before any model wrote a proof: no proof attempts spent, ${dur(x.ms)} in all${autoMs ? `, ${dur(autoMs)} of it the automation` : ""}.`);
+  } else if (x.outcome === "solved") {
+    story.push(`Solved on attempt ${verified?.n ?? x.attempts} of ${x.attempts}${verified?.model ? ` by <b>${esc(short(verified.model))}</b>` : ""}, in ${dur(x.ms)}.`);
+    if (failedRows.length) story.push(`Before that, ${failedRows.length} attempt${failedRows.length === 1 ? "" : "s"} failed: ${esc(reasonText)}. Each failure's Lean errors went back to the model for the next try.`);
+    else story.push("The first proof the model wrote was accepted.");
+  } else if (x.outcome === "skipped") {
+    story.push(`Not tried: ${esc(x.message ?? "the run stopped or its budget ran out")}.`);
+  } else {
+    story.push(`Not solved after ${x.attempts} attempt${x.attempts === 1 ? "" : "s"} and ${dur(x.ms)}${x.failure ? `; mostly <b>${esc(FAILURES[x.failure].label.toLowerCase())}</b>` : ""}.`);
+    if (reasonText) story.push(`How the attempts ended: ${esc(reasonText)}.`);
+    if (x.failure) story.push(`<span class="muted">What would help: ${esc(FAILURES[x.failure].fix)}.</span>`);
+  }
+  if (repeated) story.push(`<span class="muted">${repeated} attempt${repeated === 1 ? "" : "s"} repeated an error an earlier attempt had already hit.</span>`);
+
+  // Where the time went: each attempt, then everything else (automation, Lean set-up, planning).
+  const total = Math.max(x.ms, modelMs + autoMs) || 1;
+  const timebar =
+    x.ms > 0
+      ? `<div class="timebar">${rows.map((row) => `<span class="${row.n === 0 ? "t-auto" : row.kind === "verified" ? "t-ok" : "t-bad"}" style="width:${((row.ms / total) * 100).toFixed(2)}%" title="${row.n === 0 ? "Lean's automation" : `Attempt ${row.n}`}: ${esc(row.label)}, ${dur(row.ms)}"></span>`).join("")}${otherMs ? `<span class="t-other" style="width:${((otherMs / total) * 100).toFixed(2)}%" title="Automation, Lean set-up and planning: ${dur(otherMs)}"></span>` : ""}</div>
+<div class="legend">${autoMs ? `<span><i style="background:color-mix(in srgb, var(--ok) 55%, var(--surface))"></i>Lean's automation (${dur(autoMs)})</span>` : ""}${modelMs ? `<span><i style="background:var(--ok)"></i>verified attempt</span><span><i style="background:var(--bad)"></i>failed attempt</span>` : ""}<span><i style="background:var(--bar)"></i>Lean set-up and planning (${dur(otherMs)})</span></div>`
+      : "";
+
+  const attempts = rows
     .map(
-      (a) => `<tr>
-<td>${a.n}</td>
-<td title="${esc(a.at ?? "")}">${esc(a.at ? a.at.slice(11, 19) : "")} <span class="muted">${clock(a.offsetMs)}</span></td>
-<td>${esc(short(a.model ?? ""))}</td>
-<td>${Math.round(a.ms / 1000)}s</td>
-<td>${a.promptTokens ? `${tokens(a.promptTokens)} → ` : ""}${tokens(a.tokens)}${a.truncated ? ' <span class="bad">cut</span>' : ""}</td>
-<td class="${a.kind === "verified" ? "ok" : "bad"}">${esc(a.label)}</td>
-<td class="wrap">${esc(a.error)}${a.repeats ? ` <span class="muted">(same as #${a.repeats})</span>` : ""}
-<details><summary>details</summary>
+      (a) => `<div class="attempt ${a.kind === "verified" ? "ok" : ""}">
+<div class="head"><b>${a.n === 0 ? "Lean's automation" : `Attempt ${a.n}`}</b><span class="${a.kind === "verified" ? "ok" : "bad"}">${esc(a.label)}</span><span class="muted">${esc(short(a.model ?? ""))}</span><span class="muted">${dur(a.ms)}${a.offsetMs !== null ? ` · at ${clock(a.offsetMs)}` : ""}</span><span class="muted">${a.promptTokens ? `${tokens(a.promptTokens)} → ` : ""}${tokens(a.tokens)} tokens${a.truncated ? ' <span class="bad">cut short</span>' : ""}</span></div>
+${a.error ? `<div class="err">${esc(a.error)}${a.repeats ? ` <span class="muted">(same as attempt ${a.repeats})</span>` : ""}</div>` : ""}
+<details><summary>Lean's feedback, the model's thinking and the attempt</summary>
 ${a.detail ? `<p class="small">Lean's feedback</p><pre>${esc(a.detail)}</pre>` : ""}
 ${a.thinking ? `<p class="small">The model's thinking</p><pre>${esc(a.thinking)}</pre>` : ""}
 ${a.prose ? `<p class="small">What it wrote around the proof</p><pre>${esc(a.prose)}</pre>` : ""}
 <p class="small">The attempt</p><pre>${esc(a.candidate)}</pre>
-</details></td>
-</tr>`,
+</details>
+</div>`,
     )
     .join("\n");
-  const repeated = rows.filter((a) => a.repeats).length;
+
   return page(
     `${x.id}: Mack benchmark`,
-    `<p class="crumbs"><a href="../../index.html#leaderboard">Leaderboard</a> / <a href="../${esc(r.folder)}.html">${esc(setLabel(r.set))}: ${esc(models(r))}, ${day(r.startedAt)}</a></p>
-<h1 style="font-size:30px;margin:14px 0 6px">${esc(x.id)}</h1>
-<p class="muted">${x.outcome === "solved" ? '<span class="ok">solved</span>' : '<span class="bad">not solved</span>'} in ${x.attempts} attempt${x.attempts === 1 ? "" : "s"}, ${Math.round(x.ms / 1000)}s, ${usd(x.usd)}${x.failure ? ` · ${esc(FAILURES[x.failure].label)}` : ""}${repeated ? ` · ${repeated} attempt${repeated === 1 ? "" : "s"} repeated an earlier error` : ""}</p>
-${source ? `<details><summary>The statement</summary><pre>${esc(source.trim())}</pre></details>` : ""}
-<h2>Attempts</h2>
-<div class="scroll"><table>
-<thead><tr><th>#</th><th>When</th><th>Model</th><th>Took</th><th>Tokens</th><th>Ended</th><th>Lean said</th></tr></thead>
-<tbody>
-${body}
-</tbody></table></div>
+    `<p class="crumbs"><a href="../../index.html#leaderboard">Leaderboard</a> / <a href="../../models/${esc(modelSlug(r))}.html">${esc(models(r))}</a> / <a href="../${esc(r.folder)}.html">${esc(setLabel(r.set))}, ${day(r.startedAt)}</a></p>
+<h1 style="font-size:28px;margin:14px 0 4px">${esc(x.id)} ${status}</h1>
+<div class="kpis">
+${kpi(dur(x.ms), "time*")}
+${kpi(String(x.attempts), "model attempts", auto ? "none needed" : verified ? `verified on #${verified.n}` : "")}
+${kpi(usd(x.usd), "cost*")}
+${rows.length ? kpi(`${tokens(tokIn)} / ${tokens(tokOut)}`, "tokens in / out*") : ""}
+${modelMs ? kpi(dur(modelMs), "in model attempts", `${dur(x.ms - modelMs)} other`) : autoMs ? kpi(dur(autoMs), "in automation", `${dur(otherMs)} set-up and planning`) : ""}
+</div>
+<section><h2>How it went</h2>
+<div class="card story">${story.map((t) => `<p>${t}</p>`).join("")}
+${auto ? `<div class="explain">${AUTOMATION}</div>` : ""}
+${timebar}</div></section>
+${source ? `<section><h2>The problem</h2><pre class="code">${esc(source.trim())}</pre></section>` : ""}
+${rows.length ? `<section><h2>Attempts</h2><div class="attempts">${attempts}</div></section>` : ""}
 ${
   x.timeline?.length
-    ? `<h2>What the run did</h2><div class="card small"><ol>${x.timeline.map((t) => `<li style="white-space:pre-wrap"><span class="muted">${clock(t.t)}</span> ${esc(t.message)}</li>`).join("")}</ol></div>`
+    ? `<section><h2>Every step</h2><div class="card"><ol class="steps-list">${x.timeline.map((t) => `<li><span class="t">${clock(t.t)}</span>${esc(t.message)}</li>`).join("")}</ol></div></section>`
     : ""
 }
-${x.proof ? `<h2>The verified proof</h2><pre class="card">${esc(x.proof)}</pre>` : ""}
+${x.proof ? `<section><h2>The verified proof</h2><pre class="code">${esc(x.proof)}</pre><p class="note">Accepted by Mack's strict verifier and re-checked with Lean in CI.</p></section>` : ""}
+${SELF_REPORTED}
 <p class="small"><a href="${esc(repo)}/blob/main/benchmarks/runs/${esc(r.folder)}/attempts.jsonl">attempts.jsonl</a></p>`,
     "../../",
     repo,
   );
 }
+
+/** Whether a problem has a deep-dive page: it has attempts, steps or a proof to show. */
+const hasPage = (x: BenchResult) => !!(x.log?.length || x.timeline?.length || x.proof);
 
 /** Every page of the site, by path. */
 export function buildSite(runs: SharedRun[], repo: string): Record<string, string> {
@@ -612,7 +720,7 @@ export function buildSite(runs: SharedRun[], repo: string): Record<string, strin
   for (const r of runs) {
     files[`runs/${r.folder}.html`] = runPage(r, repo);
     const set = BENCH_SETS.find((s) => s.id === r.set);
-    for (const x of r.results) if (x.log?.length) files[`runs/${r.folder}/${x.id}.html`] = problemPage(r, x, set?.problems.find((p) => p.id === x.id)?.source, repo);
+    for (const x of r.results) if (hasPage(x)) files[`runs/${r.folder}/${x.id}.html`] = problemPage(r, x, set?.problems.find((p) => p.id === x.id)?.source, repo);
   }
   return files;
 }
