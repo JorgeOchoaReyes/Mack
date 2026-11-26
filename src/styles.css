@@ -1033,7 +1033,7 @@ body:has(.resizer.dragging) { cursor: col-resize; user-select: none; }
 
 .bench-models { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
 .bench-models p { margin: 0; }
-.bench-model-row { display: grid; grid-template-columns: 150px minmax(0, 1fr) minmax(0, 1.3fr) 24px; gap: 8px; align-items: center; }
+.bench-model-row { display: grid; grid-template-columns: 130px minmax(0, 1fr) minmax(0, 1.2fr) 160px 24px; gap: 8px; align-items: center; }
 @media (max-width: 760px) { .bench-model-row { grid-template-columns: 1fr; } }
 .bench-row input[type="checkbox"] { margin: 0; cursor: pointer; }
 .bench-table { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }

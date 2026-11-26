@@ -37,3 +37,14 @@ export interface ModelProvider {
   chat(request: ChatRequest): Promise<ChatResponse>;
   listModels(): Promise<string[]>;
 }
+
+/** A thinking level for proof work: one the model is asked for, or "default" (send none, the model's own). */
+export type ProofEffort = ReasoningEffort | "default";
+export const PROOF_EFFORTS: ProofEffort[] = ["default", "off", "low", "medium", "high", "xhigh"];
+export const EFFORT_LABELS: Record<ProofEffort, string> = { default: "Model default", off: "Off", on: "On", low: "Low", medium: "Medium", high: "High", xhigh: "Highest" };
+
+/** `p` with every request that names no thinking level asking for `effort`; `p` itself for "default". */
+export function withEffort(p: ModelProvider, effort: ProofEffort | undefined): ModelProvider {
+  if (!effort || effort === "default") return p;
+  return { name: p.name, listModels: () => p.listModels(), chat: (r: ChatRequest) => p.chat(r.reasoningEffort ? r : { ...r, reasoningEffort: effort }) };
+}
