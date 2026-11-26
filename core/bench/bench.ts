@@ -218,6 +218,8 @@ export type BenchConfig = {
   premises?: boolean;
   /** Helper lemmas from problems solved earlier in the run offered to later ones (core/bench/pool.ts). */
   lemmaPool?: boolean;
+  /** The thinking level the models were asked for; absent: each model's default. */
+  effort?: string;
 };
 
 export type BenchRun = {
@@ -331,6 +333,7 @@ export function benchReport(run: BenchRun, set: BenchSet | undefined, appVersion
     ...(run.env ? [`- Ran on ${run.env.platform}${run.env.lean ? `, ${run.env.lean}` : ""}; Lean REPL ${run.env.repl ? "on" : "OFF (every check reloaded Mathlib, so the run was several times slower)"}; Lean deadline ${Math.round(run.env.leanDeadlineMs / 1000)}s; ${run.env.leanProcesses} Lean processes${run.env.remoteLean ? " on a remote machine" : ""}`] : []),
     ...(run.harness ? [`- Harness: Mack ${run.harness.mack}, Open Math Harness ${run.harness.openMathHarness}; procedures: ${run.harness.procedures.join(", ")}`] : []),
     `- Method: ${METHOD_LABELS[c.method ?? "single"]}; model ${c.model}${c.prover ? `; prover ${c.prover}` : "; no prover model"}`,
+    `- Thinking level: ${c.effort ?? "each model's default"}`,
     `- ${c.maxAttempts} attempts, ${c.parallel} at once, revisions before starting over ${c.revisions}; automation ${c.automation ? "on" : "off"}; premise selection ${c.premises ? "on" : "off"}; easier versions first ${c.easierFirst ? "on" : "off"}`,
     `- Spent $${sum.usd.toFixed(3)} in ${Math.round(sum.ms / 60000)} min; ${sum.byAutomation} solved by Lean's automation alone; budget ${run.budget ? `$${run.budget}` : "none"}`,
     "",
@@ -664,6 +667,7 @@ export function harnessOf(config: BenchConfig, mack: string, openMathHarness: st
   if (config.automation) procedures.push("automation sweep");
   if (config.premises) procedures.push("premise selection");
   if (config.easierFirst) procedures.push("easier versions first");
+  if (config.effort) procedures.push(`thinking ${config.effort}`);
   if (config.method === "decompose") procedures.push("decompose");
   if (config.prover) procedures.push(config.prover.includes(",") ? "prover ensemble" : "prover model");
   if (config.revisions) procedures.push(`restart after ${config.revisions} revisions`);

@@ -413,7 +413,7 @@ ${m.byModel.map((x) => `<tr><td>${esc(short(x.model))}</td><td>${x.attempts}</td
     : ""
 }
 <div class="card small">
-${r.env?.mathlib ? `Mathlib <code>${esc(r.env.mathlib.slice(0, 12))}</code>${r.env.lean ? `, ${esc(r.env.lean)}` : ""}: the solved proofs were re-checked against it before the run was merged.<br>` : ""}${r.harness ? `Harness <b>Mack ${esc(r.harness.mack)}</b>, Open Math Harness <b>${esc(r.harness.openMathHarness)}</b>; ${esc(r.harness.procedures.join(", "))}.<br>` : ""}Model <b>${esc(c.model)}</b>${c.prover ? `; prover <b>${esc(c.prover)}</b>` : "; no prover model"}. ${c.maxAttempts} attempts, ${c.parallel} at once, starting over after ${c.revisions} revisions. Automation ${c.automation ? "on" : "off"}; premise selection ${c.premises ? "on" : "off"}; easier versions first ${c.easierFirst ? "on" : "off"}.
+${r.env?.mathlib ? `Mathlib <code>${esc(r.env.mathlib.slice(0, 12))}</code>${r.env.lean ? `, ${esc(r.env.lean)}` : ""}: the solved proofs were re-checked against it before the run was merged.<br>` : ""}${r.harness ? `Harness <b>Mack ${esc(r.harness.mack)}</b>, Open Math Harness <b>${esc(r.harness.openMathHarness)}</b>; ${esc(r.harness.procedures.join(", "))}.<br>` : ""}Model <b>${esc(c.model)}</b>${c.prover ? `; prover <b>${esc(c.prover)}</b>` : "; no prover model"}; thinking ${c.effort ? `<b>${esc(c.effort)}</b>` : "at each model's default"}. ${c.maxAttempts} attempts, ${c.parallel} at once, starting over after ${c.revisions} revisions. Automation ${c.automation ? "on" : "off"}; premise selection ${c.premises ? "on" : "off"}; easier versions first ${c.easierFirst ? "on" : "off"}.
 </div>
 ${
   p.solved

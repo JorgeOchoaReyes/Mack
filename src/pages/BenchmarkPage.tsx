@@ -10,6 +10,7 @@ import { PROVIDERS } from "../../core/model/providers";
 import { Button, EmptyState, Field, timeAgo, Toggle } from "../components/ui";
 import { GitHubAccounts } from "../components/GitHubAccounts";
 import { formatUsd } from "../../core/model/metered";
+import { EFFORT_LABELS, PROOF_EFFORTS, type ProofEffort } from "../../core/model/provider";
 import { BENCH_BASICS, METHOD_LABELS, type BenchMethod, FAILURES, failureBreakdown, harnessLabel, headToHead, rateRange, runMetrics, solvedWithin, summarize, timelineOf } from "../../core/bench/bench";
 import { COMMUNITY_REPO } from "../../core/community";
 
@@ -32,7 +33,7 @@ export function BenchmarkPage({ settings, onGo }: Props) {
   const [open, setOpen] = useState<string | null>(null);
   const [error, setError] = useState("");
   // The models each run uses: the ones in Settings to start with; several compare on the same problems.
-  const [models, setModels] = useState<BenchModels[]>(() => [{ provider: settings.provider, model: settings.models[settings.provider] ?? "", proverProvider: settings.proverProvider, proverModel: settings.proverModel }]);
+  const [models, setModels] = useState<BenchModels[]>(() => [{ provider: settings.provider, model: settings.models[settings.provider] ?? "", proverProvider: settings.proverProvider, proverModel: settings.proverModel, effort: settings.proofEffort ?? "default" }]);
   /** Runs started together and not finished yet, in order. */
   const [queued, setQueued] = useState<string[]>([]);
   const [compare, setCompare] = useState<string[]>([]);
@@ -581,7 +582,7 @@ function ModelsEditor({ models, setModels }: { models: BenchModels[]; setModels:
   return (
     <div className="bench-models">
       <p className="small">
-        <b>Models</b> <span className="muted">· the main model plans and, without a prover model, writes the attempts. Add rows to compare models: each runs the same problems with the same settings and budget, one after another.</span>
+        <b>Models</b> <span className="muted">· the main model plans and, without a prover model, writes the attempts; Thinking is how deeply they reason (the same model at two levels compares too). Add rows to compare: each runs the same problems with the same settings and budget, one after another.</span>
       </p>
       {models.map((m, i) => (
         <div key={i} className="bench-model-row">
@@ -601,6 +602,13 @@ function ModelsEditor({ models, setModels }: { models: BenchModels[]; setModels:
             onChange={(v) => set(i, { proverModel: v })}
             list={lists[m.proverProvider] ?? lists[m.provider]}
           />
+          <select className="input" value={m.effort ?? "default"} onChange={(e) => set(i, { effort: e.target.value as ProofEffort })} aria-label="Thinking level" title="Thinking level: how deeply the models reason in this run">
+            {PROOF_EFFORTS.map((e) => (
+              <option key={e} value={e}>
+                {e === "default" ? "Thinking: auto" : `Thinking: ${EFFORT_LABELS[e].toLowerCase()}`}
+              </option>
+            ))}
+          </select>
           {models.length > 1 && (
             <button className="icon-btn" title="Remove this model" onClick={() => setModels(models.filter((_, j) => j !== i))}>
               <X size={14} />
@@ -814,7 +822,8 @@ function MetricsDialog({ run, onClose }: { run: BenchRun; onClose: () => void })
         <Breakdown results={run.results} />
         <p className="muted small">
           Model {c.model}
-          {c.prover ? `; prover ${c.prover}` : ""}. {c.maxAttempts} attempts, {c.parallel} at once, starting over after {c.revisions} revisions; automation {c.automation ? "on" : "off"}, premise selection {c.premises ? "on" : "off"}, easier versions first {c.easierFirst ? "on" : "off"}.
+          {c.prover ? `; prover ${c.prover}` : ""}
+          {c.effort ? `; thinking ${c.effort}` : ""}. {c.maxAttempts} attempts, {c.parallel} at once, starting over after {c.revisions} revisions; automation {c.automation ? "on" : "off"}, premise selection {c.premises ? "on" : "off"}, easier versions first {c.easierFirst ? "on" : "off"}.
           {run.harness ? ` Harness: Mack ${run.harness.mack}, Open Math Harness ${run.harness.openMathHarness}; ${run.harness.procedures.join(", ")}.` : ""}
           {run.env ? ` Mack ${run.env.app} on ${run.env.platform}${run.env.lean ? `, ${run.env.lean}` : ""}; Lean deadline ${secs(run.env.leanDeadlineMs)}, ${run.env.leanProcesses} Lean processes${run.env.remoteLean ? " on a remote machine" : ""}${run.env.repl ? ", REPL on" : ""}.` : ""}
         </p>

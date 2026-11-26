@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import type { LedgerState, UpdateState } from "../api";
 import { GitHubAccounts } from "../components/GitHubAccounts";
 import { formatUsd } from "../../core/model/metered";
+import { EFFORT_LABELS, PROOF_EFFORTS, type ProofEffort } from "../../core/model/provider";
 import type { Limits } from "../../core/search/tree";
 import type { UltramathLimits } from "../../core/ultramath/swarm";
 
@@ -85,6 +86,18 @@ export function SettingsPage({ settings, saveSettings }: Props) {
           </Field>
         </div>
         <ProverModel settings={settings} saveSettings={saveSettings} />
+        <Field
+          label="Thinking level for proofs"
+          hint="How deeply the models think in proof attempts and benchmark runs (the reasoning effort sent to the provider). Higher solves more hard problems but costs more tokens and time per attempt; Model default sends nothing and lets each model decide. Models that cannot reason ignore it, and a few providers refuse it: then choose Model default. Chats have their own level, in the chat box."
+        >
+          <select className="input" style={{ width: 200 }} value={settings.proofEffort ?? "default"} onChange={(e) => void saveSettings({ proofEffort: e.target.value as ProofEffort })}>
+            {PROOF_EFFORTS.map((e) => (
+              <option key={e} value={e}>
+                {EFFORT_LABELS[e]}
+              </option>
+            ))}
+          </select>
+        </Field>
         <Toggle
           checked={settings.leanAutomation}
           onChange={(v) => void saveSettings({ leanAutomation: v })}

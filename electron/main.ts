@@ -49,7 +49,7 @@ import { easierVersions } from "../core/variants";
 import { attemptKind, attemptsDataset, harnessOf, BENCH_SETS, BENCH_SHARE_DIR, benchReport, benchSet, benchShare, benchSlug, classifyFailure, LOG_LIMITS, splitReply, type AttemptLog, type BenchEnv, pickSample, runBench, type AttemptNote, type BenchEvent, type BenchResult, type BenchRun } from "../core/bench/bench";
 import { newerMackRelease, UPSTREAM } from "../core/upstream";
 import type { ApprovalPolicy } from "../core/chat/executor";
-import type { ReasoningEffort } from "../core/model/provider";
+import { PROOF_EFFORTS, withEffort, type ProofEffort, type ReasoningEffort } from "../core/model/provider";
 
 export type Settings = {
   /** The provider runs use; each provider remembers its own model. */
@@ -86,6 +86,8 @@ export type Settings = {
   visionModels: string[];
   /** The reasoning effort a new chat starts with. */
   chatEffort: ReasoningEffort;
+  /** How deeply models think in proof attempts and benchmark runs ("default": the model's own). */
+  proofEffort: ProofEffort;
   /** Offer a likely next message in an empty composer, and title new chats. */
   suggestions: boolean;
   /** New chats start on Autopilot: the assistant works end to end on what it is asked, without stopping to ask. */
@@ -196,6 +198,7 @@ const DEFAULTS: Settings = {
   approvals: {},
   visionModels: [],
   chatEffort: "medium",
+  proofEffort: "default",
   suggestions: true,
   autopilotNewChats: true,
   maxLeanProcesses: 0,
@@ -723,7 +726,7 @@ const proverModels = (s: Settings) =>
     .filter(Boolean);
 
 function proversFor(s: Settings, meter: Meter, hooks: { onCharge?: (m: Meter) => void; onCap?: (why: string) => void }): { provider: ModelProvider; model: string }[] {
-  return proverModels(s).map((model) => ({ provider: metered(makeProvider(s, s.proverProvider, model), priceFor(s.prices, model, s.assumedPrice).price, meter, hooks), model }));
+  return proverModels(s).map((model) => ({ provider: metered(withEffort(makeProvider(s, s.proverProvider, model), s.proofEffort), priceFor(s.prices, model, s.assumedPrice).price, meter, hooks), model }));
 }
 
 const parallelOf = (s: Settings) => Math.max(1, Math.min(32, Math.floor(s.parallelAttempts) || 1));
@@ -806,7 +809,7 @@ async function runProof(problem: string, mode: RunMode, forward: (ev: RunEvent) 
   const { meter, price } = newMeter(s, model);
   const ctl = new AbortController();
   let capped = "";
-  const provider = metered(makeProvider(s, s.provider), price, meter, {
+  const provider = metered(withEffort(makeProvider(s, s.provider), s.proofEffort), price, meter, {
     onCharge: (m) => send({ type: "spend", usd: m.spent, limit: m.limit, estimated: m.estimated }),
     onCap: (why) => {
       capped = why;
@@ -924,7 +927,7 @@ async function benchOne(s: Settings, p: { id: string; source: string }, bench: B
   const meter: Meter = { spent: 0, limit: Math.max(0, left), estimated: false };
   const ctl = new AbortController();
   const hooks = { onCap: () => ctl.abort() };
-  const provider = metered(makeProvider(s, s.provider), priceFor(s.prices, model, s.assumedPrice).price, meter, hooks);
+  const provider = metered(withEffort(makeProvider(s, s.provider), s.proofEffort), priceFor(s.prices, model, s.assumedPrice).price, meter, hooks);
   const run = leanRunner({ workspace: s.leanWorkspace, timeoutMs: s.timeoutMs });
   let attempts = 0;
   let proof: string | undefined;
@@ -1096,14 +1099,14 @@ ipcMain.handle("proofs:export", async (e) => {
 });
 ipcMain.handle("bench:sets", () => BENCH_SETS.map(({ problems, ...rest }) => ({ ...rest, size: problems.length })));
 /** The models one benchmark run uses: its main model, and the prover models that write the attempts (none: the main model writes them). */
-export type BenchModels = { provider: ProviderId; model: string; proverProvider: ProviderId; proverModel: string };
+export type BenchModels = { provider: ProviderId; model: string; proverProvider: ProviderId; proverModel: string; effort?: ProofEffort };
 
 /** The settings with a benchmark run's own models in place of the ones in Settings. */
 function withModels(s: Settings, m: BenchModels): Settings {
-  return { ...s, provider: m.provider, models: { ...s.models, [m.provider]: m.model }, proverProvider: m.proverProvider, proverModel: m.proverModel };
+  return { ...s, provider: m.provider, models: { ...s.models, [m.provider]: m.model }, proverProvider: m.proverProvider, proverModel: m.proverModel, proofEffort: m.effort ?? s.proofEffort };
 }
 
-const benchLabel = (m: BenchModels) => `${m.model.split("/").pop()}${m.proverModel.trim() ? ` + ${m.proverModel.split(",").map((x) => x.trim().split("/").pop()).filter(Boolean).join(", ")}` : ""}`;
+const benchLabel = (m: BenchModels) => `${m.effort && m.effort !== "default" ? `[${m.effort}] ` : ""}${m.model.split("/").pop()}${m.proverModel.trim() ? ` + ${m.proverModel.split(",").map((x) => x.trim().split("/").pop()).filter(Boolean).join(", ")}` : ""}`;
 
 /**
  * One benchmark run per set of models, one after another on the same problems
@@ -1118,7 +1121,13 @@ ipcMain.handle("bench:start", async (e, setId: string, n: number, budget: number
   if (!set) throw new Error("unknown benchmark set");
   const list = (Array.isArray(models) && models.length ? models : [{ provider: base.provider, model: base.models[base.provider], proverProvider: base.proverProvider, proverModel: base.proverModel }])
     .filter((m) => m && isProvider(m.provider) && typeof m.model === "string" && m.model.trim())
-    .map((m) => ({ provider: m.provider, model: m.model.trim(), proverProvider: isProvider(m.proverProvider) ? m.proverProvider : m.provider, proverModel: String(m.proverModel ?? "").trim() }));
+    .map((m) => ({
+      provider: m.provider,
+      model: m.model.trim(),
+      proverProvider: isProvider(m.proverProvider) ? m.proverProvider : m.provider,
+      proverModel: String(m.proverModel ?? "").trim(),
+      effort: (PROOF_EFFORTS as string[]).includes(String(m.effort)) ? m.effort : base.proofEffort,
+    }));
   if (!list.length) throw new Error(`Choose a model for the run, or one in Setup.`);
   if (list.length > 6) throw new Error("Compare at most 6 models at once.");
   if (!leanReady(base)) throw new Error("Install Lean and Mathlib in Setup first.");
@@ -1157,6 +1166,7 @@ ipcMain.handle("bench:start", async (e, setId: string, n: number, budget: number
         method: (["decompose", "steps", "search", "ultramath"] as const).find((x) => x === method) ?? "single",
         easierFirst: s.easierFirst,
         premises: s.premiseSelection,
+        ...(s.proofEffort && s.proofEffort !== "default" ? { effort: s.proofEffort } : {}),
         ...((method === "single" || method === "decompose" || !method) && opts?.lemmaPool !== false ? { lemmaPool: true } : {}),
       },
       sample,
