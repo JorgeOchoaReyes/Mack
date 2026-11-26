@@ -1106,3 +1106,8 @@ body:has(.resizer.dragging) { cursor: col-resize; user-select: none; }
 .model-select .input { flex: 1; min-width: 0; }
 .model-select .link { white-space: nowrap; }
 .bench-model-row select.input { min-width: 0; text-overflow: ellipsis; }
+
+/* A one-line explanation behind a small (i), instead of helper text. */
+.info-tip { position: relative; display: inline-grid; place-items: center; width: 15px; height: 15px; margin-left: 6px; border-radius: 50%; border: 1px solid var(--border-strong); color: var(--muted); font: 600 10px/1 inherit; cursor: help; vertical-align: 1px; }
+.info-tip::after { content: attr(data-tip); position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%); width: max-content; max-width: 280px; padding: 7px 10px; border-radius: 8px; background: var(--text); color: var(--bg); font-size: 12.5px; font-weight: 500; line-height: 1.45; text-align: left; white-space: normal; pointer-events: none; z-index: 50; display: none; }
+.info-tip:hover::after, .info-tip:focus::after { display: block; }

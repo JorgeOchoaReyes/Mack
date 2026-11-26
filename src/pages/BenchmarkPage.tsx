@@ -7,7 +7,7 @@ import { ArrowRight, BarChart3, CheckCircle2, CircleDashed, Columns3, Copy, Data
 import { Fragment, useEffect, useState } from "react";
 import { api, errorText, type BenchModels, type BenchResult, type BenchRun, type BenchSetInfo, type ProviderId, type Settings } from "../api";
 import { PROVIDERS } from "../../core/model/providers";
-import { Button, EmptyState, Field, timeAgo, Toggle } from "../components/ui";
+import { Button, EmptyState, Field, InfoTip, timeAgo, Toggle } from "../components/ui";
 import { GitHubAccounts } from "../components/GitHubAccounts";
 import { ModelSelect, useModelLists } from "../components/ModelSelect";
 import { formatUsd } from "../../core/model/metered";
@@ -97,11 +97,7 @@ export function BenchmarkPage({ settings, onGo }: Props) {
           </Button>
         </div>
         <p className="muted">
-          Measure how strong Mack is with your settings: it tries a fixed set of competition problems formalized in Lean, and counts only proofs the strict verifier accepts. Change the model, prover model or attempts in Settings, run again on the same problems, and compare. Share a run to put it on the{" "}
-          <button className="link" onClick={() => void api.openExternal(BENCH_SITE)}>
-            public leaderboard <ExternalLink size={11} />
-          </button>
-          .
+          Run competition problems in Lean with your models. Only Lean-verified proofs count.
         </p>
       </div>
 
@@ -109,7 +105,7 @@ export function BenchmarkPage({ settings, onGo }: Props) {
         <section className="settings-group">
           <h2>New run</h2>
           <div className="grid-2">
-            <Field label="Problem set" hint={sets.find((s) => s.id === setId)?.blurb}>
+            <Field label="Problem set" tip={sets.find((s) => s.id === setId)?.blurb}>
               <select className="input" value={setId} onChange={(e) => setSetId(e.target.value)}>
                 {sets.map((s) => (
                   <option key={s.id} value={s.id}>
@@ -118,7 +114,7 @@ export function BenchmarkPage({ settings, onGo }: Props) {
                 ))}
               </select>
             </Field>
-            <Field label="Problems" hint="The same number always picks the same problems, and a smaller run is part of a larger one, so results compare.">
+            <Field label="Problems" tip="The same number always picks the same problems, so runs compare.">
               <select className="input" value={size} onChange={(e) => setSize(Number(e.target.value))}>
                 {[...SIZES.filter((n) => n < total), total].map((n) => (
                   <option key={n} value={n}>
@@ -129,12 +125,14 @@ export function BenchmarkPage({ settings, onGo }: Props) {
             </Field>
             <Field
               label="Method"
-              hint={
+              tip={
                 method === "search" || method === "ultramath"
-                  ? "Open Math Harness's own method, as Mack ports it: none of Mack's additions (automation, lemma suggestions, decompose, prover models) are used, so it is the baseline Mack's methods are measured against. Its limits are in Settings → Prover."
+                  ? "Open Math Harness's own method, without Mack's additions: the baseline."
                   : method === "steps"
-                    ? "Mack's step-by-step search: the proof is built one tactic at a time on Lean's live proof states, keeping only the steps Lean accepts and trying Lean's automation on every state. Each model call proposes several next steps; the attempt budget is the number of calls. Needs the Lean REPL."
-                    : "Mack's methods. Decompose tries each problem directly, then splits it into lemmas proved at once: slower and dearer, and stronger on hard problems."
+                    ? "Builds the proof one tactic at a time on Lean's live proof states. Needs the Lean REPL."
+                    : method === "decompose"
+                      ? "Tries each problem directly, then splits it into lemmas. Slower, stronger on hard problems."
+                      : "The model writes whole proofs and fixes them from Lean's errors."
               }
             >
               <select className="input" value={method} onChange={(e) => setMethod(e.target.value as BenchMethod)}>
@@ -145,24 +143,29 @@ export function BenchmarkPage({ settings, onGo }: Props) {
                 ))}
               </select>
             </Field>
-            <Field label="Budget for the run (USD, 0 = no limit)" hint="When it is spent, the problems left are skipped. Your global spending limit applies as well.">
+            <Field label="Budget (USD, 0 = no limit)" tip="Problems left when it runs out are skipped. Your global spending limit also applies.">
               <input className="input" type="number" min={0} step={1} value={budget} onChange={(e) => setBudget(Math.max(0, Number(e.target.value) || 0))} />
             </Field>
-            <Field label="Other settings used" hint={<button className="link" onClick={() => onGo("settings")}>Change them in Settings → Prover</button>}>
-              <div className="bench-config muted small">{config.join(" · ")}</div>
+            <Field label="Other settings">
+              <div className="bench-config muted small">
+                {config.join(" · ")} ·{" "}
+                <button className="link small" onClick={() => onGo("settings")}>
+                  change
+                </button>
+              </div>
             </Field>
           </div>
           <ModelsEditor models={models} setModels={setModels} />
           {(method === "single" || method === "decompose") && (
-            <label className="row gap-sm small" title="Each run keeps its own pool: runs compared on the same problems never share lemmas.">
+            <label className="row gap-sm small">
               <input type="checkbox" checked={lemmaPool} onChange={(e) => setLemmaPool(e.target.checked)} />
-              Share proved lemmas across the run: helper lemmas from problems already solved are offered to the ones after them.
+              Share proved lemmas across the run
+              <InfoTip text="Helper lemmas from solved problems are offered to later ones. Each run keeps its own." />
             </label>
           )}
           {!settings.remoteLean?.host && (replReady === false || !settings.useRepl) && (
             <div className="bench-warning">
-              <b>The Lean REPL is {settings.useRepl ? "not built" : "turned off"}, so every Lean check reloads Mathlib.</b> A run then takes several times longer (minutes per problem before the model is even asked).{" "}
-              {settings.useRepl ? "Build it in Settings → Setup → Lean (Repair or update)." : "Turn it on in Settings → Prover."}
+              <b>Lean REPL {settings.useRepl ? "not built" : "off"}: runs will be several times slower.</b> {settings.useRepl ? "Build it in Settings → Setup → Lean." : "Turn it on in Settings → Prover."}
             </div>
           )}
           <div className="row gap-sm">
@@ -185,7 +188,7 @@ export function BenchmarkPage({ settings, onGo }: Props) {
 
       {compare.length >= 2 && <Compare runs={compare.map((id) => runs.find((r) => r.id === id)).filter((r): r is BenchRun => !!r)} onClose={() => setCompare([])} />}
 
-      <details className="bench-basics" open={runs.length === 0}>
+      <details className="bench-basics">
         <summary>How to read these results</summary>
         <dl>
           {BENCH_BASICS.map((b) => (
@@ -213,7 +216,7 @@ export function BenchmarkPage({ settings, onGo }: Props) {
         </div>
         {past.length === 0 ? (
           <EmptyState icon={Gauge} title="No runs yet">
-            Start with 20 problems: with a cheap model it takes a while and costs little, and it gives the number every later change is compared with.
+            Start with 20 problems: quick and cheap, and a baseline to compare against.
           </EmptyState>
         ) : (
           <div className="run-list">
@@ -447,7 +450,6 @@ function Share({ run, prState, onShared, onGoSettings }: { run: BenchRun; prStat
   };
   return (
     <div className="bench-share">
-      <span className="muted small">Share this run to review where Mack loses problems: the report has the settings, the reasons, and each unsolved problem's attempts and Lean feedback. Save or copy it, or open a pull request with it on the Mack repo.</span>
       <Button size="sm" icon={FileDown} onClick={() => void act(async () => ((await api.benchExport(id)) ? "Saved." : ""))}>
         Save report
       </Button>
@@ -475,12 +477,13 @@ function Share({ run, prState, onShared, onGoSettings }: { run: BenchRun; prStat
       {stage.kind === "confirm" && (
         <div className="bench-confirm">
           <p className="small">
-            This opens a <b>public</b> pull request on {COMMUNITY_REPO.owner}/{COMMUNITY_REPO.repo} under the GitHub account chosen below, with this run&apos;s report and data: the settings and model names, each problem&apos;s result, and the unsolved problems&apos; attempts and Lean feedback. No keys or project files are included.
+            Opens a <b>public</b> pull request on {COMMUNITY_REPO.owner}/{COMMUNITY_REPO.repo} with this run&apos;s report and data.
+            <InfoTip text="Settings, model names, every result and the attempts with Lean's feedback. No keys or project files." />
           </p>
           <Toggle
             checked={logs}
             onChange={setLogs}
-            label="Include every attempt (attempts.jsonl): each attempt's model, outcome, reason, Lean feedback, the model's thinking and the attempt itself, so the run can be analysed fully"
+            label="Include every attempt, with the model's thinking"
           />
           <GitHubAccounts compact onGoSettings={onGoSettings} onChange={(s) => setCanPublish(s.source !== "none")} />
           <div className="row gap-sm">
@@ -497,7 +500,7 @@ function Share({ run, prState, onShared, onGoSettings }: { run: BenchRun; prStat
         <div className="bench-status-box">
           <Loader2 size={15} className="spin" />
           <span>
-            Opening the pull request on GitHub… {Math.round((Date.now() - stage.since) / 1000)}s. The first time, GitHub makes your fork of the repository, which can take up to a minute.
+            Opening the pull request… {Math.round((Date.now() - stage.since) / 1000)}s (the first time can take a minute).
           </span>
         </div>
       )}
@@ -558,7 +561,8 @@ function ModelsEditor({ models, setModels }: { models: BenchModels[]; setModels:
   return (
     <div className="bench-models">
       <p className="small">
-        <b>Models</b> <span className="muted">· the main model plans and, without a prover model, writes the attempts; Thinking is how deeply they reason (the same model at two levels compares too). Add rows to compare: each runs the same problems with the same settings and budget, one after another.</span>
+        <b>Models</b>
+        <InfoTip text="The main model plans; the prover model, if set, writes the attempts. Add rows to compare models on the same problems." />
       </p>
       {models.map((m, i) => (
         <div key={i} className="bench-model-row">
@@ -699,7 +703,7 @@ function Compare({ runs, onClose }: { runs: BenchRun[]; onClose: () => void }) {
           </tbody>
         </table>
       </div>
-      <p className="muted small">Highlighted rows were solved by only one run: what that model or method adds over the others.</p>
+      <p className="muted small">Highlighted: solved by only one run.</p>
     </section>
   );
 }

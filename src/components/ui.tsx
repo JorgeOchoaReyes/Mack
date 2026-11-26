@@ -77,10 +77,22 @@ export function Card({ children, className = "" }: { children: ReactNode; classN
   return <div className={`card ${className}`}>{children}</div>;
 }
 
-export function Field({ label, hint, children }: { label: string; hint?: ReactNode; children: ReactNode }) {
+/** A small (i) that explains something in one line, on hover, focus or tap. */
+export function InfoTip({ text }: { text: string }) {
+  return (
+    <span className="info-tip" tabIndex={0} role="note" aria-label={text} data-tip={text}>
+      i
+    </span>
+  );
+}
+
+export function Field({ label, hint, tip, children }: { label: string; hint?: ReactNode; tip?: string; children: ReactNode }) {
   return (
     <label className="field">
-      <span className="field-label">{label}</span>
+      <span className="field-label">
+        {label}
+        {tip && <InfoTip text={tip} />}
+      </span>
       {children}
       {hint && <span className="field-hint">{hint}</span>}
     </label>
