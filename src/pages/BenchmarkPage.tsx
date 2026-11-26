@@ -185,7 +185,17 @@ export function BenchmarkPage({ settings, onGo }: Props) {
         </section>
       )}
 
-      {live && <LiveRun run={live} status={status} open={open} setOpen={setOpen} queued={Math.max(0, queued.length - 1)} />}
+      {live && (
+        <LiveRun
+          run={live} status={status} open={open} setOpen={setOpen} queued={Math.max(0, queued.length - 1)}
+          onStop={() => {
+            setLive(null);
+            setStatus(null);
+            setQueued([]);
+            void api.benchStop().finally(refresh);
+          }}
+        />
+      )}
 
       {metrics && runs.find((r) => r.id === metrics) && <MetricsDialog run={runs.find((r) => r.id === metrics)!} onClose={() => setMetrics(null)} />}
 
@@ -312,7 +322,7 @@ export function BenchmarkPage({ settings, onGo }: Props) {
   );
 }
 
-function LiveRun({ run, status, open, setOpen, queued }: { run: BenchRun; status: { id: string; message: string } | null; open: string | null; setOpen: (id: string | null) => void; queued: number }) {
+function LiveRun({ run, status, open, setOpen, queued, onStop }: { run: BenchRun; status: { id: string; message: string } | null; open: string | null; setOpen: (id: string | null) => void; queued: number; onStop: () => void }) {
   const sum = summarize(run);
   const done = run.results.length;
   return (
@@ -326,7 +336,12 @@ function LiveRun({ run, status, open, setOpen, queued }: { run: BenchRun; status
         <span className="muted small">
           {sum.solved} solved ({pct(sum.rate)}) · {formatUsd(sum.usd)} spent{run.budget ? ` of ${formatUsd(run.budget)}` : ""}
         </span>
-        <Button size="sm" icon={Square} onClick={() => void api.benchStop()} title="Stop after the current problem's attempts end; the rest are marked skipped">
+        <Button
+          size="sm"
+          icon={Square}
+          onClick={onStop}
+          title="Stop now: the problem in progress and the rest are marked skipped"
+        >
           Stop
         </Button>
       </div>

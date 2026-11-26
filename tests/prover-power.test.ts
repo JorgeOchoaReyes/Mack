@@ -92,6 +92,30 @@ describe("the benchmark", () => {
     expect(summarize(done)).toMatchObject({ tried: 2, solved: 1, rate: 0.5, usd: 1, byAutomation: 1 });
     expect(done.status).toBe("done");
   });
+
+  it("stops at once: the problem in progress is not waited for, and it and the rest count as skipped", async () => {
+    const run: BenchRun = { id: "2", set: set.id, startedAt: 0, finishedAt: 0, status: "running", config: { model: "m", maxAttempts: 1, parallel: 1, automation: true, revisions: 0 }, sample: pickSample(set, 3), results: [], budget: 0 };
+    const ctl = new AbortController();
+    let seen: AbortSignal | undefined;
+    const done = runBench({
+      run,
+      set,
+      signal: ctl.signal,
+      onEvent: () => {},
+      // A problem that never finishes on its own, like a Lean check stuck for minutes.
+      proveOne: (_p, signal) => {
+        seen = signal;
+        return new Promise(() => {});
+      },
+    });
+    await new Promise((r) => setTimeout(r, 0));
+    ctl.abort();
+    const finished = await done;
+    expect(seen?.aborted).toBe(true);
+    expect(finished.status).toBe("stopped");
+    expect(finished.results.map((r) => r.outcome)).toEqual(["skipped", "skipped", "skipped"]);
+    expect(finished.results.every((r) => r.message === "stopped")).toBe(true);
+  });
 });
 
 describe("Lean on another machine", () => {
