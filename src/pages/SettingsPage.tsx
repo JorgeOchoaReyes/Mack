@@ -2,7 +2,7 @@ import { Download, ExternalLink } from "lucide-react";
 import { UPSTREAM } from "../../core/upstream";
 import { PROVIDERS, type ProviderId } from "../../core/model/providers";
 import { api, errorText, type Settings } from "../api";
-import { Button, Field, Toggle } from "../components/ui";
+import { Button, Field, InfoTip, Toggle } from "../components/ui";
 import { useEffect, useState } from "react";
 import type { LedgerState, UpdateState } from "../api";
 import { GitHubAccounts } from "../components/GitHubAccounts";
@@ -148,25 +148,27 @@ export function SettingsPage({ settings, saveSettings }: Props) {
         <h2>Spending</h2>
         <GlobalSpend settings={settings} saveSettings={saveSettings} />
         <div className="grid-2">
-          <Field label="Assumed price, input ($ per million tokens)" tip="Used for models without a price. Keep it high so limits stop early.">
-            <input
-              className="input"
-              type="number"
-              min={0}
-              step={0.5}
-              value={settings.assumedPrice.input}
-              onChange={(e) => void saveSettings({ assumedPrice: { ...settings.assumedPrice, input: Math.max(0, Number(e.target.value) || 0) } })}
-            />
-          </Field>
-          <Field label="Assumed price, output ($ per million tokens)">
-            <input
-              className="input"
-              type="number"
-              min={0}
-              step={0.5}
-              value={settings.assumedPrice.output}
-              onChange={(e) => void saveSettings({ assumedPrice: { ...settings.assumedPrice, output: Math.max(0, Number(e.target.value) || 0) } })}
-            />
+          <Field label="Assumed price ($/M tokens, in / out)" tip="Used for models without a price. Keep it high so limits stop early.">
+            <div className="inline-fields">
+              <input
+                className="input"
+                type="number"
+                min={0}
+                step={0.5}
+                aria-label="Assumed input price"
+                value={settings.assumedPrice.input}
+                onChange={(e) => void saveSettings({ assumedPrice: { ...settings.assumedPrice, input: Math.max(0, Number(e.target.value) || 0) } })}
+              />
+              <input
+                className="input"
+                type="number"
+                min={0}
+                step={0.5}
+                aria-label="Assumed output price"
+                value={settings.assumedPrice.output}
+                onChange={(e) => void saveSettings({ assumedPrice: { ...settings.assumedPrice, output: Math.max(0, Number(e.target.value) || 0) } })}
+              />
+            </div>
           </Field>
         </div>
         <div className="grid-2">
@@ -309,29 +311,31 @@ function UpdatesSection({ settings, saveSettings }: { settings: Settings; saveSe
   return (
     <section className="settings-group">
       <h2>Updates</h2>
-      <p className="muted">
-        Mack {version} ·{" "}
-        <button className="link" onClick={() => void api.openExternal("https://github.com/JorgeOchoaReyes/Mack/releases")}>
-          Releases
-        </button>
-      </p>
-      <Toggle checked={settings.autoUpdate} onChange={(v) => void saveSettings({ autoUpdate: v })} label="Download and install updates automatically" />
-      <div className="row gap-sm">
-        <Button size="sm" onClick={() => void api.checkUpdates().then(setState)}>
-          Check now
-        </Button>
-        {state?.state === "manual" && state.newer && (
-          <Button size="sm" variant="primary" onClick={() => void api.openExternal(state.url)}>
-            See Mack {state.latest}
+      <div className="field">
+        <span className="field-label">
+          Mack {version}
+          <button className="link small" style={{ marginLeft: 8 }} onClick={() => void api.openExternal("https://github.com/JorgeOchoaReyes/Mack/releases")}>
+            Releases
+          </button>
+        </span>
+        <div className="row gap-sm">
+          {state?.state === "manual" && state.newer && (
+            <Button size="sm" variant="primary" onClick={() => void api.openExternal(state.url)}>
+              See Mack {state.latest}
+            </Button>
+          )}
+          {state?.state === "ready" && (
+            <Button size="sm" variant="primary" onClick={() => void api.installUpdate()}>
+              Restart and update
+            </Button>
+          )}
+          <Button size="sm" onClick={() => void api.checkUpdates().then(setState)}>
+            Check now
           </Button>
-        )}
-        {state?.state === "ready" && (
-          <Button size="sm" variant="primary" onClick={() => void api.installUpdate()}>
-            Restart and update
-          </Button>
-        )}
-        {line && <span className="muted small">{line}</span>}
+        </div>
+        {line && <span className="field-hint">{line}</span>}
       </div>
+      <Toggle checked={settings.autoUpdate} onChange={(v) => void saveSettings({ autoUpdate: v })} label="Download and install updates automatically" />
     </section>
   );
 }
@@ -345,18 +349,16 @@ function GlobalSpend({ settings, saveSettings }: { settings: Settings; saveSetti
   const period = settings.globalPeriod === "total" ? "since the last reset" : settings.globalPeriod === "day" ? "today" : "this month";
   return (
     <div className="global-spend">
-      <div className="grid-2">
-        <Field label="Global limit (USD)" tip="Everything Mack spends together. 0 = off.">
-          <input className="input" type="number" min={0} step={1} value={settings.globalLimit} onChange={(e) => void saveSettings({ globalLimit: Math.max(0, Number(e.target.value) || 0) })} />
-        </Field>
-        <Field label="Per">
-          <select className="input" value={settings.globalPeriod} onChange={(e) => void saveSettings({ globalPeriod: e.target.value as Settings["globalPeriod"] })}>
-            <option value="month">month</option>
-            <option value="day">day</option>
-            <option value="total">all time (until I reset it)</option>
+      <Field label="Global limit (USD)" tip="Everything Mack spends together. 0 = off.">
+        <div className="inline-fields">
+          <input className="input" type="number" min={0} step={1} aria-label="Global limit" value={settings.globalLimit} onChange={(e) => void saveSettings({ globalLimit: Math.max(0, Number(e.target.value) || 0) })} />
+          <select className="input" aria-label="Per" value={settings.globalPeriod} onChange={(e) => void saveSettings({ globalPeriod: e.target.value as Settings["globalPeriod"] })}>
+            <option value="month">per month</option>
+            <option value="day">per day</option>
+            <option value="total">all time</option>
           </select>
-        </Field>
-      </div>
+        </div>
+      </Field>
       {state && (
         <div className="row gap-sm">
           <span className={`spend-chip ${state.limit > 0 && state.spent >= state.limit * 0.8 ? "warn" : ""}`}>
@@ -382,8 +384,8 @@ function LeanLimit({ value, onChange }: { value: number; onChange: (n: number) =
   const n = value > 0 ? value : (mem?.auto ?? 0);
   return (
     <Field
-      label="Lean processes at once (0 = automatic)"
-      tip={`About 6 GB of memory each${mem ? `; this computer has ${mem.totalGb} GB, automatic uses ${mem.auto}` : ""}.`}
+      label="Lean processes at once"
+      tip={`0 = automatic. About 6 GB of memory each${mem ? `; this computer has ${mem.totalGb} GB, automatic uses ${mem.auto}` : ""}.`}
     >
       <input className="input" type="number" min={0} max={16} value={value} onChange={(e) => onChange(Math.max(0, Math.min(16, Math.floor(Number(e.target.value)) || 0)))} />
     </Field>
@@ -404,7 +406,7 @@ function ProverModel({ settings, saveSettings }: { settings: Settings; saveSetti
   return (
     <>
       <Field
-        label="Prover models (optional)"
+        label="Prover models"
         tip="Models trained for Lean proofs write the attempts; your main model plans."
       >
         <div className="inline-fields">
@@ -417,7 +419,7 @@ function ProverModel({ settings, saveSettings }: { settings: Settings; saveSetti
           </select>
           <ModelSelect
             label="Prover models"
-            placeholder="e.g. deepseek/deepseek-prover-v2, another/prover (empty: off)"
+            placeholder="e.g. deepseek/deepseek-prover-v2"
             none="No prover model"
             value={settings.proverModel}
             onChange={(v) => void saveSettings({ proverModel: v })}
@@ -428,7 +430,7 @@ function ProverModel({ settings, saveSettings }: { settings: Settings; saveSetti
       {models.map((model) => {
         const price = settings.prices[model];
         return (
-          <Field key={model} label={`Price of ${model} ($ per million tokens, input / output)`} tip={price ? undefined : "Not set: the assumed price is counted."}>
+          <Field key={model} label={`${model} ($/M tokens, in / out)`} tip={price ? undefined : "Not set: the assumed price is counted."}>
             <div className="inline-fields">
               <input className="input" type="number" min={0} step={0.1} value={price?.input ?? ""} placeholder="input" onChange={(e) => setPrice(model, "input", Number(e.target.value) || 0)} />
               <input className="input" type="number" min={0} step={0.1} value={price?.output ?? ""} placeholder="output" onChange={(e) => setPrice(model, "output", Number(e.target.value) || 0)} />
@@ -480,14 +482,16 @@ function ProofExport() {
     }
   };
   return (
-    <div className="proof-export muted small">
-      <span>
-        {count === null ? "" : `${count} verified proof${count === 1 ? "" : "s"} kept.`} Export them to fine-tune an open prover model on your own work: a JSON Lines file in the chat format that Fireworks, Together and other OpenAI-compatible fine-tuning services accept. Training pays off after a few thousand proofs.
+    <div className="field">
+      <span className="field-label">
+        Training data
+        <InfoTip text="Your verified proofs as JSON Lines in the chat format OpenAI-compatible fine-tuning services accept. Worth it after a few thousand proofs." />
+        {count !== null && <span className="muted small" style={{ marginLeft: 8 }}>{count} kept</span>}
       </span>
       <Button size="sm" icon={Download} onClick={() => void run()} disabled={!count}>
-        Export training data
+        Export
       </Button>
-      {note && <span>{note}</span>}
+      {note && <span className="field-hint">{note}</span>}
     </div>
   );
 }

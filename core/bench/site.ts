@@ -5,7 +5,7 @@
 // with its settings, its failures by reason and every problem's result.
 // Pure functions of the runs, so the page is the same wherever it is built.
 
-import { attemptKinds, BENCH_BASICS, BENCH_SETS, harnessLabel, METHOD_LABELS, FAILURES, failureBreakdown, publishedScore, RECENT_SET, RECENT_YEARS, runMetrics, solvedWithin, summarize, timelineOf, topErrors, type AttemptLog, type BenchResult, type BenchRun } from "./bench";
+import { attemptKinds, BENCH_BASICS, BENCH_SETS, LOG_LIMITS, WITHIN, harnessLabel, METHOD_LABELS, FAILURES, failureBreakdown, publishedScore, RECENT_SET, RECENT_YEARS, runMetrics, solvedWithin, summarize, timelineOf, topErrors, type AttemptLog, type BenchResult, type BenchRun } from "./bench";
 
 /** A run as shared: its folder in the repo, who shared it and from which Mack. */
 export type SharedRun = BenchRun & { folder: string; sharedBy?: string; appVersion?: string; attemptsLogged?: boolean };
@@ -178,6 +178,11 @@ details pre { white-space: pre-wrap; font-size: 12px; background: var(--bar); pa
 .basics p { margin: 0; color: var(--muted); font-size: 14px; }
 .basics b { color: var(--text); }
 .crumbs { margin: 22px 0 0; font-size: 13px; }
+.toc { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+.toc .pill { text-decoration: none; }
+.toc .pill:hover { background: var(--accent-soft); color: var(--accent-text); }
+section[id] { scroll-margin-top: 70px; }
+code { font-family: ui-monospace, "Cascadia Code", Menlo, monospace; font-size: .92em; }
 .empty { text-align: center; padding: 34px 18px; }
 .empty > b:first-child { display: block; font-size: 17px; margin-bottom: 6px; }
 footer.bottom { margin-top: 30px; border-top: 1px solid var(--border); padding: 26px 0 44px; font-size: 13px; color: var(--muted); }
@@ -186,7 +191,7 @@ footer.bottom .wrap-page { display: flex; flex-wrap: wrap; gap: 10px 22px; justi
 .js .reveal { opacity: 0; transform: translateY(14px); transition: opacity .6s ease, transform .6s cubic-bezier(.2,.8,.2,1); }
 .js .reveal.in { opacity: 1; transform: none; }
 @media (prefers-reduced-motion: reduce) { .bar > span { animation: none; } .js .reveal { opacity: 1; transform: none; transition: none; } .btn { transition: none; } html { scroll-behavior: auto; } }
-@media (max-width: 640px) { nav.links a:not(.btn) { display: none; } .hero { padding-top: 34px; } }
+@media (max-width: 640px) { nav.links a:not(.btn) { display: none; } .hero { padding-top: 34px; } table.stack thead { display: none; } table.stack tr { display: block; padding: 10px 14px; border-bottom: 1px solid var(--border); } table.stack tr:last-child { border-bottom: 0; } table.stack td { display: block; padding: 2px 0; border: 0; white-space: normal; min-width: 0; } }
 `;
 
 /** Counters count up and sections rise in as they come into view; nothing depends on it. */
@@ -223,7 +228,7 @@ function page(title: string, body: string, root: string, repo = "https://github.
 <nav class="links">
 <a href="${root}index.html#leaderboard">Leaderboard</a>
 <a href="${root}index.html#models">Models</a>
-<a href="${root}index.html#method">Methodology</a>
+<a href="${root}methodology.html">Methodology</a>
 <a href="${esc(repo)}">GitHub</a>
 <a class="btn primary" href="${RELEASES}">Download Mack</a>
 </nav>
@@ -431,9 +436,7 @@ ${contamination}
 <li><b>Ranked:</b> whole-set runs only, with a 95% range.</li>
 <li><b>*</b> cost, time, tokens and model are self-reported.</li>
 </ul>
-<details style="margin-top:12px"><summary>How to read these results (glossary)</summary>
-<div class="card basics" style="margin-top:10px">${BENCH_BASICS.map((b) => `<p><b>${esc(b.term)}.</b> ${esc(b.text)}</p>`).join("\n")}</div>
-</details>
+<p style="margin-top:12px"><a class="btn" href="methodology.html">Full methodology: problem sets, methods, time, scoring</a></p>
 </section>`,
     "",
     repo,
@@ -723,11 +726,165 @@ ${SELF_REPORTED}
 }
 
 /** Whether a problem has a deep-dive page: it has attempts, steps or a proof to show. */
+/** The methods, how each works, and where it comes from: the methodology page's table. */
+const METHODS: { label: string; from: string; how: string }[] = [
+  { label: METHOD_LABELS.single, from: "Mack", how: "The model writes a whole Lean proof; Lean checks it; the errors go back and the model revises. Several chains can run at once, and a chain starts over from a clean conversation after a set number of revisions." },
+  { label: METHOD_LABELS.decompose, from: "Mack", how: "Attempts first. If they fail, a planning model splits the statement into lemmas; each lemma is proved like a problem of its own (and split again, to a set depth), then the pieces are put back together and the whole proof is verified." },
+  { label: METHOD_LABELS.steps, from: "Mack", how: "The proof is built one tactic at a time on Lean's live proof states (the REPL). Only steps Lean accepts are kept; the most promising state (fewest, smallest goals) is extended next." },
+  { label: METHOD_LABELS.search, from: "Open Math Harness", how: "A tree of partial proofs. Workers continue chosen nodes; the harness scores each child with Lean (scoring v3: only steps Lean closes count) and picks the next nodes. Limits: workers per round, rounds, fan-out, calls per worker, a model-call budget." },
+  { label: METHOD_LABELS.ultramath, from: "Open Math Harness", how: "Several agents attack one problem, each on a direction registered on a shared board; duplicates are refused, and abandoned directions are posted with a reason. Limits: members, rounds, a model-call budget." },
+];
+
+/** What a run may turn on, and what each changes. */
+const PROCEDURES: { name: string; when: string; what: string }[] = [
+  { name: "Strict verifier", when: "always", what: "The acceptance check below. Ported from Open Math Harness." },
+  { name: "Linters off", when: "always", what: "Lean's style warnings are not errors and are not shown to the model." },
+  { name: "Dead-tactic repair", when: "attempts, decompose", what: "A tactic after the goal is already closed is removed instead of costing an attempt." },
+  { name: "Name repair", when: "attempts, decompose", what: "A lemma name Mathlib does not have is replaced when exactly one real name fits." },
+  { name: "Automation sweep", when: "if on", what: "rfl, decide, omega, norm_num, simp, linarith, nlinarith, positivity, ring, aesop, grind… tried before any model call and on every gap a proof leaves." },
+  { name: "Premise selection", when: "if on", what: "The Mathlib theorems the statement most likely needs are given with the problem." },
+  { name: "Easier versions first", when: "if on", what: "Special cases and the key lemma are proved first and offered to every attempt." },
+  { name: "Lemma pool", when: "if on", what: "Helper lemmas from problems already solved in the same run are offered to later ones. Never shared between runs." },
+  { name: "Prover model", when: "if set", what: "A model trained for Lean writes the attempts; the main model plans. Several make an ensemble." },
+  { name: "Thinking level", when: "if set", what: "The reasoning effort asked of the models; otherwise each model's default." },
+];
+
+/** The full methodology: what is measured, on what, how, and what can and cannot be checked. */
+export function methodologyPage(repo: string): string {
+  const sets = BENCH_SETS.map(
+    (set) => `<tr><td><b>${esc(set.label)}</b></td><td>${set.problems.length}</td><td class="wrap">${esc(set.blurb)}</td></tr>`,
+  ).join("\n");
+  const methods = METHODS.map((m) => `<tr><td><b>${esc(m.label.replace(/ \(.*\)$/, ""))}</b></td><td>${m.from === "Mack" ? '<span class="pill">Mack</span>' : '<span class="pill omh">Open Math Harness</span>'}</td><td class="wrap">${esc(m.how)}</td></tr>`).join("\n");
+  const procedures = PROCEDURES.map((x) => `<tr><td><b>${esc(x.name)}</b></td><td class="muted">${esc(x.when)}</td><td class="wrap">${esc(x.what)}</td></tr>`).join("\n");
+  const failures = Object.values(FAILURES)
+    .map((f) => {
+      const text = f === FAILURES.other ? "Any other Lean error: the problem page shows the last one." : f.fix[0].toUpperCase() + f.fix.slice(1) + ".";
+      return `<tr><td><b>${esc(f.label)}</b></td><td class="wrap">${esc(text)}</td></tr>`;
+    })
+    .join("\n");
+  const toc = [
+    ["solved", "What counts as solved"],
+    ["sets", "Problem sets"],
+    ["sample", "Which problems"],
+    ["methods", "Methods"],
+    ["procedures", "Procedures"],
+    ["limits", "Limits and budgets"],
+    ["time", "Time and cost"],
+    ["scoring", "Scoring"],
+    ["failures", "Why problems fail"],
+    ["checks", "What is checked"],
+  ]
+    .map(([id, t]) => `<a class="pill" href="#${id}">${t}</a>`)
+    .join(" ");
+  return page(
+    "Methodology · Mack benchmark",
+    `<section class="hero compact">
+<h1>Methodology</h1>
+<p class="lead">How every run on this site is made and scored.</p>
+<p class="toc">${toc}</p>
+</section>
+<section id="solved">
+<h2>What counts as solved</h2>
+<p class="sub">Lean decides, never the model. A proof is accepted only when all of these hold:</p>
+<ul class="bullets">
+<li>The theorem statement and the file's preamble are unchanged, character for character.</li>
+<li>Lean elaborates the file with no error.</li>
+<li>No <code>sorry</code>, and no axioms beyond Lean's three standard ones (<code>propext</code>, <code>Classical.choice</code>, <code>Quot.sound</code>).</li>
+<li>The proved theorem's fully elaborated type is identical to the original statement's.</li>
+<li>No forbidden shortcuts (new axioms, <code>native_decide</code>, editing the statement).</li>
+</ul>
+<p class="note">Lean's report is read only after a random per-run marker, so text a proof prints cannot fake a pass.</p>
+</section>
+<section id="sets">
+<h2>Problem sets</h2>
+<div class="scroll"><table class="stack"><thead><tr><th>Set</th><th>Problems</th><th>What it is</th></tr></thead><tbody>
+${sets}
+</tbody></table></div>
+<p class="note">miniF2F (MIT) and PutnamBench (Apache-2.0) statements, as formalized upstream. Rates on different sets are not comparable.</p>
+</section>
+<section id="sample">
+<h2>Which problems</h2>
+<ul class="bullets">
+<li><b>Fixed order.</b> Each set has one fixed pseudo-random order; a run of n problems takes the first n. Two runs of the same size always face the same problems, and 20 is part of 50.</li>
+<li><b>Whole-set runs are ranked.</b> Quick runs (part of a set) are listed below them, marked and unranked: a small sample can be easier or harder than the set.</li>
+<li><b>Skipped counts as unsolved.</b> If a run stops or spends its budget, the problems left still count, so stopping early cannot raise a score.</li>
+</ul>
+</section>
+<section id="methods">
+<h2>Methods</h2>
+<div class="scroll"><table class="stack"><thead><tr><th>Method</th><th>From</th><th>How it works</th></tr></thead><tbody>
+${methods}
+</tbody></table></div>
+<p class="note">Each run lists its harness: Mack's version, the Open Math Harness commit it follows and the procedures used. Runs from different harnesses are not the same experiment.</p>
+</section>
+<section id="procedures">
+<h2>Procedures</h2>
+<div class="scroll"><table class="stack"><thead><tr><th>Procedure</th><th>Used</th><th>What it does</th></tr></thead><tbody>
+${procedures}
+</tbody></table></div>
+</section>
+<section id="limits">
+<h2>Limits and budgets</h2>
+<div class="scroll"><table class="stack"><thead><tr><th>Limit</th><th>What it bounds</th></tr></thead><tbody>
+<tr><td><b>Attempts per problem</b></td><td class="wrap">Model calls that write a proof, across all chains. Automation does not count.</td></tr>
+<tr><td><b>Attempts at once</b></td><td class="wrap">Parallel chains sharing that budget; the first verified proof stops the others.</td></tr>
+<tr><td><b>Lean deadline</b></td><td class="wrap">Per check (600 s by default). A slower check is a failed attempt, never a pass.</td></tr>
+<tr><td><b>Run budget</b></td><td class="wrap">USD the whole run may spend; when it is spent the remaining problems are skipped.</td></tr>
+<tr><td><b>Search and swarm limits</b></td><td class="wrap">Rounds, workers, fan-out or members, and a model-call budget per problem.</td></tr>
+</tbody></table></div>
+</section>
+<section id="time">
+<h2>Time and cost</h2>
+<ul class="bullets">
+<li><b>Time</b> is wall-clock per problem: model calls, Lean checks and automation together. It depends on the provider's speed, the computer and how many Lean processes run at once, so compare it within a run more than across runs.</li>
+<li><b>Time to first proof</b> on a problem page is when the verified proof arrived; the time bar shows each attempt.</li>
+<li><b>Cost</b> is tokens times the model's price, as the run counted it. <b>Per solve</b> is the run's whole cost divided by problems solved.</li>
+<li><b>Tokens</b> are what the provider reported. Each problem page keeps up to ${LOG_LIMITS.attempts} attempts, each with Lean's feedback.</li>
+</ul>
+</section>
+<section id="scoring">
+<h2>Scoring</h2>
+<div class="scroll"><table class="stack"><thead><tr><th>Measure</th><th>Definition</th></tr></thead><tbody>
+<tr><td><b>Solve rate</b></td><td class="wrap">Problems solved out of the whole sample (skipped included).</td></tr>
+<tr><td><b>Range</b></td><td class="wrap">95% Wilson interval of the rate. 13 of 20 is 43–82%; two runs differ only when their ranges barely overlap.</td></tr>
+<tr><td><b>Solved within k</b></td><td class="wrap">Problems solved within ${WITHIN.join(", ")} model attempts. Like pass@k, but Mack's attempts learn from Lean's errors, where pass@k samples independently.</td></tr>
+<tr><td><b>By automation</b></td><td class="wrap">Solved by Lean's own tactics before any model wrote a proof (0 attempts). A floor every model starts from.</td></tr>
+<tr><td><b>Attempts per solve</b></td><td class="wrap">Average attempts the solved problems took.</td></tr>
+<tr><td><b>Contamination check</b></td><td class="wrap">Recent Putnam (${RECENT_YEARS.join(", ")}) against older Putnam. Much weaker on recent problems suggests memory helped on older ones.</td></tr>
+</tbody></table></div>
+</section>
+<section id="failures">
+<h2>Why problems fail</h2>
+<p class="sub">Each failed attempt is labelled from Lean's errors; a problem's reason is its most common label.</p>
+<div class="scroll"><table class="stack"><thead><tr><th>Label</th><th>Meaning, and what would help</th></tr></thead><tbody>
+${failures}
+</tbody></table></div>
+</section>
+<section id="checks">
+<h2>What is checked</h2>
+<div class="grid2">
+<div class="card"><h3>Checked by CI on every shared run</h3><ul class="bullets">
+<li>Every solved proof is re-verified with Lean and the strict verifier, against the same Mathlib.</li>
+<li>The sample is exactly the fixed problems for its size, each with one result.</li>
+<li>A run that fails either is not merged.</li>
+</ul></div>
+<div class="card"><h3>Self-reported</h3><ul class="bullets">
+<li>Model names, thinking level, cost, time and tokens.</li>
+<li>Failed problems: a failure cannot be re-run for free, so its attempts are shown as logged.</li>
+</ul></div>
+</div>
+<p class="note">Source: <a href="${esc(repo)}/tree/main/core/bench">core/bench</a> and <a href="${esc(repo)}/blob/main/core/lean/verify.ts">the verifier</a>.</p>
+</section>`,
+    "",
+    repo,
+  );
+}
+
 const hasPage = (x: BenchResult) => !!(x.log?.length || x.timeline?.length || x.proof);
 
 /** Every page of the site, by path. */
 export function buildSite(runs: SharedRun[], repo: string): Record<string, string> {
-  const files: Record<string, string> = { "index.html": indexPage(runs, repo) };
+  const files: Record<string, string> = { "index.html": indexPage(runs, repo), "methodology.html": methodologyPage(repo) };
   for (const slug of new Set(runs.map((r) => modelSlug(r)))) files[`models/${slug}.html`] = modelPage(slug, runs, repo);
   for (const r of runs) {
     files[`runs/${r.folder}.html`] = runPage(r, repo);

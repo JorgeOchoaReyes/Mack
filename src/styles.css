@@ -1108,6 +1108,41 @@ body:has(.resizer.dragging) { cursor: col-resize; user-select: none; }
 .bench-model-row select.input { min-width: 0; text-overflow: ellipsis; }
 
 /* A one-line explanation behind a small (i), instead of helper text. */
-.info-tip { position: relative; display: inline-grid; place-items: center; width: 15px; height: 15px; margin-left: 6px; border-radius: 50%; border: 1px solid var(--border-strong); color: var(--muted); font: 600 10px/1 inherit; cursor: help; vertical-align: 1px; }
+.info-tip { position: relative; display: inline-grid; place-items: center; width: 15px; height: 15px; margin-left: 6px; border-radius: 50%; border: 1px solid var(--border-strong); color: var(--muted); font-family: inherit; font-size: 10px; font-weight: 600; line-height: 1; font-style: normal; cursor: help; vertical-align: 1px; }
 .info-tip::after { content: attr(data-tip); position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%); width: max-content; max-width: 280px; padding: 7px 10px; border-radius: 8px; background: var(--text); color: var(--bg); font-size: 12.5px; font-weight: 500; line-height: 1.45; text-align: left; white-space: normal; pointer-events: none; z-index: 50; display: none; }
 .info-tip:hover::after, .info-tip:focus::after { display: block; }
+
+/* Settings: one list of rows per section, the label on the left and a compact control on the right. */
+.settings-page .settings-group { gap: 0; padding: 6px 20px 8px; }
+.settings-page .settings-group > h2 { padding: 12px 0 8px; }
+.settings-page .grid-2, .settings-page .global-spend { display: contents; }
+.settings-page .field, .settings-page .toggle { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 16px; row-gap: 4px; min-height: 48px; padding: 8px 0; border-top: 1px solid var(--border); }
+.settings-page .settings-group > h2 + .field, .settings-page .settings-group > h2 + .toggle, .settings-page .settings-group > h2 + .grid-2 > .field:first-child, .settings-page .settings-group > h2 + .global-spend > .grid-2 > .field:first-child { border-top: 0; }
+.settings-page .field-label { font-size: 13.5px; font-weight: 500; display: flex; align-items: center; flex-wrap: wrap; }
+.settings-page .field-hint { grid-column: 1 / -1; }
+.settings-page .field > .input { width: 120px; }
+.settings-page .field > select.input { width: 220px; }
+.settings-page .field > input.input:not([type="number"]) { width: 260px; }
+.settings-page .field > .inline-fields { width: 420px; max-width: 100%; justify-content: flex-end; }
+.settings-page .field > .inline-fields > .input[type="number"] { width: 100px; flex: none; }
+.settings-page .field > .inline-fields > select.input { width: 150px; }
+.settings-page .field > .inline-fields > .model-select, .settings-page .field > .inline-fields > select.input:last-child { flex: 1; min-width: 0; }
+.settings-page .toggle > span:last-child { order: 1; font-size: 13.5px; font-weight: 500; }
+.settings-page .toggle > .toggle-track { order: 2; }
+.settings-page .global-spend > .row { padding: 0 0 10px; }
+.settings-page .settings-sub { margin: 0; padding: 18px 0 6px; font-size: 11.5px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); border-top: 1px solid var(--border); }
+.settings-page .settings-sub + .grid-2 > .field:first-child { border-top: 0; }
+.settings-page .settings-details { border: 0; border-top: 1px solid var(--border); border-radius: 0; padding: 0; background: none; }
+.settings-page .settings-details > summary { padding: 14px 0; font-size: 13.5px; font-weight: 500; }
+.settings-page .settings-details[open] > summary { margin: 0; }
+.settings-page .settings-details > .grid-2 > .field:first-child { border-top: 0; }
+@media (max-width: 640px) {
+  .settings-page .field { grid-template-columns: 1fr; }
+  .settings-page .field > .input, .settings-page .field > select.input, .settings-page .field > input.input:not([type="number"]), .settings-page .field > .inline-fields { width: 100%; }
+}
+.settings-page .global-spend .inline-fields > select.input { flex: none; width: 130px; }
+.settings-page .settings-group > h2 + .global-spend > .field:first-child { border-top: 0; }
+.settings-page .global-spend > .row { padding: 0 0 12px; margin-top: -4px; }
+.settings-page .gh-accounts { padding-bottom: 12px; }
+.settings-page .global-spend .field > .inline-fields { width: auto; }
+.settings-page .global-spend .field > .inline-fields > select.input { flex: none; width: 130px; }

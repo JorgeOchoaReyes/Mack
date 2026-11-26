@@ -95,6 +95,9 @@ export function BenchmarkPage({ settings, onGo }: Props) {
           <Button size="sm" icon={ExternalLink} onClick={() => void api.openExternal(BENCH_SITE)} title="Every shared run, ranked, with each problem's attempts">
             Public leaderboard
           </Button>
+          <Button size="sm" icon={ExternalLink} onClick={() => void api.openExternal(`${BENCH_SITE}methodology.html`)} title="Problem sets, methods, time and scoring">
+            Methodology
+          </Button>
         </div>
         <p className="muted">
           Run competition problems in Lean with your models. Only Lean-verified proofs count.
