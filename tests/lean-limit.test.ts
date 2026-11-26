@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { leanBudget, leanSlots, setLeanSlots, splitBudget, withLeanSlot } from "../core/lean/runner";
+import { leanBudget, leanRunner, leanSlots, setLeanSlots, splitBudget, withLeanSlot } from "../core/lean/runner";
 
 const GB = 1024 ** 3;
 
@@ -31,6 +31,27 @@ describe("limiting how many Lean processes run at once", () => {
     expect(most).toBe(2);
     expect(order).toEqual([0, 1, 2, 3]);
     expect(leanSlots().busy).toBe(0);
+  });
+
+  it("lets a stopped run leave the queue without ever running, and starts no Lean once stopped", async () => {
+    setLeanSlots(1);
+    let release = () => {};
+    const holder = withLeanSlot(() => new Promise<void>((r) => (release = r)));
+    const ctl = new AbortController();
+    let ran = false;
+    const queued = withLeanSlot(async () => {
+      ran = true;
+    }, ctl.signal);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(leanSlots().waiting).toBe(1);
+    ctl.abort();
+    await expect(queued).rejects.toThrow("stopped");
+    expect(leanSlots().waiting).toBe(0);
+    release();
+    await holder;
+    expect(ran).toBe(false);
+    // A runner whose signal is already aborted answers "no verdict" without starting Lean.
+    expect(await leanRunner({ workspace: "/nowhere", timeoutMs: 1000, signal: ctl.signal })("theorem t : True := trivial")).toEqual({ kind: "noVerdict", reason: "stopped" });
   });
 
   it("frees a slot when a run throws", async () => {

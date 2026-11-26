@@ -38,10 +38,21 @@ export function leanSlots(): { slots: number; busy: number; waiting: number } {
   return { slots, busy, waiting: waiting.length };
 }
 
-/** Run `fn` holding one of the slots. */
-export async function withLeanSlot<T>(fn: () => Promise<T>): Promise<T> {
-  await new Promise<void>((resolve) => {
-    waiting.push(resolve);
+/** Run `fn` holding one of the slots; when `signal` aborts while it waits, it leaves the queue and `fn` never runs. */
+export async function withLeanSlot<T>(fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+  await new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) return reject(new Error("stopped"));
+    const turn = () => {
+      signal?.removeEventListener("abort", leave);
+      resolve();
+    };
+    const leave = () => {
+      const i = waiting.indexOf(turn);
+      if (i >= 0) waiting.splice(i, 1);
+      reject(new Error("stopped"));
+    };
+    signal?.addEventListener("abort", leave, { once: true });
+    waiting.push(turn);
     pump();
   });
   try {
@@ -70,10 +81,14 @@ export type LeanConfig = {
   /** A Lake project with Mathlib as a dependency (see core/lean/setup.ts). */
   workspace: string;
   timeoutMs: number;
+  /** Stops every run of this runner: a waiting one never starts, a running Lean is killed. Either is "no verdict". */
+  signal?: AbortSignal;
 };
 
+const STOPPED: RunResult = { kind: "noVerdict", reason: "stopped" };
+
 export function leanRunner(config: LeanConfig): LeanRun {
-  return (source: string): Promise<RunResult> => withLeanSlot(() => runOnce(config, source));
+  return (source: string): Promise<RunResult> => (config.signal?.aborted ? Promise.resolve(STOPPED) : withLeanSlot(() => runOnce(config, source), config.signal).catch(() => STOPPED));
 }
 
 /** One run on the remote machine: the source goes over stdin, and only Lean's own exit is a verdict. */
@@ -108,6 +123,12 @@ function runRemote(r: RemoteLean, config: LeanConfig, source: string): Promise<R
       else if (code !== null) done({ kind: "refused", output: `lean exited with ${code}:\n${output}` });
       else done({ kind: "noVerdict", reason: `the remote run was ended by ${signal}:\n${output}` });
     });
+    const stop = () => {
+      killTree(child);
+      done(STOPPED);
+    };
+    config.signal?.addEventListener("abort", stop, { once: true });
+    child.on("close", () => config.signal?.removeEventListener("abort", stop));
     child.stdin.end(source);
   });
 }
@@ -139,6 +160,13 @@ async function runOnce(config: LeanConfig, source: string): Promise<RunResult> {
         killTree(child);
         done({ kind: "noVerdict", reason: `lean exceeded the ${config.timeoutMs} ms deadline` });
       }, config.timeoutMs);
+      const stop = () => {
+        clearTimeout(timer);
+        killTree(child);
+        done(STOPPED);
+      };
+      config.signal?.addEventListener("abort", stop, { once: true });
+      child.on("close", () => config.signal?.removeEventListener("abort", stop));
       child.stdout.on("data", (d: Buffer) => (output += d.toString("utf8")));
       child.stderr.on("data", (d: Buffer) => (output += d.toString("utf8")));
       child.on("error", (e) => {

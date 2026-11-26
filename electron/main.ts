@@ -843,7 +843,7 @@ async function runProof(problem: string, mode: RunMode, forward: (ev: RunEvent) 
     forward(ev);
   };
   try {
-    const run = leanRunner({ workspace: s.leanWorkspace, timeoutMs: s.timeoutMs });
+    const run = leanRunner({ workspace: s.leanWorkspace, timeoutMs: s.timeoutMs, signal: ctl.signal });
     const lemmas = origin.projectId ? await projectLemmas(origin.projectId, origin.file) : [];
     if (s.mode === "ultramath") {
       const lean = needsLean ? { run, check: quickCheck(s, 2) ?? (async (src: string) => checkFromRun(await run(src))) } : {};
@@ -928,7 +928,8 @@ async function benchOne(s: Settings, p: { id: string; source: string }, bench: B
   const ctl = new AbortController();
   const hooks = { onCap: () => ctl.abort() };
   const provider = metered(withEffort(makeProvider(s, s.provider), s.proofEffort), priceFor(s.prices, model, s.assumedPrice).price, meter, hooks);
-  const run = leanRunner({ workspace: s.leanWorkspace, timeoutMs: s.timeoutMs });
+  // A stop kills this problem's Lean runs at once, as well as its model calls.
+  const run = leanRunner({ workspace: s.leanWorkspace, timeoutMs: s.timeoutMs, signal: AbortSignal.any([signal, ctl.signal]) });
   let attempts = 0;
   let proof: string | undefined;
   let message = "";
@@ -1196,7 +1197,7 @@ ipcMain.handle("bench:start", async (e, setId: string, n: number, budget: number
         run.status = "stopped";
         run.message = "stopped before it started";
         run.finishedAt = Date.now();
-        saveBench(run);
+        send(run)({ type: "finished", run });
         continue;
       }
       await runBench({ run, set, signal: ctl.signal, onEvent: send(run), proveOne: (p, signal) => benchOne(s, p, run, signal, (message) => send(run)({ type: "status", id: p.id, message }), pool) }).catch((err: Error) => {

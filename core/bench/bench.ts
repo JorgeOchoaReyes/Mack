@@ -279,6 +279,8 @@ export function summarize(run: Pick<BenchRun, "results">): BenchSummary {
  * Run each problem of the sample in turn with `proveOne`, reporting each
  * result. The run stops when `signal` aborts or the budget is spent; the
  * problems left are marked skipped, so a stopped run still reads honestly.
+ * A stop ends the run at once: the problem in progress is not waited for (its
+ * work is told to stop through the same signal) and counts as skipped.
  */
 export async function runBench(o: {
   run: BenchRun;
@@ -288,6 +290,8 @@ export async function runBench(o: {
   onEvent: (e: BenchEvent) => void;
 }): Promise<BenchRun> {
   const run = o.run;
+  // Settles when the run is stopped: the problem in progress is raced against it, so a stop never waits for it.
+  const stopped = new Promise<null>((resolve) => (o.signal.aborted ? resolve(null) : o.signal.addEventListener("abort", () => resolve(null), { once: true })));
   o.onEvent({ type: "started", run });
   for (const id of run.sample) {
     const p = o.set.problems.find((x) => x.id === id);
@@ -300,9 +304,10 @@ export async function runBench(o: {
       continue;
     }
     o.onEvent({ type: "status", id, message: "starting" });
+    const t0 = Date.now();
     let result: BenchResult;
     try {
-      result = await o.proveOne(p, o.signal);
+      result = (await Promise.race([o.proveOne(p, o.signal), stopped])) ?? { id, outcome: "skipped", attempts: 0, ms: Date.now() - t0, usd: 0, message: "stopped" };
     } catch (e) {
       result = { id, outcome: "error", attempts: 0, ms: 0, usd: 0, message: (e as Error).message };
     }
