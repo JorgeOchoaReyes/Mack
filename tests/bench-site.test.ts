@@ -67,8 +67,8 @@ describe("the benchmark site", () => {
       "https://github.com/o/r",
     );
     // Each run has a page, and each problem with an attempt log has its own.
-    // Each run has a page, each problem with an attempt log has its own, and so does each model setup.
-    expect(Object.keys(site).sort()).toEqual(["index.html", "models/big-prover-a-prover-b.html", "runs/a-run.html", ...run.results.map((r) => `runs/a-run/${r.id}.html`).sort(), "runs/b-run.html"].sort());
+    // Each run has a page, each problem with attempts, steps or a proof has its own, and so does each model setup.
+    expect(Object.keys(site).sort()).toEqual(["index.html", "models/big-prover-a-prover-b.html", "runs/a-run.html", ...run.results.map((r) => `runs/a-run/${r.id}.html`).sort(), "runs/b-run.html", ...run.results.map((r) => `runs/b-run/${r.id}.html`)].sort());
     const index = site["index.html"];
     expect(index.indexOf("runs/a-run.html")).toBeLessThan(index.indexOf("runs/b-run.html"));
     // Two problems are a quick run: listed, never ranked.
@@ -144,7 +144,7 @@ describe("a problem's attempt timeline", () => {
     const one = { ...run, results: [{ ...run.results[1], log }] };
     const site = buildSite([{ ...one, folder: "r1" }], "https://github.com/o/r");
     const page = site[`runs/r1/${run.results[1].id}.html`];
-    expect(page).toContain("(same as #1)");
+    expect(page).toContain("(same as attempt 1)");
     expect(page).toContain("maybe bar");
     expect(page).toContain("+2m05s");
     expect(site["runs/r1.html"]).toContain(`href="r1/${run.results[1].id}.html"`);
@@ -220,5 +220,30 @@ describe("Open Math Harness's own methods in the benchmark", () => {
     expect(page).toContain("Solved within k attempts");
     expect(page).toContain("within 64 attempts");
     expect(page).toContain("As the run reported it");
+  });
+});
+
+describe("the problem deep dive", () => {
+  it("explains a problem solved by automation, with the tactic that closed it", () => {
+    const set = BENCH_SETS[0];
+    const p = set.problems[0];
+    const auto: BenchRun = {
+      id: "a",
+      set: set.id,
+      startedAt: 0,
+      finishedAt: 1,
+      status: "done",
+      config: { model: "x/m", maxAttempts: 4, parallel: 1, automation: true, revisions: 0 },
+      sample: [p.id],
+      budget: 0,
+      results: [{ id: p.id, outcome: "solved", attempts: 0, ms: 90_000, usd: 0, proof: "theorem t : 1 = 1 := by\n  grind\n", timeline: [{ t: 0, message: "Trying Lean's automation…" }] }],
+    };
+    const site = buildSite([{ ...auto, folder: "auto" }], "https://github.com/o/r");
+    const page = site[`runs/auto/${p.id}.html`];
+    expect(page).toContain("Solved by automation");
+    expect(page).toContain("with <code>grind</code>");
+    expect(page).toContain("before any model wrote a proof");
+    expect(site["runs/auto.html"]).toContain("Time per problem");
+    expect(site["runs/auto.html"]).toContain(`${p.id}: solved by automation, 1m 30s`);
   });
 });
