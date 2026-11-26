@@ -71,12 +71,9 @@ describe("the benchmark site", () => {
     expect(Object.keys(site).sort()).toEqual(["index.html", "methodology.html", "models/big-prover-a-prover-b.html", "runs/a-run.html", ...run.results.map((r) => `runs/a-run/${r.id}.html`).sort(), "runs/b-run.html", ...run.results.map((r) => `runs/b-run/${r.id}.html`)].sort());
     const index = site["index.html"];
     expect(index.indexOf("runs/a-run.html")).toBeLessThan(index.indexOf("runs/b-run.html"));
-    // Two problems are a quick run: listed, never ranked.
-    expect(index).not.toContain("BEST");
-    // Quick runs are listed openly, marked, and not numbered.
-    expect(index).toContain('<span class="pill">quick</span>');
-    expect(index).toContain("A run on part of the set. Listed, not ranked");
-    expect(index).not.toContain("<details class=\"quick\"");
+    // Two runs of the same two problems share one table, ranked against each other.
+    expect(index).toContain('<h3 class="size-head">2 problems <span class="muted">· 2 runs</span>');
+    expect(index).toContain("BEST");
     expect(index).toContain('href="models/big-prover-a-prover-b.html"');
     const model = site["models/big-prover-a-prover-b.html"];
     expect(model).toContain("big + prover-a, prover-b");
@@ -207,7 +204,7 @@ describe("Open Math Harness's own methods in the benchmark", () => {
     expect(METHOD_LABELS.ultramath).toContain("Open Math Harness");
   });
 
-  it("ranks only runs on the whole set, with a 95% range, and splits PutnamBench by year", () => {
+  it("ranks runs within each sample size, the whole set first, with a 95% range, and splits PutnamBench by year", () => {
     const whole = (id: string, solvedEvery: number): BenchRun => ({
       ...run,
       id,
@@ -223,8 +220,9 @@ describe("Open Math Harness's own methods in the benchmark", () => {
     const index = site["index.html"];
     expect(index).toContain("BEST");
     expect(index.indexOf("runs/half.html")).toBeLessThan(index.indexOf("runs/quarter.html"));
+    expect(index).toContain(`Whole set · ${set.problems.length} problems`);
     expect(index).toContain("95% range");
-    expect(index).toContain("Recent problems: the contamination check");
+    expect(index).toContain(`<section id="recent"`);
     expect(index).toMatch(/1\/3 \(33\.3%\)<\/td><td>0\/2 \(0\.0%\)/);
     const page = site["runs/half.html"];
     expect(page).toContain("Solved within k attempts");

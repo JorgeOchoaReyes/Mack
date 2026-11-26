@@ -84,6 +84,9 @@ nav.links .btn { color: #17150a; }
 .mcard .big { font-size: 26px; font-weight: 750; font-variant-numeric: tabular-nums; margin: 6px 0 2px; }
 .mcard .meta { color: var(--muted); font-size: 12.5px; }
 .mcard .bar { display: block; height: 8px; margin: 8px 0 6px; }
+.facts { display: flex; flex-wrap: wrap; gap: 6px 22px; margin: 14px 0 0; color: var(--muted); font-size: 14px; }
+.facts b { color: var(--text); font-size: 17px; font-variant-numeric: tabular-nums; margin-right: 4px; }
+.cell-sub { display: block; color: var(--muted); font-size: 11.5px; margin-top: 1px; }
 .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(34px, 1fr)); gap: 5px; }
 .tile { display: block; aspect-ratio: 1; border-radius: 6px; background: var(--bar); position: relative; }
 .tile.ok { background: var(--ok); }
@@ -156,13 +159,14 @@ tr:last-child td { border-bottom: 0; }
 td.wrap { white-space: normal; min-width: 180px; }
 .rank { font-weight: 750; color: var(--muted); }
 tr.first .rank { color: var(--accent-text); }
-.rate { display: flex; align-items: center; gap: 10px; min-width: 170px; font-variant-numeric: tabular-nums; }
+.rate { display: flex; align-items: center; gap: 10px; min-width: 150px; font-variant-numeric: tabular-nums; }
 .bar { flex: 1; height: 8px; background: var(--bar); border-radius: 99px; overflow: hidden; min-width: 60px; }
 .bar > span { display: block; height: 100%; width: var(--w); border-radius: 99px; background: linear-gradient(90deg, var(--accent), var(--accent-2)); animation: grow 1s cubic-bezier(.2,.8,.2,1) both; animation-delay: calc(var(--i, 0) * 70ms + 150ms); }
 .bar.badbar > span { background: var(--bad); opacity: .75; }
 .bar.okbar > span { background: var(--ok); }
 .stat .small { display: block; }
-.quick-head { font-size: 15px; margin: 18px 0 4px; }
+.size-head { font-size: 15px; margin: 18px 0 8px; }
+.panel > .size-head:first-child { margin-top: 4px; }
 @keyframes grow { from { width: 0; } to { width: var(--w); } }
 .pill { display: inline-block; padding: 2px 9px; border-radius: 99px; font-size: 11.5px; font-weight: 650; background: var(--bar); color: var(--muted); }
 .pill.best { background: var(--accent-soft); color: var(--accent-text); }
@@ -191,7 +195,7 @@ footer.bottom .wrap-page { display: flex; flex-wrap: wrap; gap: 10px 22px; justi
 .js .reveal { opacity: 0; transform: translateY(14px); transition: opacity .6s ease, transform .6s cubic-bezier(.2,.8,.2,1); }
 .js .reveal.in { opacity: 1; transform: none; }
 @media (prefers-reduced-motion: reduce) { .bar > span { animation: none; } .js .reveal { opacity: 1; transform: none; transition: none; } .btn { transition: none; } html { scroll-behavior: auto; } }
-@media (max-width: 640px) { nav.links a:not(.btn) { display: none; } .hero { padding-top: 34px; } table.stack thead { display: none; } table.stack tr { display: block; padding: 10px 14px; border-bottom: 1px solid var(--border); } table.stack tr:last-child { border-bottom: 0; } table.stack td { display: block; padding: 2px 0; border: 0; white-space: normal; min-width: 0; } }
+@media (max-width: 640px) { nav.links a:not(.btn) { display: none; } th.opt, td.opt { display: none; } th, td { padding: 10px 10px; } td.wrap { min-width: 0; } .rate { min-width: 0; } .rate .bar { display: none; } .hero { padding-top: 34px; } table.stack thead { display: none; } table.stack tr { display: block; padding: 10px 14px; border-bottom: 1px solid var(--border); } table.stack tr:last-child { border-bottom: 0; } table.stack td { display: block; padding: 2px 0; border: 0; white-space: normal; min-width: 0; } }
 `;
 
 /** Counters count up and sections rise in as they come into view; nothing depends on it. */
@@ -227,7 +231,6 @@ function page(title: string, body: string, root: string, repo = "https://github.
 <a class="brand" href="${root}index.html">${LOGO}<span>Mack benchmark</span></a>
 <nav class="links">
 <a href="${root}index.html#leaderboard">Leaderboard</a>
-<a href="${root}index.html#models">Models</a>
 <a href="${root}methodology.html">Methodology</a>
 <a href="${esc(repo)}">GitHub</a>
 <a class="btn primary" href="${RELEASES}">Download Mack</a>
@@ -238,7 +241,7 @@ ${body}
 </main>
 <footer class="bottom"><div class="wrap-page">
 <span>Runs shared from Mack's Benchmark screen. Solved means Lean accepted the proof.</span>
-<span><a href="${RELEASES}">Download Mack</a> · <a href="${esc(repo)}">GitHub</a> · <a href="${esc(repo)}#contributing">Contribute</a> · problems from miniF2F (MIT) and PutnamBench (Apache-2.0)</span>
+<span>Problems from miniF2F (MIT) and PutnamBench (Apache-2.0) · <a href="${esc(repo)}#contributing">Contribute</a></span>
 </div></footer>
 <script>${SCRIPT}</script>
 </body>
@@ -263,7 +266,8 @@ const tip = (text: string) => `<span class="tip" tabindex="0" role="note" aria-l
 const TIPS = {
   automation: "Lean's own tactics (omega, simp, linarith, grind…) closed it before any model wrote a proof. Free, and checked like any proof.",
   range: "95% confidence interval. With few problems it is wide; two runs differ only when their ranges barely overlap.",
-  quick: "A run on part of the set. Listed, not ranked: its sample can be easier or harder than the whole set.",
+  quick: "Runs of the same size face the same problems, so they are ranked against each other. A sample can be easier or harder than the whole set.",
+  whole: "Every problem of the set: the number to compare with published results.",
   within: "Problems solved within k model attempts. Like pass@k, but attempts learn from Lean's errors.",
   reported: "Self-reported by the run; cannot be checked. Solves can: CI re-checks every proof with Lean.",
   thinking: "How deeply the model was asked to reason (reasoning effort). auto = the model's default.",
@@ -271,7 +275,7 @@ const TIPS = {
   time: "Wall-clock per problem: model calls, Lean checks and automation together.",
   verified: "Accepted by Mack's strict verifier and re-checked with Lean in CI.",
   contamination: "Recent Putnam problems are least likely to be in training data. Much weaker there suggests memorization helped elsewhere.",
-  harness: "Mack's version and the Open Math Harness commit it follows; hover a cell for the procedures used.",
+  harness: "Under each method: the Mack version and Open Math Harness commit it ran. Hover for the procedures used.",
 } as const;
 
 /** A duration as people read it: 45s, 3m 20s, 1h 05m. */
@@ -301,33 +305,45 @@ const rowsOf = (runs: SharedRun[]): Row[] =>
     .filter((x) => x.p.of > 0)
     .sort((a, b) => Number(b.p.full) - Number(a.p.full) || b.p.rate - a.p.rate || b.p.of - a.p.of || a.usd - b.usd || b.r.startedAt - a.r.startedAt);
 
-/** One set's runs in one table: runs on the whole set ranked first, quick runs (part of the set) after them, marked and unranked. */
-function runTable(rows: Row[], root: string, withModel = true): string {
-  let rank = 0;
+/**
+ * Runs in one table. `ranked`: the rows all ran the same problems (one set,
+ * one sample size), so they are numbered best first; otherwise (a model's
+ * runs across sets and sizes) they are listed without ranks.
+ */
+function runTable(rows: Row[], root: string, withModel = true, ranked = true): string {
   const body = rows
     .map(({ r, p, usd: spent }, i) => {
-      const ranked = p.full;
-      if (ranked) rank++;
-      const best = ranked && rank === 1 && rows.filter((x) => x.p.full).length > 1;
-      return `<tr class="${ranked ? (rank === 1 ? "first" : "") : "dim"}">
-<td class="rank">${ranked ? rank : "–"}</td>
-${withModel ? `<td class="wrap"><a href="${root}models/${esc(modelSlug(r))}.html">${esc(models(r))}</a>*</td>` : ""}
-<td>${esc(METHOD_LABELS[r.config.method ?? "single"])}${r.config.method === "search" || r.config.method === "ultramath" ? ' <span class="pill omh">OMH</span>' : ""}</td>
-<td>${thinking(r)}</td>
-<td><a href="${root}runs/${esc(r.folder)}.html"><b>${p.solved}/${p.of}</b></a>${ranked ? "" : ` <span class="pill">quick</span>${i === rows.findIndex((x) => !x.p.full) ? tip(TIPS.quick) : ""}`}</td>
-<td>${rateCell(p.rate, best, i)}</td>
-<td class="muted">${range(p.low, p.high)}</td>
-<td>${p.solved ? usd(spent / p.solved) : "–"}</td>
-<td>${day(r.startedAt)}</td>
-<td title="${esc(r.harness?.procedures.join(", ") ?? "")}">${esc(harnessLabel(r.harness, r.appVersion ?? r.env?.app).replace(/^Mack /, ""))}</td>
+      const best = ranked && i === 0 && rows.length > 1;
+      return `<tr class="${ranked && i === 0 ? "first" : ""}">
+${ranked ? `<td class="rank">${i + 1}</td>` : ""}
+${withModel ? `<td class="wrap"><a href="${root}models/${esc(modelSlug(r))}.html">${esc(models(r))}</a>*</td>` : `<td>${esc(setLabel(r.set))}</td>`}
+<td class="opt" title="${esc(r.harness?.procedures.join(", ") ?? "")}">${esc(METHOD_LABELS[r.config.method ?? "single"].replace(/ \(.*\)$/, ""))}${r.config.method === "search" || r.config.method === "ultramath" ? ' <span class="pill omh">OMH</span>' : ""}<span class="cell-sub">${esc(harnessLabel(r.harness, r.appVersion ?? r.env?.app))}</span></td>
+<td class="opt">${thinking(r)}</td>
+<td><a href="${root}runs/${esc(r.folder)}.html"><b>${p.solved}/${p.of}</b></a></td>
+<td>${rateCell(p.rate, best, i)}<span class="cell-sub">${range(p.low, p.high)}</span></td>
+<td class="opt">${p.solved ? usd(spent / p.solved) : "–"}</td>
+<td class="opt">${day(r.startedAt)}</td>
 </tr>`;
     })
     .join("\n");
   return `<div class="scroll"><table>
-<thead><tr><th>#</th>${withModel ? "<th>Model*</th>" : ""}<th>Method</th><th>Thinking${tip(TIPS.thinking)}</th><th>Solved</th><th>Rate</th><th>95% range${tip(TIPS.range)}</th><th>$ / solve*${tip(TIPS.perSolve)}</th><th>Date</th><th>Harness${tip(TIPS.harness)}</th></tr></thead>
+<thead><tr>${ranked ? "<th>#</th>" : ""}${withModel ? "<th>Model*</th>" : "<th>Set</th>"}<th class="opt">Method${tip(TIPS.harness)}</th><th class="opt">Thinking${tip(TIPS.thinking)}</th><th>Solved</th><th>Rate · 95% range${tip(TIPS.range)}</th><th class="opt">$ / solve*${tip(TIPS.perSolve)}</th><th class="opt">Date</th></tr></thead>
 <tbody>
 ${body}
 </tbody></table></div>`;
+}
+
+/** A set's runs grouped by sample size, largest first (the whole set leads): each size its own ranked table, since runs of one size face the same problems. */
+function sizeTables(set: (typeof BENCH_SETS)[number], rows: Row[]): string {
+  const sizes = [...new Set(rows.map((x) => x.p.of))].sort((a, b) => b - a);
+  return sizes
+    .map((n) => {
+      const group = rows.filter((x) => x.p.of === n);
+      const title = n === set.problems.length ? `Whole set · ${n} problems` : `${n} problems`;
+      return `<h3 class="size-head">${title} <span class="muted">· ${group.length} run${group.length === 1 ? "" : "s"}</span>${tip(n === set.problems.length ? TIPS.whole : TIPS.quick)}</h3>
+${runTable(group, "")}`;
+    })
+    .join("\n");
 }
 
 /** PutnamBench split by year: older problems against the latest competitions, for each run that tried both. */
@@ -368,32 +384,28 @@ function setTabs(runs: SharedRun[]): string {
   const panels = sets
     .map((set, i) => {
       const rows = rowsOf(runs.filter((r) => r.set === set.id));
-      const full = rows.filter((x) => x.p.full).length;
       return `<div class="panel panel-${i}">
-${runTable(rows, "")}
-<p class="note">${set.problems.length} problems · ${full ? `${full} ranked` : "none on the whole set yet"}</p>
+${sizeTables(set, rows)}
+${rows.some((x) => x.p.full) ? "" : `<p class="note">No run on the whole set (${set.problems.length} problems) yet.</p>`}
 </div>`;
     })
     .join("\n");
   return `<style>${css}</style><div class="tabs">${inputs}\n${panels}</div>`;
 }
 
-/** The leaderboard: one tab per problem set, the models as cards, and the methodology in short. */
+/** The home page: the leaderboard (a tab per set, a table per sample size), the models when there are several, and the contamination check when it has data. */
 export function indexPage(runs: SharedRun[], repo: string): string {
   const scores = runs.map((r) => publishedScore(r));
-  const fullScores = scores.filter((x) => x.full);
-  const best = (fullScores.length ? fullScores : scores).reduce((a, x) => Math.max(a, x.rate), 0);
   const solved = scores.reduce((a, x) => a + x.solved, 0);
   const groups = modelGroups(runs);
   const contamination = contaminationRows(runs);
-  const counter = (value: number, opts: { dec?: number; suffix?: string } = {}) => `<span data-count="${value}" data-dec="${opts.dec ?? 0}" data-suffix="${opts.suffix ?? ""}">${value.toFixed(opts.dec ?? 0)}${opts.suffix ?? ""}</span>`;
   const cards = groups
     .map(
       (g, i) => `<a class="mcard" href="models/${esc(g.slug)}.html">
 <div class="name">${esc(g.name)}</div>
 <div class="big">${pct(g.best.p.rate)}</div>
 ${bar(g.best.p.rate, i)}
-<div class="meta">${esc(setLabel(g.best.r.set))} · ${g.best.p.solved}/${g.best.p.of}${g.best.p.full ? "" : " (quick)"} · ${g.runs.length} run${g.runs.length === 1 ? "" : "s"}${g.best.p.solved ? ` · ${usd(g.best.usd / g.best.p.solved)}/solve` : ""}</div>
+<div class="meta">${esc(setLabel(g.best.r.set))} · ${g.best.p.solved}/${g.best.p.of} · ${g.runs.length} run${g.runs.length === 1 ? "" : "s"}${g.best.p.solved ? ` · ${usd(g.best.usd / g.best.p.solved)}/solve` : ""}</div>
 </a>`,
     )
     .join("\n");
@@ -401,43 +413,25 @@ ${bar(g.best.p.rate, i)}
     "Mack benchmark",
     `<section class="hero compact">
 <h1>Proving competition math <em>in Lean</em></h1>
-<p class="lead">Open models on miniF2F and PutnamBench. Only Lean-verified proofs count.</p>
-<div class="cta">
-<a class="btn primary" href="${RELEASES}">Download Mack for Windows or Linux</a>
-<a class="btn" href="${esc(repo)}">GitHub</a>
-</div>
-<div class="kpis">
-${kpi(counter(runs.length), "runs shared")}
-${kpi(counter(groups.length), "model setups")}
-${kpi(counter(solved), "proofs, Lean-checked")}
-${kpi(counter(best * 100, { dec: 1, suffix: "%" }), "best rate", fullScores.length ? "on a whole set" : "quick runs only so far")}
-</div>
+<p class="lead">Open models on miniF2F and PutnamBench, run with Mack. Only proofs Lean verifies count.</p>
+<p class="facts"><span><b>${runs.length}</b> run${runs.length === 1 ? "" : "s"}</span><span><b>${groups.length}</b> model setup${groups.length === 1 ? "" : "s"}</span><span><b>${solved}</b> Lean-checked proof${solved === 1 ? "" : "s"}</span></p>
 </section>
-<section id="leaderboard" class="reveal">
+<section id="leaderboard">
 <h2>Leaderboard</h2>
-${setTabs(runs) || `<div class="card empty"><b>No runs shared yet</b>Download Mack, run the Benchmark and press <b>Share as a PR</b>.<div class="cta" style="justify-content:center"><a class="btn primary" href="${RELEASES}">Download Mack</a></div></div>`}
-${runs.length ? SELF_REPORTED : ""}
+${setTabs(runs) || `<div class="card empty"><b>No runs shared yet</b>Run the Benchmark in Mack and press <b>Share as a PR</b>.</div>`}
+<p class="note">${runs.length ? `* self-reported ${tip(TIPS.reported)} · ` : ""}<a href="methodology.html">How runs are made and scored</a></p>
 </section>
-${groups.length ? `<section id="models" class="reveal"><h2>Models</h2><div class="cards">${cards}</div></section>` : '<section id="models"></section>'}
-<section id="recent" class="reveal">
-<h2>Recent problems: the contamination check ${tip(TIPS.contamination)}</h2>
+${groups.length > 1 ? `<section id="models" class="reveal"><h2>Models</h2><div class="cards">${cards}</div></section>` : ""}
 ${
   contamination
-    ? `<div class="scroll"><table><thead><tr><th>Model*</th><th>Older Putnam</th><th>Recent</th></tr></thead><tbody>
+    ? `<section id="recent" class="reveal">
+<h2>Recent problems ${tip(TIPS.contamination)}</h2>
+<div class="scroll"><table><thead><tr><th>Model*</th><th>Older Putnam</th><th>Recent</th></tr></thead><tbody>
 ${contamination}
-</tbody></table></div>`
-    : `<p class="note">No runs yet. Run <b>${esc(setLabel(RECENT_SET))}</b> in Mack to add one.</p>`
-}
-</section>
-<section id="method" class="reveal">
-<h2>Methodology</h2>
-<ul class="bullets">
-<li><b>Solved:</b> Lean's strict verifier accepted the proof; CI re-checks every one.</li>
-<li><b>Ranked:</b> whole-set runs only, with a 95% range.</li>
-<li><b>*</b> cost, time, tokens and model are self-reported.</li>
-</ul>
-<p style="margin-top:12px"><a class="btn" href="methodology.html">Full methodology: problem sets, methods, time, scoring</a></p>
-</section>`,
+</tbody></table></div>
+</section>`
+    : ""
+}`,
     "",
     repo,
   );
@@ -456,18 +450,18 @@ export function modelPage(slug: string, runs: SharedRun[], repo: string): string
   const bestBySet = BENCH_SETS.map((set) => rows.find((x) => x.r.set === set.id)).filter((x): x is Row => !!x);
   return page(
     `${name}: Mack benchmark`,
-    `<p class="crumbs"><a href="../index.html#models">← Models</a></p>
+    `<p class="crumbs"><a href="../index.html#leaderboard">← Leaderboard</a></p>
 <section class="hero compact" style="padding:14px 0 4px">
 <h1 style="font-size:30px">${esc(name)}</h1>
 <p class="muted">${rows.length} run${rows.length === 1 ? "" : "s"} · ${[...new Set(rows.map((x) => setLabel(x.r.set)))].join(", ")}</p>
 </section>
 <div class="kpis">
-${bestBySet.map((x) => kpi(pct(x.p.rate), `best on ${esc(setLabel(x.r.set))}`, `${x.p.solved}/${x.p.of}${x.p.full ? "" : " quick"} · ${range(x.p.low, x.p.high)}`)).join("\n")}
+${bestBySet.map((x) => kpi(pct(x.p.rate), `best on ${esc(setLabel(x.r.set))}`, `${x.p.solved}/${x.p.of} · ${range(x.p.low, x.p.high)}`)).join("\n")}
 ${kpi(`${solved.length}/${all.filter((x) => x.outcome !== "skipped").length}`, "solved, all runs")}
 ${kpi(solved.length ? usd(spent / solved.length) : "–", "per solve*")}
 ${kpi(solved.length ? (attempts / solved.length).toFixed(1) : "–", "attempts per solve")}
 </div>
-<section class="reveal"><h2>Runs</h2>${runTable(rows, "../", false)}</section>
+<section class="reveal"><h2>Runs</h2>${runTable(rows, "../", false, false)}</section>
 ${
   breakdown.length
     ? `<section class="reveal"><h2>Where it fails</h2><div class="card">${breakdown
@@ -806,7 +800,7 @@ ${sets}
 <h2>Which problems</h2>
 <ul class="bullets">
 <li><b>Fixed order.</b> Each set has one fixed pseudo-random order; a run of n problems takes the first n. Two runs of the same size always face the same problems, and 20 is part of 50.</li>
-<li><b>Whole-set runs are ranked.</b> Quick runs (part of a set) are listed below them, marked and unranked: a small sample can be easier or harder than the set.</li>
+<li><b>Ranked by size.</b> Each set's leaderboard has one table per sample size, the whole set first. Runs in a table faced the same problems and are ranked against each other; rates from different sizes are not compared, since a sample can be easier or harder than the set.</li>
 <li><b>Skipped counts as unsolved.</b> If a run stops or spends its budget, the problems left still count, so stopping early cannot raise a score.</li>
 </ul>
 </section>
