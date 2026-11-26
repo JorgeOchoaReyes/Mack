@@ -68,7 +68,7 @@ describe("the benchmark site", () => {
     );
     // Each run has a page, and each problem with an attempt log has its own.
     // Each run has a page, each problem with attempts, steps or a proof has its own, and so does each model setup.
-    expect(Object.keys(site).sort()).toEqual(["index.html", "models/big-prover-a-prover-b.html", "runs/a-run.html", ...run.results.map((r) => `runs/a-run/${r.id}.html`).sort(), "runs/b-run.html", ...run.results.map((r) => `runs/b-run/${r.id}.html`)].sort());
+    expect(Object.keys(site).sort()).toEqual(["index.html", "methodology.html", "models/big-prover-a-prover-b.html", "runs/a-run.html", ...run.results.map((r) => `runs/a-run/${r.id}.html`).sort(), "runs/b-run.html", ...run.results.map((r) => `runs/b-run/${r.id}.html`)].sort());
     const index = site["index.html"];
     expect(index.indexOf("runs/a-run.html")).toBeLessThan(index.indexOf("runs/b-run.html"));
     // Two problems are a quick run: listed, never ranked.
@@ -158,11 +158,21 @@ describe("the basics of reading a run", () => {
     expect(BENCH_BASICS.length).toBeGreaterThan(5);
     expect(benchReport(run, set)).toContain("## How to read this report");
     expect(benchReport(run, set)).toContain("**Solved.** Lean's strict verifier accepted the proof");
-    expect(buildSite([{ ...run, folder: "r" }], "https://github.com/o/r")["index.html"]).toContain("How to read these results");
+  });
+
+  it("are on the site's methodology page: every set, method and failure label, linked from every page", () => {
+    const site = buildSite([{ ...run, folder: "r" }], "https://github.com/o/r");
+    const m = site["methodology.html"];
+    for (const s of BENCH_SETS) expect(m).toContain(s.label.replace("–", "–"));
+    for (const label of Object.values(METHOD_LABELS)) expect(m).toContain(label.replace(/ \(.*\)$/, ""));
+    for (const f of Object.values(FAILURES)) expect(m).toContain(f.label);
+    expect(m).toContain("Classical.choice");
+    expect(site["index.html"]).toContain('href="methodology.html"');
+    expect(site["runs/r.html"]).toContain('href="../methodology.html"');
   });
 });
 
-import { harnessLabel, harnessOf } from "../core/bench/bench";
+import { FAILURES, harnessLabel, harnessOf } from "../core/bench/bench";
 
 describe("the harness a run used", () => {
   it("names Mack's version, the Open Math Harness commit and the procedures the settings turned on", () => {
