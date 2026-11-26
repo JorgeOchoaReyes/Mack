@@ -243,9 +243,17 @@ export type BenchRun = {
   harness?: BenchHarness;
   /** The pull request that shared the run on the Mack repo, once opened. */
   sharedPr?: { url: string; number: number; at: number; logs: boolean };
+  /** Share as a pull request on its own once every problem has a result; never for a stopped run or one cut short by its budget. */
+  autoShare?: boolean;
+  /** Why sharing it on its own failed, to show beside the run (it can still be shared by hand). */
+  shareError?: string;
 };
 
-export type BenchEvent = { type: "started"; run: BenchRun } | { type: "status"; id: string; message: string } | { type: "result"; result: BenchResult } | { type: "finished"; run: BenchRun };
+export type BenchEvent = { type: "started"; run: BenchRun } | { type: "status"; id: string; message: string } | { type: "result"; result: BenchResult } | { type: "finished"; run: BenchRun } | { type: "shared"; run: BenchRun };
+
+/** A run that ran to the end: finished, not stopped, and no problem skipped (by a stop or a spent budget). Only these are shared on their own. */
+export const ranToEnd = (run: Pick<BenchRun, "status" | "results" | "sample">): boolean =>
+  run.status === "done" && run.results.length === run.sample.length && run.results.every((r) => r.outcome !== "skipped");
 
 /** A string hash for a fixed order: the same set and size always picks the same problems, so runs compare. */
 function hash(s: string): number {
@@ -418,7 +426,11 @@ export function benchShare(run: BenchRun, set: BenchSet | undefined, appVersion:
     "The full report, with each unsolved problem's last attempt and Lean's feedback, is `REPORT.md` in this PR; `run.json` has the run's data. Once merged, the run appears on the benchmark site.",
   ].join("\n");
   const results = run.results.map(({ log, timeline, ...r }) => (opts.logs ? { ...r, ...(timeline ? { timeline } : {}) } : r));
-  const shared = { ...run, results, ...(contributor ? { sharedBy: contributor } : {}), appVersion, attemptsLogged: !!opts.logs };
+  const shared: Partial<BenchRun> & Record<string, unknown> = { ...run, results, ...(contributor ? { sharedBy: contributor } : {}), appVersion, attemptsLogged: !!opts.logs };
+  // What only this computer needs stays here.
+  delete shared.autoShare;
+  delete shared.shareError;
+  delete shared.sharedPr;
   const dataset = opts.logs ? attemptsDataset(run) : "";
   const raw: Record<string, string> = { "REPORT.md": benchReport(run, set, appVersion), "run.json": `${JSON.stringify(shared, null, 2)}\n`, ...(dataset ? { "attempts.jsonl": dataset } : {}) };
   // A model's thinking or Lean's output could quote a key: anything that looks like one is masked before it is published.

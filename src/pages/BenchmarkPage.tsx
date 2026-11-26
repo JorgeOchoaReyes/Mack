@@ -41,6 +41,22 @@ export function BenchmarkPage({ settings, onGo }: Props) {
   const [metrics, setMetrics] = useState<string | null>(null);
   const [replReady, setReplReady] = useState<boolean | null>(null);
   const [lemmaPool, setLemmaPool] = useState(true);
+  // Remembered on this computer: whether a run that completes opens its pull request on its own.
+  const [autoShare, setAutoShareState] = useState(() => {
+    try {
+      return localStorage.getItem("mack.bench.autoShare") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const setAutoShare = (v: boolean) => {
+    setAutoShareState(v);
+    try {
+      localStorage.setItem("mack.bench.autoShare", v ? "1" : "0");
+    } catch {
+      /* not remembered */
+    }
+  };
   /** Where each shared run's pull request stands, from GitHub. */
   const [prs, setPrs] = useState<Record<string, string>>({});
 
@@ -61,14 +77,14 @@ export function BenchmarkPage({ settings, onGo }: Props) {
         setStatus(null);
         setQueued((q) => q.filter((id) => id !== e.run.id));
         refresh();
-      }
+      } else if (e.type === "shared") refresh();
     });
   }, []);
 
   const start = async () => {
     setError("");
     try {
-      const started = await api.benchStart(setId, size, budget, method, models.filter((m) => m.model.trim()), { lemmaPool });
+      const started = await api.benchStart(setId, size, budget, method, models.filter((m) => m.model.trim()), { lemmaPool, autoShare });
       setQueued(started.map((r) => r.id));
       setLive(started[0]);
     } catch (e) {
@@ -166,6 +182,11 @@ export function BenchmarkPage({ settings, onGo }: Props) {
               <InfoTip text="Helper lemmas from solved problems are offered to later ones. Each run keeps its own." />
             </label>
           )}
+          <label className="row gap-sm small">
+            <input type="checkbox" checked={autoShare} onChange={(e) => setAutoShare(e.target.checked)} />
+            Open a pull request when the run completes
+            <InfoTip text="Shares the run, with every attempt, as a PR on the Mack repo once every problem has a result. Never for a stopped run or one its budget cut short." />
+          </label>
           {!settings.remoteLean?.host && (replReady === false || !settings.useRepl) && (
             <div className="bench-warning">
               <b>Lean REPL {settings.useRepl ? "not built" : "off"}: runs will be several times slower.</b> {settings.useRepl ? "Build it in Settings → Setup → Lean." : "Turn it on in Settings → Prover."}
@@ -283,6 +304,7 @@ export function BenchmarkPage({ settings, onGo }: Props) {
                       {(r.harness || r.env) && <span className="bench-harness" title={r.harness ? `Procedures: ${r.harness.procedures.join(", ")}` : ""}>{harnessLabel(r.harness, r.env?.app)}</span>}
                       {formatUsd(sum.usd)} · {secs(sum.ms)} · {timeAgo(r.startedAt)}
                       {r.status === "stopped" ? " · stopped" : ""}
+                      {r.shareError && !r.sharedPr ? <span className="bad" title={r.shareError}> · PR not opened</span> : null}
                       <button
                         className="icon-btn"
                         title="This run's metrics"
