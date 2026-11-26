@@ -72,7 +72,8 @@ describe("the benchmark site", () => {
     expect(index.indexOf("runs/a-run.html")).toBeLessThan(index.indexOf("runs/b-run.html"));
     // Two problems are a quick run: listed, never ranked.
     expect(index).not.toContain("BEST");
-    expect(index).toContain("Quick runs on part of the set (2), not ranked");
+    expect(index).toContain("Quick runs on part of the set <span class=\"muted small\">(2, not ranked)</span>");
+    expect(index).not.toContain("<details class=\"quick\"");
     expect(index).toContain("big + prover-a, prover-b");
     const page = site["runs/a-run.html"];
     expect(page).toContain("All 4 attempts by how they ended");

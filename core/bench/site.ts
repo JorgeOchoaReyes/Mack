@@ -99,8 +99,7 @@ tr.first .rank { color: var(--accent-text); }
 .bar.badbar > span { background: var(--bad); opacity: .75; }
 .bar.okbar > span { background: var(--ok); }
 .stat .small { display: block; }
-details.quick { margin-top: 14px; }
-details.quick > summary { font-size: 14px; margin-bottom: 8px; }
+.quick-head { font-size: 15px; margin: 18px 0 4px; }
 @keyframes grow { from { width: 0; } to { width: var(--w); } }
 .pill { display: inline-block; padding: 2px 9px; border-radius: 99px; font-size: 11.5px; font-weight: 650; background: var(--bar); color: var(--muted); }
 .pill.best { background: var(--accent-soft); color: var(--accent-text); }
@@ -255,13 +254,13 @@ ${modelRows.map(([k, m], i) => `<tr><td class="wrap">${esc(k)}</td><td>${m.runs}
       : "";
   return `<div class="reveal">
 <h3 style="font-size:18px">${esc(setLabel(set))} <span class="muted small">${size} problems · ${full.length} full run${full.length === 1 ? "" : "s"}${quick.length ? `, ${quick.length} quick` : ""}</span></h3>
-${full.length ? runTable(full, true) : `<p class="muted small">No run on all ${size} problems yet: a run on the whole set is what gets ranked here.</p>`}
+${full.length ? runTable(full, true) : `<p class="muted small">No run on all ${size} problems yet: a run on the whole set is what gets ranked here${quick.length ? "; the quick runs below are listed, not ranked" : ""}.</p>`}
 ${modelTable}
 ${
   quick.length
-    ? `<details class="quick"><summary>Quick runs on part of the set (${quick.length}), not ranked</summary>
+    ? `<h4 class="quick-head">Quick runs on part of the set <span class="muted small">(${quick.length}, not ranked)</span></h4>
 <p class="small muted">A run on 20 or 50 problems is a quick read, not a score: its 95% range is wide, and its fixed sample can be easier or harder than the whole set. Runs of the same size use the same problems, so they compare with each other.</p>
-${runTable(quick, false)}</details>`
+${runTable(quick, false)}`
     : ""
 }
 </div>`;
