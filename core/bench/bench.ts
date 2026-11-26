@@ -378,6 +378,10 @@ export function benchReport(run: BenchRun, set: BenchSet | undefined, appVersion
 /** Where shared benchmark runs go in the Mack repo, one folder per run. */
 export const BENCH_SHARE_DIR = "benchmarks/runs";
 
+/** The public benchmark website (GitHub Pages), and a shared run's page on it. */
+export const BENCH_SITE = "https://jorgeochoareyes.github.io/Mack/";
+export const benchSiteRun = (run: BenchRun) => `${BENCH_SITE}runs/${benchSlug(run)}.html`;
+
 /** A folder name for a shared run: set, method and date. */
 export function benchSlug(run: BenchRun): string {
   const d = new Date(run.startedAt).toISOString().slice(0, 16).replace(/[-:T]/g, "");

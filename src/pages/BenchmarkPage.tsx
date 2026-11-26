@@ -12,7 +12,7 @@ import { GitHubAccounts } from "../components/GitHubAccounts";
 import { ModelSelect, useModelLists } from "../components/ModelSelect";
 import { formatUsd } from "../../core/model/metered";
 import { EFFORT_LABELS, PROOF_EFFORTS, type ProofEffort } from "../../core/model/provider";
-import { BENCH_BASICS, METHOD_LABELS, type BenchMethod, FAILURES, failureBreakdown, harnessLabel, headToHead, rateRange, runMetrics, solvedWithin, summarize, timelineOf } from "../../core/bench/bench";
+import { BENCH_BASICS, BENCH_SITE, benchSiteRun, METHOD_LABELS, type BenchMethod, FAILURES, failureBreakdown, harnessLabel, headToHead, rateRange, runMetrics, solvedWithin, summarize, timelineOf } from "../../core/bench/bench";
 import { COMMUNITY_REPO } from "../../core/community";
 
 type Props = { settings: Settings; onGo: (page: "settings" | "setup") => void };
@@ -90,9 +90,18 @@ export function BenchmarkPage({ settings, onGo }: Props) {
   return (
     <div className="page bench">
       <div className="page-head">
-        <h1>Benchmark</h1>
+        <div className="row gap-sm" style={{ alignItems: "center" }}>
+          <h1>Benchmark</h1>
+          <Button size="sm" icon={ExternalLink} onClick={() => void api.openExternal(BENCH_SITE)} title="Every shared run, ranked, with each problem's attempts">
+            Public leaderboard
+          </Button>
+        </div>
         <p className="muted">
-          Measure how strong Mack is with your settings: it tries a fixed set of competition problems formalized in Lean, and counts only proofs the strict verifier accepts. Change the model, prover model or attempts in Settings, run again on the same problems, and compare.
+          Measure how strong Mack is with your settings: it tries a fixed set of competition problems formalized in Lean, and counts only proofs the strict verifier accepts. Change the model, prover model or attempts in Settings, run again on the same problems, and compare. Share a run to put it on the{" "}
+          <button className="link" onClick={() => void api.openExternal(BENCH_SITE)}>
+            public leaderboard <ExternalLink size={11} />
+          </button>
+          .
         </p>
       </div>
 
@@ -241,6 +250,18 @@ export function BenchmarkPage({ settings, onGo }: Props) {
                         >
                           <GitPullRequest size={11} /> #{r.sharedPr.number}
                           {prs[r.id] && prs[r.id] !== "unknown" ? ` ${prs[r.id]}` : ""}
+                        </button>
+                      )}
+                      {r.sharedPr && prs[r.id] === "merged" && (
+                        <button
+                          className="bench-pr pr-merged"
+                          title="This run's page on the public benchmark website"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void api.openExternal(benchSiteRun(r));
+                          }}
+                        >
+                          <ExternalLink size={11} /> on the website
                         </button>
                       )}
                       {(r.harness || r.env) && <span className="bench-harness" title={r.harness ? `Procedures: ${r.harness.procedures.join(", ")}` : ""}>{harnessLabel(r.harness, r.env?.app)}</span>}
@@ -488,7 +509,20 @@ function Share({ run, prState, onShared, onGoSettings }: { run: BenchRun; prStat
             <button className="link" onClick={() => void api.openExternal(stage.url)}>
               pull request #{stage.number} <ExternalLink size={12} />
             </button>
-            {prState && prState !== "unknown" ? ` · ${prState}` : ""}. It appears on the benchmark website once merged.
+            {prState && prState !== "unknown" ? ` · ${prState}` : ""}.{" "}
+            {prState === "merged" ? (
+              <button className="link" onClick={() => void api.openExternal(benchSiteRun(run))}>
+                View it on the benchmark website <ExternalLink size={12} />
+              </button>
+            ) : (
+              <>
+                It appears on the{" "}
+                <button className="link" onClick={() => void api.openExternal(BENCH_SITE)}>
+                  benchmark website <ExternalLink size={12} />
+                </button>{" "}
+                once merged.
+              </>
+            )}
           </span>
         </div>
       )}
