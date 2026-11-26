@@ -67,12 +67,20 @@ describe("the benchmark site", () => {
       "https://github.com/o/r",
     );
     // Each run has a page, and each problem with an attempt log has its own.
-    expect(Object.keys(site).sort()).toEqual(["index.html", "runs/a-run.html", ...run.results.map((r) => `runs/a-run/${r.id}.html`).sort(), "runs/b-run.html"].sort());
+    // Each run has a page, each problem with an attempt log has its own, and so does each model setup.
+    expect(Object.keys(site).sort()).toEqual(["index.html", "models/big-prover-a-prover-b.html", "runs/a-run.html", ...run.results.map((r) => `runs/a-run/${r.id}.html`).sort(), "runs/b-run.html"].sort());
     const index = site["index.html"];
     expect(index.indexOf("runs/a-run.html")).toBeLessThan(index.indexOf("runs/b-run.html"));
     // Two problems are a quick run: listed, never ranked.
     expect(index).not.toContain("BEST");
-    expect(index).toContain("Quick runs on part of the set (2), not ranked");
+    // Quick runs are listed openly, marked, and not numbered.
+    expect(index).toContain('<span class="pill">quick</span>');
+    expect(index).toContain("Quick runs (part of the set) are listed, unranked.");
+    expect(index).not.toContain("<details class=\"quick\"");
+    expect(index).toContain('href="models/big-prover-a-prover-b.html"');
+    const model = site["models/big-prover-a-prover-b.html"];
+    expect(model).toContain("big + prover-a, prover-b");
+    expect(model).toContain("Where it fails");
     expect(index).toContain("big + prover-a, prover-b");
     const page = site["runs/a-run.html"];
     expect(page).toContain("All 4 attempts by how they ended");

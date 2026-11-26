@@ -62,7 +62,44 @@ nav.links a:hover { color: var(--text); }
 .btn:hover { transform: translateY(-1px); box-shadow: var(--shadow); }
 .btn.primary { background: linear-gradient(180deg, var(--accent-2), var(--accent)); border-color: transparent; color: #17150a; }
 nav.links .btn { color: #17150a; }
-.hero { padding: 56px 0 28px; }
+.hero { padding: 40px 0 18px; }
+.hero.compact h1 { font-size: clamp(26px, 4vw, 38px); }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin: 18px 0 6px; }
+.kpi { padding: 12px 14px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border); }
+.kpi b { display: block; font-size: 22px; font-variant-numeric: tabular-nums; letter-spacing: -.01em; line-height: 1.2; }
+.kpi > span { color: var(--muted); font-size: 12px; }
+.kpi > i { font-style: normal; color: var(--muted); font-size: 12px; display: block; }
+.tabs { margin-top: 10px; }
+.tabs > input { position: absolute; opacity: 0; pointer-events: none; }
+.tabs > label { display: inline-block; padding: 7px 14px; margin: 0 6px 10px 0; border-radius: 99px; border: 1px solid var(--border); background: var(--surface); font-size: 13.5px; font-weight: 600; cursor: pointer; color: var(--muted); }
+.tabs > label .n { font-weight: 500; opacity: .8; margin-left: 4px; }
+.tabs > .panel { display: none; }
+.note { color: var(--muted); font-size: 12.5px; margin: 8px 2px 0; }
+.dim td { color: var(--muted); }
+.dim td a b { font-weight: 600; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.mcard { display: block; padding: 14px 16px; border-radius: 14px; background: var(--surface); border: 1px solid var(--border); color: var(--text); text-decoration: none; transition: transform .15s ease, box-shadow .15s ease; }
+.mcard:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
+.mcard .name { font-weight: 700; font-size: 15px; word-break: break-word; }
+.mcard .big { font-size: 26px; font-weight: 750; font-variant-numeric: tabular-nums; margin: 6px 0 2px; }
+.mcard .meta { color: var(--muted); font-size: 12.5px; }
+.mcard .bar { display: block; height: 8px; margin: 8px 0 6px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(34px, 1fr)); gap: 5px; }
+.tile { display: block; aspect-ratio: 1; border-radius: 6px; background: var(--bar); position: relative; }
+.tile.ok { background: var(--ok); }
+.tile.auto { background: color-mix(in srgb, var(--ok) 55%, var(--surface)); }
+.tile.bad { background: var(--bad); opacity: .8; }
+.tile:hover { outline: 2px solid var(--text); outline-offset: 1px; }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12.5px; color: var(--muted); margin-top: 10px; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }
+.grid2 .card h3 { margin-top: 0; }
+.kv { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px 18px; font-size: 13.5px; }
+.kv div span { display: block; color: var(--muted); font-size: 11.5px; text-transform: uppercase; letter-spacing: .04em; }
+.kv div b { font-weight: 600; word-break: break-word; }
+.bullets { margin: 0; padding-left: 18px; color: var(--muted); font-size: 14px; }
+.bullets li { margin: 4px 0; }
+.bullets b { color: var(--text); }
 .hero h1 { font-size: clamp(30px, 5vw, 48px); line-height: 1.1; margin: 0 0 14px; letter-spacing: -.02em; }
 .hero h1 em { font-style: normal; background: linear-gradient(transparent 62%, var(--accent-soft) 62%); }
 .hero .lead { font-size: 17px; color: var(--muted); max-width: 720px; }
@@ -99,15 +136,14 @@ tr.first .rank { color: var(--accent-text); }
 .bar.badbar > span { background: var(--bad); opacity: .75; }
 .bar.okbar > span { background: var(--ok); }
 .stat .small { display: block; }
-details.quick { margin-top: 14px; }
-details.quick > summary { font-size: 14px; margin-bottom: 8px; }
+.quick-head { font-size: 15px; margin: 18px 0 4px; }
 @keyframes grow { from { width: 0; } to { width: var(--w); } }
 .pill { display: inline-block; padding: 2px 9px; border-radius: 99px; font-size: 11.5px; font-weight: 650; background: var(--bar); color: var(--muted); }
 .pill.best { background: var(--accent-soft); color: var(--accent-text); }
 .pill.omh { background: var(--ok-soft); color: var(--ok); }
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 16px 0; }
 .stat b { display: block; font-size: 24px; font-variant-numeric: tabular-nums; }
-.why { display: grid; grid-template-columns: minmax(140px, 240px) 1fr 36px; gap: 12px; align-items: center; margin: 8px 0; font-size: 14px; }
+.why { display: grid; grid-template-columns: minmax(120px, 200px) 1fr 36px; gap: 12px; align-items: center; margin: 7px 0; font-size: 13.5px; }
 pre.card { white-space: pre-wrap; font-size: 12.5px; overflow: auto; font-family: ui-monospace, "Cascadia Code", Menlo, monospace; }
 details summary { cursor: pointer; color: var(--accent-text); font-size: 13px; }
 details pre { white-space: pre-wrap; font-size: 12px; background: var(--bar); padding: 10px; border-radius: 10px; max-height: 320px; overflow: auto; font-family: ui-monospace, "Cascadia Code", Menlo, monospace; }
@@ -159,8 +195,8 @@ function page(title: string, body: string, root: string, repo = "https://github.
 <a class="brand" href="${root}index.html">${LOGO}<span>Mack benchmark</span></a>
 <nav class="links">
 <a href="${root}index.html#leaderboard">Leaderboard</a>
-<a href="${root}index.html#how">How it works</a>
-<a href="${root}index.html#read">Reading results</a>
+<a href="${root}index.html#models">Models</a>
+<a href="${root}index.html#method">Methodology</a>
 <a href="${esc(repo)}">GitHub</a>
 <a class="btn primary" href="${RELEASES}">Download Mack</a>
 </nav>
@@ -169,7 +205,7 @@ function page(title: string, body: string, root: string, repo = "https://github.
 ${body}
 </main>
 <footer class="bottom"><div class="wrap-page">
-<span>Built from the runs Mack users shared with the Benchmark screen's "Share as a PR". A problem counts as solved only when Mack's strict verifier accepts the proof in Lean.</span>
+<span>Runs shared from Mack's Benchmark screen. Solved means Lean accepted the proof.</span>
 <span><a href="${RELEASES}">Download Mack</a> · <a href="${esc(repo)}">GitHub</a> · <a href="${esc(repo)}#contributing">Contribute</a> · problems from miniF2F (MIT) and PutnamBench (Apache-2.0)</span>
 </div></footer>
 <script>${SCRIPT}</script>
@@ -189,82 +225,48 @@ function rateCell(rate: number, best = false, i = 0): string {
 const range = (low: number, high: number) => `${Math.round(low * 100)}–${Math.round(high * 100)}%`;
 
 /** What cannot be checked in a shared run, said once under each table that shows it. */
-const SELF_REPORTED = `<p class="small muted">* As the run reported it: cost, time, tokens and the model a provider served cannot be checked from here. The solves can: before a run is merged, CI re-checks every solved proof with Lean and the strict verifier, against the Mathlib the run used, and checks that the run lists every problem of its sample.</p>`;
+const SELF_REPORTED = `<p class="note">* As the run reported it: cost, time, tokens and the model served cannot be checked from here. Solves can: CI re-checks every solved proof with Lean before a run is merged.</p>`;
 
 type Row = { r: SharedRun; p: ReturnType<typeof publishedScore>; usd: number };
 
-/** One set's runs as a table, best first; `ranked` numbers them. */
-function runTable(rows: Row[], ranked: boolean): string {
-  const body = rows
-    .map(
-      ({ r, p, usd: spent }, i) => `<tr class="${ranked && i === 0 ? "first" : ""}">
-${ranked ? `<td class="rank">${i + 1}</td>` : ""}
-<td><a href="runs/${esc(r.folder)}.html"><b>${p.solved}/${p.of}</b></a></td>
-<td>${rateCell(p.rate, ranked && i === 0 && rows.length > 1, i)}</td>
-<td class="muted">${range(p.low, p.high)}</td>
-<td class="wrap">${esc(models(r))}*</td>
-<td>${esc(METHOD_LABELS[r.config.method ?? "single"])}${r.config.method === "search" || r.config.method === "ultramath" ? ' <span class="pill omh">OMH</span>' : ""}</td>
-<td>${r.config.maxAttempts} × ${r.config.parallel}</td>
-<td>${usd(spent)}</td>
-<td>${p.solved ? usd(spent / p.solved) : "–"}</td>
-<td>${day(r.startedAt)}</td>
-<td title="${esc(r.harness?.procedures.join(", ") ?? "")}">${esc(harnessLabel(r.harness, r.appVersion ?? r.env?.app).replace(/^Mack /, ""))}</td>
-<td>${r.sharedBy ? `<a href="https://github.com/${esc(r.sharedBy)}">${esc(r.sharedBy)}</a>` : ""}</td>
-</tr>`,
-    )
-    .join("\n");
-  return `<div class="scroll"><table>
-<thead><tr>${ranked ? "<th>#</th>" : ""}<th>Solved</th><th>Rate</th><th>95% range</th><th>Models*</th><th>Method</th><th>Attempts</th><th>Cost*</th><th>Per solve*</th><th>Date</th><th>Harness</th><th>By</th></tr></thead>
-<tbody>
-${body}
-</tbody></table></div>`;
-}
+/** A model setup as a file name: `deepseek-v4-deepseek-prover-v2`. */
+export const modelSlug = (r: BenchRun) => models(r).toLowerCase().replace(/[^a-z0-9.]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "model";
+
+const thinking = (r: BenchRun) => (r.config.effort ? esc(r.config.effort) : '<span class="muted">auto</span>');
 
 const rowsOf = (runs: SharedRun[]): Row[] =>
   runs
     .map((r) => ({ r, p: publishedScore(r), usd: summarize(r).usd }))
     .filter((x) => x.p.of > 0)
-    .sort((a, b) => b.p.rate - a.p.rate || b.p.of - a.p.of || a.usd - b.usd || b.r.startedAt - a.r.startedAt);
+    .sort((a, b) => Number(b.p.full) - Number(a.p.full) || b.p.rate - a.p.rate || b.p.of - a.p.of || a.usd - b.usd || b.r.startedAt - a.r.startedAt);
 
-/** One set: the runs on the whole set, ranked; the runs on part of it below, unranked. */
-function setSection(set: string, runs: SharedRun[]): string {
-  const rows = rowsOf(runs.filter((r) => r.set === set));
-  const full = rows.filter((x) => x.p.full);
-  const quick = rows.filter((x) => !x.p.full);
-  const size = BENCH_SETS.find((s) => s.id === set)?.problems.length ?? 0;
-  const byModel = new Map<string, { runs: number; best: number; solved: number; of: number; usd: number }>();
-  for (const { r, p, usd: spent } of full) {
-    const key = models(r);
-    const m = byModel.get(key) ?? { runs: 0, best: 0, solved: 0, of: 0, usd: 0 };
-    m.runs++;
-    m.best = Math.max(m.best, p.rate);
-    m.solved += p.solved;
-    m.of += p.of;
-    m.usd += spent;
-    byModel.set(key, m);
-  }
-  const modelRows = [...byModel.entries()].sort((a, b) => b[1].best - a[1].best || b[1].solved / (b[1].of || 1) - a[1].solved / (a[1].of || 1));
-  const modelTable =
-    modelRows.length > 1
-      ? `<h3>By model</h3>
-<div class="scroll"><table>
-<thead><tr><th>Models*</th><th>Runs</th><th>Best rate</th><th>Over all runs</th><th>Per solve*</th></tr></thead>
+/** One set's runs in one table: runs on the whole set ranked first, quick runs (part of the set) after them, marked and unranked. */
+function runTable(rows: Row[], root: string, withModel = true): string {
+  let rank = 0;
+  const body = rows
+    .map(({ r, p, usd: spent }, i) => {
+      const ranked = p.full;
+      if (ranked) rank++;
+      const best = ranked && rank === 1 && rows.filter((x) => x.p.full).length > 1;
+      return `<tr class="${ranked ? (rank === 1 ? "first" : "") : "dim"}">
+<td class="rank">${ranked ? rank : "–"}</td>
+${withModel ? `<td class="wrap"><a href="${root}models/${esc(modelSlug(r))}.html">${esc(models(r))}</a>*</td>` : ""}
+<td>${esc(METHOD_LABELS[r.config.method ?? "single"])}${r.config.method === "search" || r.config.method === "ultramath" ? ' <span class="pill omh">OMH</span>' : ""}</td>
+<td>${thinking(r)}</td>
+<td><a href="${root}runs/${esc(r.folder)}.html"><b>${p.solved}/${p.of}</b></a>${ranked ? "" : ' <span class="pill">quick</span>'}</td>
+<td>${rateCell(p.rate, best, i)}</td>
+<td class="muted">${range(p.low, p.high)}</td>
+<td>${p.solved ? usd(spent / p.solved) : "–"}</td>
+<td>${day(r.startedAt)}</td>
+<td title="${esc(r.harness?.procedures.join(", ") ?? "")}">${esc(harnessLabel(r.harness, r.appVersion ?? r.env?.app).replace(/^Mack /, ""))}</td>
+</tr>`;
+    })
+    .join("\n");
+  return `<div class="scroll"><table>
+<thead><tr><th>#</th>${withModel ? "<th>Model*</th>" : ""}<th>Method</th><th>Thinking</th><th>Solved</th><th>Rate</th><th>95% range</th><th>$ / solve*</th><th>Date</th><th>Harness</th></tr></thead>
 <tbody>
-${modelRows.map(([k, m], i) => `<tr><td class="wrap">${esc(k)}</td><td>${m.runs}</td><td>${rateCell(m.best, false, i)}</td><td>${m.solved}/${m.of}</td><td>${m.solved ? usd(m.usd / m.solved) : "–"}</td></tr>`).join("\n")}
-</tbody></table></div>`
-      : "";
-  return `<div class="reveal">
-<h3 style="font-size:18px">${esc(setLabel(set))} <span class="muted small">${size} problems · ${full.length} full run${full.length === 1 ? "" : "s"}${quick.length ? `, ${quick.length} quick` : ""}</span></h3>
-${full.length ? runTable(full, true) : `<p class="muted small">No run on all ${size} problems yet: a run on the whole set is what gets ranked here.</p>`}
-${modelTable}
-${
-  quick.length
-    ? `<details class="quick"><summary>Quick runs on part of the set (${quick.length}), not ranked</summary>
-<p class="small muted">A run on 20 or 50 problems is a quick read, not a score: its 95% range is wide, and its fixed sample can be easier or harder than the whole set. Runs of the same size use the same problems, so they compare with each other.</p>
-${runTable(quick, false)}</details>`
-    : ""
-}
-</div>`;
+${body}
+</tbody></table></div>`;
 }
 
 /** PutnamBench split by year: older problems against the latest competitions, for each run that tried both. */
@@ -285,85 +287,145 @@ function contaminationRows(runs: SharedRun[]): string {
   return lines.join("\n");
 }
 
-/** The leaderboard: every set's runs on the whole set ranked, best solve rate first; the recent problems apart. */
+/** Every model setup and its runs, best first. */
+function modelGroups(runs: SharedRun[]): { slug: string; name: string; runs: Row[]; best: Row }[] {
+  const by = new Map<string, Row[]>();
+  for (const row of rowsOf(runs)) by.set(modelSlug(row.r), [...(by.get(modelSlug(row.r)) ?? []), row]);
+  return [...by.entries()]
+    .map(([slug, rows]) => ({ slug, name: models(rows[0].r), runs: rows, best: rows[0] }))
+    .sort((a, b) => Number(b.best.p.full) - Number(a.best.p.full) || b.best.p.rate - a.best.p.rate);
+}
+
+const kpi = (value: string, label: string, sub = "") => `<div class="kpi"><b>${value}</b><span>${label}</span>${sub ? `<i>${sub}</i>` : ""}</div>`;
+
+/** Sets as tabs (CSS only: works without JavaScript), each with its leaderboard. */
+function setTabs(runs: SharedRun[]): string {
+  const sets = BENCH_SETS.filter((set) => runs.some((r) => r.set === set.id));
+  if (!sets.length) return "";
+  const css = sets.map((_, i) => `#set-${i}:checked ~ .panel-${i} { display: block; } #set-${i}:checked + label { background: var(--text); color: var(--bg); border-color: var(--text); }`).join("\n");
+  const inputs = sets.map((set, i) => `<input type="radio" name="set" id="set-${i}"${i === 0 ? " checked" : ""}><label for="set-${i}">${esc(set.label)}<span class="n">${runs.filter((r) => r.set === set.id).length}</span></label>`).join("\n");
+  const panels = sets
+    .map((set, i) => {
+      const rows = rowsOf(runs.filter((r) => r.set === set.id));
+      const full = rows.filter((x) => x.p.full).length;
+      return `<div class="panel panel-${i}">
+${runTable(rows, "")}
+<p class="note">${set.problems.length} problems. ${full ? `${full} run${full === 1 ? "" : "s"} on the whole set, ranked.` : `No run on all ${set.problems.length} yet: only whole-set runs are ranked.`} Quick runs (part of the set) are listed, unranked.</p>
+</div>`;
+    })
+    .join("\n");
+  return `<style>${css}</style><div class="tabs">${inputs}\n${panels}</div>`;
+}
+
+/** The leaderboard: one tab per problem set, the models as cards, and the methodology in short. */
 export function indexPage(runs: SharedRun[], repo: string): string {
-  const sets = [...new Set(runs.map((r) => r.set))].filter((x) => x !== RECENT_SET).sort((a, b) => BENCH_SETS.findIndex((s) => s.id === a) - BENCH_SETS.findIndex((s) => s.id === b));
-  const sections = sets.map((set) => setSection(set, runs));
-  const contamination = contaminationRows(runs);
   const scores = runs.map((r) => publishedScore(r));
   const fullScores = scores.filter((x) => x.full);
   const best = (fullScores.length ? fullScores : scores).reduce((a, x) => Math.max(a, x.rate), 0);
   const solved = scores.reduce((a, x) => a + x.solved, 0);
-  const modelsCount = new Set(runs.map((r) => models(r))).size;
-  const counter = (value: number, label: string, opts: { dec?: number; suffix?: string } = {}) =>
-    `<div class="counter"><b data-count="${value}" data-dec="${opts.dec ?? 0}" data-suffix="${opts.suffix ?? ""}">${value.toFixed(opts.dec ?? 0)}${opts.suffix ?? ""}</b><span>${label}</span></div>`;
+  const groups = modelGroups(runs);
+  const contamination = contaminationRows(runs);
+  const counter = (value: number, opts: { dec?: number; suffix?: string } = {}) => `<span data-count="${value}" data-dec="${opts.dec ?? 0}" data-suffix="${opts.suffix ?? ""}">${value.toFixed(opts.dec ?? 0)}${opts.suffix ?? ""}</span>`;
+  const cards = groups
+    .map(
+      (g, i) => `<a class="mcard" href="models/${esc(g.slug)}.html">
+<div class="name">${esc(g.name)}</div>
+<div class="big">${pct(g.best.p.rate)}</div>
+${bar(g.best.p.rate, i)}
+<div class="meta">${esc(setLabel(g.best.r.set))} · ${g.best.p.solved}/${g.best.p.of}${g.best.p.full ? "" : " (quick)"} · ${g.runs.length} run${g.runs.length === 1 ? "" : "s"}${g.best.p.solved ? ` · ${usd(g.best.usd / g.best.p.solved)}/solve` : ""}</div>
+</a>`,
+    )
+    .join("\n");
   return page(
     "Mack benchmark",
-    `<section class="hero">
-<h1>How well do models prove math <em>in Lean</em>?</h1>
-<p class="lead">Mack runs open models on competition problems formalized in Lean 4, and counts a problem as solved only when Lean's kernel accepts the proof. These are the runs its users shared: every attempt, every Lean error, every model's thinking, and every solved proof re-checked with Lean before it was published.</p>
+    `<section class="hero compact">
+<h1>Proving competition math <em>in Lean</em></h1>
+<p class="lead">Open models on miniF2F and PutnamBench. A problem counts only when Lean's kernel accepts the proof, and CI re-checks every solve.</p>
 <div class="cta">
 <a class="btn primary" href="${RELEASES}">Download Mack for Windows or Linux</a>
-<a class="btn" href="#how">How it works</a>
-<a class="btn" href="#trust">How far to trust it</a>
+<a class="btn" href="${esc(repo)}">GitHub</a>
 </div>
-<div class="counters">
-${counter(runs.length, "runs shared")}
-${counter(modelsCount, "model setups")}
-${counter(solved, "problems proved, Lean-checked")}
-${counter(best * 100, fullScores.length ? "best rate on a whole set" : "best rate (quick runs only so far)", { dec: 1, suffix: "%" })}
+<div class="kpis">
+${kpi(counter(runs.length), "runs shared")}
+${kpi(counter(groups.length), "model setups")}
+${kpi(counter(solved), "proofs, Lean-checked")}
+${kpi(counter(best * 100, { dec: 1, suffix: "%" }), "best rate", fullScores.length ? "on a whole set" : "quick runs only so far")}
 </div>
 </section>
 <section id="leaderboard" class="reveal">
 <h2>Leaderboard</h2>
-<p class="sub">Runs on a whole set, best solve rate first; a skipped problem counts as unsolved. Two runs are only told apart when their 95% ranges are. Open a run for its failures, every attempt, and each problem's trace.</p>
-${sections.join("\n") || `<div class="card empty"><b>No runs shared yet</b>Be the first: download Mack, run the benchmark, and press <b>Share as a PR</b>. Once merged, your run appears here.<div class="cta" style="justify-content:center"><a class="btn primary" href="${RELEASES}">Download Mack</a></div></div>`}
+${setTabs(runs) || `<div class="card empty"><b>No runs shared yet</b>Download Mack, run the Benchmark and press <b>Share as a PR</b>.<div class="cta" style="justify-content:center"><a class="btn primary" href="${RELEASES}">Download Mack</a></div></div>`}
 ${runs.length ? SELF_REPORTED : ""}
 </section>
+${groups.length ? `<section id="models" class="reveal"><h2>Models</h2><div class="cards">${cards}</div></section>` : '<section id="models"></section>'}
 <section id="recent" class="reveal">
 <h2>Recent problems: the contamination check</h2>
-<p class="sub">miniF2F and older Putnam problems are public, with proofs, and may be in a model's training data, so part of a score can be memory. The latest competitions (${RECENT_YEARS.join(" and ")}) are the least likely to be, for a model trained before they were set. Mack runs them as a set of their own, <b>${esc(setLabel(RECENT_SET))}</b>, and every PutnamBench run is split here by year too. A model much weaker on recent problems than on older ones was probably helped by memory; with only ${BENCH_SETS.find((s) => s.id === RECENT_SET)?.problems.length ?? 0} recent problems, a few points either way mean little.</p>
+<p class="sub">Putnam ${RECENT_YEARS.join(" and ")} is least likely to be in training data. A model much weaker there than on older problems was probably helped by memory.</p>
 ${
   contamination
-    ? `<div class="scroll"><table><thead><tr><th>Models*</th><th>Older Putnam problems</th><th>Recent problems</th></tr></thead><tbody>
+    ? `<div class="scroll"><table><thead><tr><th>Model*</th><th>Older Putnam</th><th>Recent</th></tr></thead><tbody>
 ${contamination}
 </tbody></table></div>`
-    : `<div class="card empty"><b>No recent-problem runs yet</b>Choose <b>${esc(setLabel(RECENT_SET))}</b> on Mack's Benchmark screen, or run the whole of PutnamBench, and share the run.</div>`
+    : `<p class="note">No runs yet: run <b>${esc(setLabel(RECENT_SET))}</b>, or all of PutnamBench, and share it.</p>`
 }
-${runs.some((r) => r.set === RECENT_SET) ? `<h3>Every run on the recent problems</h3>${runTable(rowsOf(runs.filter((r) => r.set === RECENT_SET)), false)}` : ""}
 </section>
-<section id="how" class="reveal">
-<h2>How it works</h2>
-<p class="sub">From a statement to a verified proof, and from your computer to this page.</p>
-<div class="steps">
-<div class="step"><span class="n">1</span><b>Pick problems</b><p>miniF2F (244 competition problems), PutnamBench (Putnam since 1962) or the recent Putnam problems, already stated in Lean 4. The same size always picks the same problems.</p></div>
-<div class="step"><span class="n">2</span><b>Models attempt proofs</b><p>Your models write Lean proofs; Lean's errors go back to them. Mack's methods (Attempts, Decompose, Step by step) or Open Math Harness's own (Search tree, Ultramath).</p></div>
-<div class="step"><span class="n">3</span><b>Lean decides</b><p>The strict verifier checks the statement is unchanged, no sorry or extra axiom is used, and Lean's kernel accepts the proof. Nothing else counts.</p></div>
-<div class="step"><span class="n">4</span><b>Share, re-check, publish</b><p>Press Share as a PR in Mack. CI re-checks every solved proof with Lean and that no problem was left out; once merged, the run appears here.</p></div>
-</div>
-</section>
-<section id="trust" class="reveal">
-<h2>How far to trust these numbers</h2>
-<div class="card basics">
-<p><b>Solves are checked.</b> Every solved proof is re-verified in CI with Lean, against Mack's own copy of the problem and the Mathlib the run used. A solve cannot be added by editing a file.</p>
-<p><b>Nothing is left out.</b> A run must list every problem of the fixed sample for its size, skipped ones included, and a skipped problem counts as unsolved.</p>
-<p><b>Some numbers are self-reported.</b> Cost, time, tokens and the model name come from the person's machine and provider; a provider may serve a different build of a model under the same name.</p>
-<p><b>Luck and best-of-many.</b> Someone can run ten times and share the best. The 95% range shows how much one run can vary; several runs of the same setup, all shown, tell more.</p>
-<p><b>Not the labs' measure.</b> Labs report pass@k: independent samples per problem. Mack's attempts learn from Lean's errors. Each run's page shows problems solved within 1, 4, 16 and 64 attempts, which is close, not equal.</p>
-<p><b>Memory.</b> Public problems may be in training data, for every model and every lab; the recent-problems check above is the guard.</p>
-</div>
-</section>
-<section id="read" class="reveal">
-<h2>Reading the results</h2>
-<div class="card basics">${BENCH_BASICS.map((b) => `<p><b>${esc(b.term)}.</b> ${esc(b.text)}</p>`).join("\n")}</div>
-<p class="small muted" style="margin-top:10px">How to read these results: each term above is the same one the app and every report use.</p>
+<section id="method" class="reveal">
+<h2>Methodology</h2>
+<ul class="bullets">
+<li><b>Solved</b> = Lean's strict verifier accepted the proof: statement unchanged, no sorry or extra axiom.</li>
+<li><b>Re-checked:</b> CI re-verifies every solved proof with the run's Mathlib before merging; a run must list its whole sample.</li>
+<li><b>Ranked</b> only on a whole set; the 95% range shows how much one run can vary.</li>
+<li><b>Self-reported</b> (*): cost, time, tokens and the model served.</li>
+<li><b>Not pass@k:</b> Mack's attempts learn from Lean's errors; each run shows solves within 1, 4, 16 and 64 attempts.</li>
+</ul>
+<details style="margin-top:12px"><summary>How to read these results (glossary)</summary>
+<div class="card basics" style="margin-top:10px">${BENCH_BASICS.map((b) => `<p><b>${esc(b.term)}.</b> ${esc(b.text)}</p>`).join("\n")}</div>
+</details>
 </section>`,
     "",
     repo,
   );
 }
 
-/** One run: its settings, its numbers, its failures by reason, and every problem's result. */
+/** One model setup: every run of it, its best per set, and where it fails. */
+export function modelPage(slug: string, runs: SharedRun[], repo: string): string {
+  const rows = rowsOf(runs.filter((r) => modelSlug(r) === slug));
+  const name = rows.length ? models(rows[0].r) : slug;
+  const all = rows.flatMap((x) => x.r.results);
+  const solved = all.filter((x) => x.outcome === "solved");
+  const spent = rows.reduce((a, x) => a + x.usd, 0);
+  const attempts = solved.reduce((a, x) => a + x.attempts, 0);
+  const breakdown = failureBreakdown(all);
+  const most = breakdown[0]?.count ?? 1;
+  const bestBySet = BENCH_SETS.map((set) => rows.find((x) => x.r.set === set.id)).filter((x): x is Row => !!x);
+  return page(
+    `${name}: Mack benchmark`,
+    `<p class="crumbs"><a href="../index.html#models">← Models</a></p>
+<section class="hero compact" style="padding:14px 0 4px">
+<h1 style="font-size:30px">${esc(name)}</h1>
+<p class="muted">${rows.length} run${rows.length === 1 ? "" : "s"} · ${[...new Set(rows.map((x) => setLabel(x.r.set)))].join(", ")}</p>
+</section>
+<div class="kpis">
+${bestBySet.map((x) => kpi(pct(x.p.rate), `best on ${esc(setLabel(x.r.set))}`, `${x.p.solved}/${x.p.of}${x.p.full ? "" : " quick"} · ${range(x.p.low, x.p.high)}`)).join("\n")}
+${kpi(`${solved.length}/${all.filter((x) => x.outcome !== "skipped").length}`, "solved, all runs")}
+${kpi(solved.length ? usd(spent / solved.length) : "–", "per solve*")}
+${kpi(solved.length ? (attempts / solved.length).toFixed(1) : "–", "attempts per solve")}
+</div>
+<section class="reveal"><h2>Runs</h2>${runTable(rows, "../", false)}</section>
+${
+  breakdown.length
+    ? `<section class="reveal"><h2>Where it fails</h2><div class="card">${breakdown
+        .map((b) => `<div class="why" title="${esc(b.ids.join(", "))}"><span>${esc(FAILURES[b.kind].label)}</span>${bar(b.count / most, 0, "badbar")}<span class="muted">${b.count}</span></div>`)
+        .join("\n")}</div></section>`
+    : ""
+}
+${SELF_REPORTED}`,
+    "../",
+    repo,
+  );
+}
+
+/** One run: its key numbers, every problem at a glance, how attempts ended, its settings, and every result. */
 export function runPage(r: SharedRun, repo: string): string {
   const s = summarize(r);
   const p = publishedScore(r);
@@ -372,6 +434,14 @@ export function runPage(r: SharedRun, repo: string): string {
   const c = r.config;
   const breakdown = failureBreakdown(r.results);
   const most = breakdown[0]?.count ?? 1;
+  const tiles = r.results
+    .map((x) => {
+      const cls = x.outcome === "solved" ? (x.attempts === 0 ? "auto" : "ok") : x.outcome === "skipped" ? "" : "bad";
+      const what = x.outcome === "solved" ? (x.attempts === 0 ? "solved by automation" : `solved in ${x.attempts} attempt${x.attempts === 1 ? "" : "s"}`) : x.outcome === "skipped" ? "skipped" : `not solved${x.failure ? `: ${FAILURES[x.failure].label}` : ""}`;
+      const title = `${x.id}: ${what}`;
+      return x.log?.length ? `<a class="tile ${cls}" href="${esc(r.folder)}/${esc(x.id)}.html" title="${esc(title)}"></a>` : `<span class="tile ${cls}" title="${esc(title)}"></span>`;
+    })
+    .join("");
   const rows = r.results
     .map((x) => {
       const why = x.failure ? FAILURES[x.failure].label : "";
@@ -383,92 +453,107 @@ export function runPage(r: SharedRun, repo: string): string {
       return `<tr><td>${x.log?.length ? `<a href="${esc(r.folder)}/${esc(x.id)}.html">${esc(x.id)}</a>` : esc(x.id)}</td><td>${outcome}</td><td>${x.attempts}</td><td>${Math.round(x.ms / 1000)}s</td><td>${usd(x.usd)}</td><td class="wrap">${detail}</td></tr>`;
     })
     .join("\n");
+  const kv = (label: string, value: string) => `<div><span>${label}</span><b>${value}</b></div>`;
+  const byModel = m.byModel.map((x) => ({ ...x, model: x.model === "unknown" ? "Lean automation" : x.model }));
   return page(
-    `${setLabel(r.set)} ${p.solved}/${p.of}: Mack benchmark`,
-    `<p class="crumbs"><a href="../index.html#leaderboard">← Leaderboard</a></p>
-<section class="hero" style="padding:18px 0 6px">
-<h1 style="font-size:32px">${esc(setLabel(r.set))}: ${p.solved}/${p.of} solved</h1>
-<p class="muted">${esc(METHOD_LABELS[c.method ?? "single"])} · ${esc(models(r))} · ${day(r.startedAt)}${r.sharedBy ? ` · shared by ${esc(r.sharedBy)}` : ""}${r.appVersion ? ` · Mack ${esc(r.appVersion)}` : ""}</p>
+    `${models(r)} on ${setLabel(r.set)} ${p.solved}/${p.of}: Mack benchmark`,
+    `<p class="crumbs"><a href="../index.html#leaderboard">Leaderboard</a> / <a href="../models/${esc(modelSlug(r))}.html">${esc(models(r))}</a></p>
+<section class="hero compact" style="padding:14px 0 4px">
+<h1 style="font-size:30px">${esc(models(r))} · ${esc(setLabel(r.set))}</h1>
+<p class="muted">${esc(METHOD_LABELS[c.method ?? "single"])} · thinking ${c.effort ? esc(c.effort) : "auto"} · ${day(r.startedAt)}${r.sharedBy ? ` · by ${esc(r.sharedBy)}` : ""}${r.appVersion ? ` · Mack ${esc(r.appVersion)}` : ""}</p>
 </section>
-<div class="stats">
-<div class="card stat"><span class="muted small">Solve rate${p.full ? ", whole set" : `, ${p.of} of the set`}</span><b data-count="${(p.rate * 100).toFixed(1)}" data-dec="1" data-suffix="%">${pct(p.rate)}</b><span class="muted small">95% range ${range(p.low, p.high)}</span></div>
-<div class="card stat"><span class="muted small">Cost*</span><b>${usd(s.usd)}</b></div>
-<div class="card stat"><span class="muted small">Time*</span><b>${Math.round(s.ms / 60000)} min</b></div>
-<div class="card stat"><span class="muted small">By automation alone</span><b>${s.byAutomation}</b></div>
-${
-  m.attempts
-    ? `<div class="card stat"><span class="muted small">Attempts per solve</span><b>${m.attemptsPerSolve !== null ? m.attemptsPerSolve.toFixed(1) : "–"}</b></div>
-<div class="card stat"><span class="muted small">Tokens in / out*</span><b>${tokens(m.promptTokens)} / ${tokens(m.completionTokens)}</b></div>`
-    : ""
-}
+<div class="kpis">
+${kpi(`${p.solved}/${p.of}`, `solved${p.full ? ", whole set" : `, ${p.of} of the set`}`)}
+${kpi(`<span data-count="${(p.rate * 100).toFixed(1)}" data-dec="1" data-suffix="%">${pct(p.rate)}</span>`, "solve rate", `95% range ${range(p.low, p.high)}`)}
+${kpi(usd(s.usd), "cost*", p.solved ? `${usd(s.usd / p.solved)} per solve` : "")}
+${kpi(`${Math.round(s.ms / 60000)} min`, "time*")}
+${m.attempts ? kpi(m.attemptsPerSolve !== null ? m.attemptsPerSolve.toFixed(1) : "–", "attempts per solve", `${s.byAutomation} by automation alone`) : ""}
+${m.attempts ? kpi(`${tokens(m.promptTokens)} / ${tokens(m.completionTokens)}`, "tokens in / out*") : ""}
 </div>
-${
-  m.byModel.length > 1 || (m.byModel.length === 1 && m.byModel[0].model !== "unknown")
-    ? `<h2>Each model</h2>
-<div class="scroll"><table>
-<thead><tr><th>Model</th><th>Attempts</th><th>Verified</th><th>Hit rate</th><th>Tokens out</th><th>Replies cut short</th></tr></thead>
-<tbody>
-${m.byModel.map((x) => `<tr><td>${esc(short(x.model))}</td><td>${x.attempts}</td><td>${x.verified}</td><td>${pct(x.attempts ? x.verified / x.attempts : 0)}</td><td>${tokens(x.completionTokens)}</td><td>${x.truncated}</td></tr>`).join("\n")}
-</tbody></table></div>`
-    : ""
-}
-<div class="card small">
-${r.env?.mathlib ? `Mathlib <code>${esc(r.env.mathlib.slice(0, 12))}</code>${r.env.lean ? `, ${esc(r.env.lean)}` : ""}: the solved proofs were re-checked against it before the run was merged.<br>` : ""}${r.harness ? `Harness <b>Mack ${esc(r.harness.mack)}</b>, Open Math Harness <b>${esc(r.harness.openMathHarness)}</b>; ${esc(r.harness.procedures.join(", "))}.<br>` : ""}Model <b>${esc(c.model)}</b>${c.prover ? `; prover <b>${esc(c.prover)}</b>` : "; no prover model"}; thinking ${c.effort ? `<b>${esc(c.effort)}</b>` : "at each model's default"}. ${c.maxAttempts} attempts, ${c.parallel} at once, starting over after ${c.revisions} revisions. Automation ${c.automation ? "on" : "off"}; premise selection ${c.premises ? "on" : "off"}; easier versions first ${c.easierFirst ? "on" : "off"}.
-</div>
+<section class="reveal"><h2>Problems</h2>
+<div class="card"><div class="tiles">${tiles}</div>
+<div class="legend"><span><i style="background:var(--ok)"></i>solved</span><span><i style="background:color-mix(in srgb, var(--ok) 55%, var(--surface))"></i>by automation</span><span><i style="background:var(--bad)"></i>not solved</span><span><i style="background:var(--bar)"></i>skipped</span><span>Click a square for every attempt.</span></div></div>
+</section>
+<section class="reveal grid2">
 ${
   p.solved
-    ? `<section class="reveal"><h2>Solved within k attempts</h2>
-<div class="card">${within.map((w, i) => `<div class="why"><span>within ${w.k} attempt${w.k === 1 ? "" : "s"}</span>${bar(p.of ? w.solved / p.of : 0, i, "okbar")}<span class="muted">${w.solved}</span></div>`).join("\n")}
-<p class="small muted">Out of ${p.of} problems${s.byAutomation ? `; ${s.byAutomation} closed by Lean's automation before any attempt` : ""}. Like the labs' pass@k, except Mack's attempts revise one another from Lean's errors where pass@k samples independently.</p></div></section>`
+    ? `<div class="card"><h3>Solved within k attempts</h3>${within.map((w, i) => `<div class="why"><span>within ${w.k} attempt${w.k === 1 ? "" : "s"}</span>${bar(p.of ? w.solved / p.of : 0, i, "okbar")}<span class="muted">${w.solved}</span></div>`).join("\n")}<p class="note">Like pass@k, but attempts learn from Lean's errors.</p></div>`
     : ""
 }
-${SELF_REPORTED}
-<section class="reveal"><h2>Why problems were not solved</h2>
+${attemptsSection(r)}
 ${
   breakdown.length
-    ? `<div class="card">${breakdown
+    ? `<div class="card"><h3>Why problems were not solved</h3>${breakdown
         .map((b) => `<div class="why" title="${esc(b.ids.join(", "))}"><span>${esc(FAILURES[b.kind].label)}</span>${bar(b.count / most, 0, "badbar")}<span class="muted">${b.count}</span></div>`)
         .join("\n")}</div>`
-    : '<p class="muted">Every problem tried was solved.</p>'
-}</section>
-<section class="reveal">${attemptsSection(r)}</section>
-<section class="reveal"><h2>Results</h2>
+    : ""
+}
+</section>
+${commonErrors(r)}
+${
+  byModel.length > 1 || (byModel.length === 1 && byModel[0].model !== "Lean automation")
+    ? `<section class="reveal"><h2>Each model</h2>
 <div class="scroll"><table>
+<thead><tr><th>Model</th><th>Attempts</th><th>Verified</th><th>Hit rate</th><th>Tokens out</th><th>Cut short</th></tr></thead>
+<tbody>
+${byModel.map((x) => `<tr><td>${esc(short(x.model))}</td><td>${x.attempts}</td><td>${x.verified}</td><td>${pct(x.attempts ? x.verified / x.attempts : 0)}</td><td>${tokens(x.completionTokens)}</td><td>${x.truncated}</td></tr>`).join("\n")}
+</tbody></table></div></section>`
+    : ""
+}
+<section class="reveal"><h2>Settings</h2>
+<div class="card"><div class="kv">
+${kv("Model", esc(c.model))}
+${kv("Prover", c.prover ? esc(c.prover) : "none")}
+${kv("Thinking", c.effort ? esc(c.effort) : "model default")}
+${kv("Method", esc(METHOD_LABELS[c.method ?? "single"]))}
+${kv("Attempts", `${c.maxAttempts}, ${c.parallel} at once`)}
+${kv("Restart after", `${c.revisions} revisions`)}
+${kv("Automation", c.automation ? "on" : "off")}
+${kv("Premise selection", c.premises ? "on" : "off")}
+${kv("Easier versions first", c.easierFirst ? "on" : "off")}
+${kv("Lemma pool", c.lemmaPool ? "on" : "off")}
+${r.harness ? kv("Harness", `Mack ${esc(r.harness.mack)} · OMH ${esc(r.harness.openMathHarness)}`) : ""}
+${r.env?.mathlib ? kv("Mathlib", `<code>${esc(r.env.mathlib.slice(0, 12))}</code>`) : ""}
+${r.env?.lean ? kv("Lean", esc(r.env.lean)) : ""}
+${r.env?.platform ? kv("Machine*", esc(r.env.platform)) : ""}
+</div>
+${r.harness ? `<p class="note">Harness Mack ${esc(r.harness.mack)}, Open Math Harness <b>${esc(r.harness.openMathHarness)}</b>; procedures: ${esc(r.harness.procedures.join(", "))}.</p>` : ""}
+</div></section>
+<section class="reveal"><details><summary>All ${r.results.length} results as a table</summary>
+<div class="scroll" style="margin-top:10px"><table>
 <thead><tr><th>Problem</th><th>Outcome</th><th>Attempts</th><th>Time</th><th>Cost</th><th>Why</th></tr></thead>
 <tbody>
 ${rows}
-</tbody></table></div>
+</tbody></table></div></details>
 </section>
+${SELF_REPORTED}
 <p class="small"><a href="${esc(repo)}/blob/main/benchmarks/runs/${esc(r.folder)}/REPORT.md">Full report</a> · <a href="${esc(repo)}/blob/main/benchmarks/runs/${esc(r.folder)}/run.json">run.json</a>${r.attemptsLogged ? ` · <a href="${esc(repo)}/blob/main/benchmarks/runs/${esc(r.folder)}/attempts.jsonl">attempts.jsonl</a> (every attempt)` : ""}</p>`,
     "../",
     repo,
   );
 }
 
-/** Every attempt of a run by how it ended, and the Lean errors that cost the most attempts; empty without a log. */
+/** Every attempt of a run by how it ended, as a card; empty without a log. */
 function attemptsSection(r: SharedRun): string {
   const kinds = attemptKinds(r);
   if (!kinds.length) return "";
   const total = kinds.reduce((a, k) => a + k.count, 0);
   const most = kinds[0].count;
-  const errs = topErrors(r, 12);
-  return `<h2>All ${total} attempts by how they ended</h2>
-<div class="card">${kinds
-    .map(
-      (k) =>
-        `<div class="why"><span>${esc(k.kind === "verified" ? "Verified" : FAILURES[k.kind].label)}</span>${bar(k.count / most, 0, k.kind === "verified" ? "okbar" : "badbar")}<span class="muted">${k.count}</span></div>`,
-    )
-    .join("\n")}</div>
-${
-  errs.length
-    ? `<h3>Commonest Lean errors</h3>
+  return `<div class="card"><h3>All ${total} attempts by how they ended</h3>${kinds
+    .map((k) => `<div class="why"><span>${esc(k.kind === "verified" ? "Verified" : FAILURES[k.kind].label)}</span>${bar(k.count / most, 0, k.kind === "verified" ? "okbar" : "badbar")}<span class="muted">${k.count}</span></div>`)
+    .join("\n")}</div>`;
+}
+
+/** The Lean errors that cost the most attempts; empty without a log. */
+function commonErrors(r: SharedRun): string {
+  const errs = topErrors(r, 10);
+  if (!errs.length) return "";
+  return `<section class="reveal"><h2>Commonest Lean errors</h2>
 <div class="scroll"><table>
 <thead><tr><th>Error</th><th>Attempts</th><th>Problems</th></tr></thead>
 <tbody>
 ${errs.map((e) => `<tr><td class="wrap">${esc(e.error)}</td><td>${e.count}</td><td>${e.problems}</td></tr>`).join("\n")}
-</tbody></table></div>`
-    : ""
-}`;
+</tbody></table></div></section>`;
 }
 
 const clock = (ms: number | null) => (ms === null ? "" : `+${ms < 60_000 ? `${Math.round(ms / 1000)}s` : `${Math.floor(ms / 60_000)}m${String(Math.round((ms % 60_000) / 1000)).padStart(2, "0")}s`}`);
@@ -523,6 +608,7 @@ ${x.proof ? `<h2>The verified proof</h2><pre class="card">${esc(x.proof)}</pre>`
 /** Every page of the site, by path. */
 export function buildSite(runs: SharedRun[], repo: string): Record<string, string> {
   const files: Record<string, string> = { "index.html": indexPage(runs, repo) };
+  for (const slug of new Set(runs.map((r) => modelSlug(r)))) files[`models/${slug}.html`] = modelPage(slug, runs, repo);
   for (const r of runs) {
     files[`runs/${r.folder}.html`] = runPage(r, repo);
     const set = BENCH_SETS.find((s) => s.id === r.set);
