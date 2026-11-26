@@ -99,14 +99,17 @@ export function Field({ label, hint, tip, children }: { label: string; hint?: Re
   );
 }
 
-export function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: ReactNode }) {
+export function Toggle({ checked, onChange, label, tip }: { checked: boolean; onChange: (v: boolean) => void; label: ReactNode; tip?: string }) {
   return (
     <label className="toggle">
       <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
       <span className="toggle-track">
         <span className="toggle-thumb" />
       </span>
-      <span>{label}</span>
+      <span>
+        {label}
+        {tip && <InfoTip text={tip} />}
+      </span>
     </label>
   );
 }

@@ -18,16 +18,16 @@ type Props = {
 };
 
 const SEARCH_FIELDS: { key: keyof Limits; label: string; hint: string; min: number; max: number }[] = [
-  { key: "w", label: "Workers per round", hint: "How many nodes are continued at once.", min: 1, max: 8 },
+  { key: "w", label: "Workers per round", hint: "Nodes continued at once.", min: 1, max: 8 },
   { key: "k1", label: "Rounds", hint: "Most rounds of continuations.", min: 1, max: 20 },
   { key: "fanout", label: "Fan-out", hint: "Most continuations of one node.", min: 1, max: 8 },
-  { key: "callsPerContinuation", label: "Calls per worker", hint: "Model calls one worker may make, revising after each check.", min: 1, max: 10 },
+  { key: "callsPerContinuation", label: "Calls per worker", hint: "Model calls per worker.", min: 1, max: 10 },
   { key: "modelCalls", label: "Model-call budget", hint: "Most model calls in the whole search.", min: 1, max: 500 },
 ];
 
 const ULTRA_FIELDS: { key: keyof UltramathLimits; label: string; hint: string; min: number; max: number }[] = [
-  { key: "members", label: "Members", hint: "Agents working at once, each on its own direction (upstream allows up to 16).", min: 1, max: 16 },
-  { key: "rounds", label: "Rounds", hint: "In each round every active member takes one turn.", min: 1, max: 50 },
+  { key: "members", label: "Members", hint: "Agents working at once.", min: 1, max: 16 },
+  { key: "rounds", label: "Rounds", hint: "One turn per member each round.", min: 1, max: 50 },
   { key: "modelCalls", label: "Model-call budget", hint: "Most model calls in the whole swarm.", min: 1, max: 1000 },
 ];
 
@@ -39,14 +39,14 @@ export function SettingsPage({ settings, saveSettings }: Props) {
         <Toggle
           checked={settings.autopilotNewChats}
           onChange={(v) => void saveSettings({ autopilotNewChats: v })}
-          label="Start new chats on Autopilot: tell the assistant what to solve and it works end to end on its own, using whichever features it needs. Its file writes, proof runs and commands then run without asking, until the work is done or your spending limit is reached. Each chat's Autopilot button turns it off."
+          label="Start new chats on Autopilot" tip="The assistant works end to end without asking, until done or the spending limit."
         />
       </section>
 
       <section className="settings-group">
         <h2>Prover</h2>
         <div className="grid-2">
-          <Field label="Attempts per run" hint="Model calls a run may make in all, shared by its chains. Labs make dozens to thousands per hard problem; with a cheap prover model 64 or more is affordable.">
+          <Field label="Attempts per run" tip="Model calls a run may make in all.">
             <input
               className="input"
               type="number"
@@ -56,7 +56,7 @@ export function SettingsPage({ settings, saveSettings }: Props) {
               onChange={(e) => void saveSettings({ maxAttempts: Math.max(1, Math.min(1000, Number(e.target.value) || 1)) })}
             />
           </Field>
-          <Field label="Lean deadline (seconds)" hint="A check that runs longer counts as a failed attempt, never a pass.">
+          <Field label="Lean deadline (seconds)" tip="A slower check counts as a failed attempt.">
             <input
               className="input"
               type="number"
@@ -65,7 +65,7 @@ export function SettingsPage({ settings, saveSettings }: Props) {
               onChange={(e) => void saveSettings({ timeoutMs: Math.max(10, Number(e.target.value) || 10) * 1000 })}
             />
           </Field>
-          <Field label="Attempts at once" hint="Independent chains of attempts side by side, sharing the attempts above; the first verified proof stops the others. Their Lean checks wait for the Lean processes allowed below, so more chains cost no more memory.">
+          <Field label="Attempts at once" tip="Parallel chains sharing the attempts; the first proof stops the rest.">
             <input
               className="input"
               type="number"
@@ -75,7 +75,7 @@ export function SettingsPage({ settings, saveSettings }: Props) {
               onChange={(e) => void saveSettings({ parallelAttempts: Math.max(1, Math.min(32, Number(e.target.value) || 1)) })}
             />
           </Field>
-          <Field label="Revisions before starting over" hint="After this many rounds of Lean feedback a chain starts again from a clean conversation: fresh tries explore, long revisions only patch. 0 never starts over.">
+          <Field label="Revisions before starting over" tip="0 never starts over.">
             <input
               className="input"
               type="number"
@@ -89,7 +89,7 @@ export function SettingsPage({ settings, saveSettings }: Props) {
         <ProverModel settings={settings} saveSettings={saveSettings} />
         <Field
           label="Thinking level for proofs"
-          hint="How deeply the models think in proof attempts and benchmark runs (the reasoning effort sent to the provider). Higher solves more hard problems but costs more tokens and time per attempt; Model default sends nothing and lets each model decide. Models that cannot reason ignore it, and a few providers refuse it: then choose Model default. Chats have their own level, in the chat box."
+          tip="Reasoning effort for proof attempts and benchmark runs. Model default sends none."
         >
           <select className="input" style={{ width: 200 }} value={settings.proofEffort ?? "default"} onChange={(e) => void saveSettings({ proofEffort: e.target.value as ProofEffort })}>
             {PROOF_EFFORTS.map((e) => (
@@ -102,57 +102,53 @@ export function SettingsPage({ settings, saveSettings }: Props) {
         <Toggle
           checked={settings.leanAutomation}
           onChange={(v) => void saveSettings({ leanAutomation: v })}
-          label="Try Lean's automation first: before any model call, and on every sorry an attempt leaves, Mack tries omega, norm_num, simp, linarith, nlinarith, positivity, aesop, grind and exact?. What closes is put in; only the rest goes back to the model."
+          label="Try Lean's automation first" tip="omega, simp, linarith, aesop, grind… before any model call and on every sorry."
         />
         <Toggle
           checked={settings.reuseProofs}
           onChange={(v) => void saveSettings({ reuseProofs: v })}
-          label="Learn from earlier proofs: every proof Lean verifies is kept, and attempts on a new statement are shown the verified proofs of the most similar ones."
+          label="Learn from earlier proofs" tip="Attempts see your verified proofs of similar statements."
         />
         <ProofExport />
         <Toggle
           checked={settings.premiseSelection}
           onChange={(v) => void saveSettings({ premiseSelection: v })}
-          label="Give attempts the likely Mathlib theorems up front (premise selection): before the first attempt, the theorems that the statement's concepts point to (its functions, its notation, its number types) are looked up in Mathlib's source and listed for the prover."
+          label="Premise selection" tip="Attempts are given the Mathlib theorems the statement likely needs."
         />
         <Toggle
           checked={settings.easierFirst}
           onChange={(v) => void saveSettings({ easierFirst: v })}
-          label="Prove easier versions first: the model proposes special cases, weaker forms and the key lemma, each is tried with a few attempts, and the ones Lean verifies are offered to every attempt on the real statement. Costs a few model calls more per run."
+          label="Prove easier versions first" tip="Special cases and the key lemma first; the verified ones are offered to every attempt."
         />
         <h3 className="settings-sub">Decompose mode</h3>
         <div className="grid-2">
-          <Field label="Attempts before splitting" hint="Attempts on the statement, and on every lemma, before it is split into smaller steps.">
+          <Field label="Attempts before splitting">
             <input className="input" type="number" min={1} max={200} value={settings.decomposeAttempts} onChange={(e) => void saveSettings({ decomposeAttempts: Math.max(1, Math.min(200, Math.floor(Number(e.target.value)) || 1)) })} />
           </Field>
-          <Field label="Split depth" hint="How many times a step that fails may be split again. Each level multiplies the work.">
+          <Field label="Split depth">
             <input className="input" type="number" min={1} max={4} value={settings.decomposeDepth} onChange={(e) => void saveSettings({ decomposeDepth: Math.max(1, Math.min(4, Math.floor(Number(e.target.value)) || 1)) })} />
           </Field>
-          <Field label="Splits per statement" hint="When a split's steps cannot all be proved, the planning model is told which failed and splits again, up to this many times.">
+          <Field label="Splits per statement">
             <input className="input" type="number" min={1} max={6} value={settings.decomposeRounds} onChange={(e) => void saveSettings({ decomposeRounds: Math.max(1, Math.min(6, Math.floor(Number(e.target.value)) || 1)) })} />
           </Field>
         </div>
         <Toggle
           checked={settings.checkStatement}
           onChange={(v) => void saveSettings({ checkStatement: v })}
-          label="Try to break the statement first: Lean's random tester looks for a counterexample before any model call. A counterexample stops the run, since no proof can exist."
+          label="Look for a counterexample first" tip="Lean's random tester; a counterexample stops the run."
         />
         <Toggle
           checked={settings.proofIdea}
           onChange={(v) => void saveSettings({ proofIdea: v })}
-          label="Plan the proof in words first: one model call writes the proof as small steps, and every attempt is given that plan."
+          label="Plan the proof in words first"
         />
       </section>
 
       <section className="settings-group">
         <h2>Spending</h2>
-        <p className="muted">
-          Each session — a chat, a proof run, a search run, an Ultramath swarm — stops when its model calls have cost this much. Cost is the tokens your
-          provider reports times the model's price in Setup. A call already running when the cap is reached still finishes.
-        </p>
         <GlobalSpend settings={settings} saveSettings={saveSettings} />
         <div className="grid-2">
-          <Field label="Assumed price, input ($ per million tokens)" hint="Counted for a model whose price you have not entered. Keep it high: limits then stop early, never late.">
+          <Field label="Assumed price, input ($ per million tokens)" tip="Used for models without a price. Keep it high so limits stop early.">
             <input
               className="input"
               type="number"
@@ -174,7 +170,7 @@ export function SettingsPage({ settings, saveSettings }: Props) {
           </Field>
         </div>
         <div className="grid-2">
-          <Field label="Max cost per run (USD)" hint="Each proof run, search and swarm. Chats are bounded only by the global limit. 0 turns the cap off.">
+          <Field label="Max cost per run (USD)" tip="0 = no cap. Chats use the global limit only.">
             <input
               className="input"
               type="number"
@@ -189,12 +185,9 @@ export function SettingsPage({ settings, saveSettings }: Props) {
 
       <section className="settings-group">
         <h2>Search tree</h2>
-        <p className="muted">
-          Used when the Prove screen is set to Search tree. The whole search makes at most the model-call budget of billed calls.
-        </p>
         <div className="grid-2">
           {SEARCH_FIELDS.map((f) => (
-            <Field key={f.key} label={f.label} hint={f.hint}>
+            <Field key={f.key} label={f.label} tip={f.hint}>
               <input
                 className="input"
                 type="number"
@@ -209,25 +202,25 @@ export function SettingsPage({ settings, saveSettings }: Props) {
           ))}
         </div>
         <div className="grid-2">
-          <Field label="Workers" hint="Fixed loop: one prompt per attempt (upstream's putnam template). Tool loop: workers with their own workspace, file tools, Lean checks and a shared plan board.">
+          <Field label="Workers">
             <select className="input" value={settings.searchWorker} onChange={(e) => void saveSettings({ searchWorker: e.target.value as "fixed" | "tool" })}>
               <option value="fixed">Fixed loop</option>
               <option value="tool">Tool loop with plan board</option>
             </select>
           </Field>
-          <Field label="Problems at once" hint="For runs over several problems (Runs screen, or the chat's discovery_start).">
+          <Field label="Problems at once">
             <input className="input" type="number" min={1} max={4} value={settings.runConcurrency} onChange={(e) => void saveSettings({ runConcurrency: Math.max(1, Math.min(4, Number(e.target.value) || 1)) })} />
           </Field>
         </div>
         <Toggle
           checked={settings.searchAnalysis}
           onChange={(v) => void saveSettings({ searchAnalysis: v })}
-          label="Score partial proofs with Lean (scoring v3): try to finish each with automation, then credit only real closed steps and catch hollow sorries"
+          label="Score partial proofs with Lean" tip="Credits only steps Lean really closes (scoring v3)."
         />
         <Toggle
           checked={settings.useRepl}
           onChange={(v) => void saveSettings({ useRepl: v })}
-          label="Use the resident Lean REPL for quick checks (keeps Mathlib loaded between checks; the final verification always uses a fresh Lean)"
+          label="Use the Lean REPL for quick checks" tip="Keeps Mathlib loaded. The final check always uses a fresh Lean."
         />
         <LeanLimit value={settings.maxLeanProcesses ?? 0} onChange={(n) => void saveSettings({ maxLeanProcesses: n })} />
         <RemoteLeanFields settings={settings} saveSettings={saveSettings} />
@@ -235,12 +228,9 @@ export function SettingsPage({ settings, saveSettings }: Props) {
 
       <section className="settings-group">
         <h2>Ultramath</h2>
-        <p className="muted">
-          Used when the Prove screen is set to Ultramath. Duplicate checks and the judge's reviews count toward the model-call budget.
-        </p>
         <div className="grid-2">
           {ULTRA_FIELDS.map((f) => (
-            <Field key={f.key} label={f.label} hint={f.hint}>
+            <Field key={f.key} label={f.label} tip={f.hint}>
               <input
                 className="input"
                 type="number"
@@ -281,10 +271,6 @@ function GitHubSection() {
   return (
     <section className="settings-group">
       <h2>GitHub</h2>
-      <p className="muted">
-        Mack publishes to GitHub as pull requests: shared benchmark runs and community proofs on the Mack repo, and a chat's work in its project's own private repository (open
-        one from a chat's Review panel, or let the chat open one; it asks first). Connect one or more accounts and choose which one Mack publishes as.
-      </p>
       <GitHubAccounts />
     </section>
   );
@@ -324,11 +310,10 @@ function UpdatesSection({ settings, saveSettings }: { settings: Settings; saveSe
     <section className="settings-group">
       <h2>Updates</h2>
       <p className="muted">
-        You have Mack {version}. New versions come from{" "}
+        Mack {version} ·{" "}
         <button className="link" onClick={() => void api.openExternal("https://github.com/JorgeOchoaReyes/Mack/releases")}>
-          GitHub Releases
+          Releases
         </button>
-        .
       </p>
       <Toggle checked={settings.autoUpdate} onChange={(v) => void saveSettings({ autoUpdate: v })} label="Download and install updates automatically" />
       <div className="row gap-sm">
@@ -361,10 +346,10 @@ function GlobalSpend({ settings, saveSettings }: { settings: Settings; saveSetti
   return (
     <div className="global-spend">
       <div className="grid-2">
-        <Field label="Global limit (USD)" hint="Everything Mack does together: every chat, run, swarm, memory update and suggestion. 0 turns it off.">
+        <Field label="Global limit (USD)" tip="Everything Mack spends together. 0 = off.">
           <input className="input" type="number" min={0} step={1} value={settings.globalLimit} onChange={(e) => void saveSettings({ globalLimit: Math.max(0, Number(e.target.value) || 0) })} />
         </Field>
-        <Field label="Per" hint="When the global total starts again from zero.">
+        <Field label="Per">
           <select className="input" value={settings.globalPeriod} onChange={(e) => void saveSettings({ globalPeriod: e.target.value as Settings["globalPeriod"] })}>
             <option value="month">month</option>
             <option value="day">day</option>
@@ -398,7 +383,7 @@ function LeanLimit({ value, onChange }: { value: number; onChange: (n: number) =
   return (
     <Field
       label="Lean processes at once (0 = automatic)"
-      hint={`Each Lean process with Mathlib uses about 5–6 GB of memory, so this caps Mack at about ${n ? `${n * 6} GB` : "half your memory"}${mem ? ` of this computer's ${mem.totalGb} GB` : ""}. Checks beyond it wait their turn. Automatic uses about half the memory${mem ? ` (${mem.auto} here)` : ""}; an idle Lean REPL is closed after 5 minutes.`}
+      tip={`About 6 GB of memory each${mem ? `; this computer has ${mem.totalGb} GB, automatic uses ${mem.auto}` : ""}.`}
     >
       <input className="input" type="number" min={0} max={16} value={value} onChange={(e) => onChange(Math.max(0, Math.min(16, Math.floor(Number(e.target.value)) || 0)))} />
     </Field>
@@ -420,7 +405,7 @@ function ProverModel({ settings, saveSettings }: { settings: Settings; saveSetti
     <>
       <Field
         label="Prover models (optional)"
-        hint="Models trained only to write Lean proofs (DeepSeek-Prover-V2, Kimina-Prover, Goedel-Prover-V2) prove far more competition problems per dollar than a general model. When set, they write every attempt and your main model only plans. Pick one from your provider's list, or choose Other to type several, separated by commas: the attempts take them in turn: different models fail on different problems, so a mix solves more. Their provider needs a key in Setup."
+        tip="Models trained for Lean proofs write the attempts; your main model plans."
       >
         <div className="inline-fields">
           <select className="input" style={{ width: 150, flex: "none" }} value={settings.proverProvider} onChange={(e) => void saveSettings({ proverProvider: e.target.value as ProviderId })}>
@@ -443,7 +428,7 @@ function ProverModel({ settings, saveSettings }: { settings: Settings; saveSetti
       {models.map((model) => {
         const price = settings.prices[model];
         return (
-          <Field key={model} label={`Price of ${model} ($ per million tokens, input / output)`} hint={price ? undefined : "Not set: the high assumed price is counted, so limits stop early."}>
+          <Field key={model} label={`Price of ${model} ($ per million tokens, input / output)`} tip={price ? undefined : "Not set: the assumed price is counted."}>
             <div className="inline-fields">
               <input className="input" type="number" min={0} step={0.1} value={price?.input ?? ""} placeholder="input" onChange={(e) => setPrice(model, "input", Number(e.target.value) || 0)} />
               <input className="input" type="number" min={0} step={0.1} value={price?.output ?? ""} placeholder="output" onChange={(e) => setPrice(model, "output", Number(e.target.value) || 0)} />
@@ -462,21 +447,18 @@ function RemoteLeanFields({ settings, saveSettings }: { settings: Settings; save
   return (
     <details className="settings-details" open={!!r.host}>
       <summary>Run Lean on another machine (SSH)</summary>
-      <p className="muted small">
-        A rented cloud machine or a workstation with more memory runs every Lean check, and this computer only sends the proof text. The machine needs Lean and Mathlib in the folder below, with Mack&apos;s REPL built in <span className="mono">.mack/repl</span> for quick checks (copy this computer&apos;s Lean workspace there), and <span className="mono">ssh</span> must log in with a key, without a password prompt. Leave the host empty to run Lean here.
-      </p>
       <div className="grid-2">
-        <Field label="SSH host" hint="As you would type it after ssh: user@machine, or a name from your SSH config.">
+        <Field label="SSH host" tip="user@machine, or a name from your SSH config.">
           <input className="input" placeholder="ubuntu@203.0.113.7" value={r.host} onChange={(e) => set({ host: e.target.value })} />
         </Field>
         <Field label="Lean workspace on that machine">
           <input className="input" value={r.workspace} onChange={(e) => set({ workspace: e.target.value })} />
         </Field>
-        <Field label="Lean processes at once there" hint="About 6 GB of that machine's memory each: a 128 GB machine runs about 18.">
+        <Field label="Lean processes at once there" tip="About 6 GB of memory each.">
           <input className="input" type="number" min={1} max={64} value={r.processes} onChange={(e) => set({ processes: Math.max(1, Math.min(64, Math.floor(Number(e.target.value)) || 1)) })} />
         </Field>
       </div>
-      <Toggle checked={r.repl} onChange={(v) => set({ repl: v })} label="That machine has Mack's REPL built (.mack/repl), for quick checks with Mathlib kept loaded" />
+      <Toggle checked={r.repl} onChange={(v) => set({ repl: v })} label="That machine has the Lean REPL built" />
     </details>
   );
 }
