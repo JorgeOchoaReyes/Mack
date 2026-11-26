@@ -97,6 +97,10 @@ nav.links .btn { color: #17150a; }
 .kv { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px 18px; font-size: 13.5px; }
 .kv div span { display: block; color: var(--muted); font-size: 11.5px; text-transform: uppercase; letter-spacing: .04em; }
 .kv div b { font-weight: 600; word-break: break-word; }
+.tip { position: relative; display: inline-grid; place-items: center; width: 15px; height: 15px; margin-left: 5px; border-radius: 50%; border: 1px solid var(--border); color: var(--muted); font: 600 10px/1 ui-sans-serif, system-ui, sans-serif; cursor: help; vertical-align: 2px; text-transform: none; letter-spacing: 0; }
+.tip::after { content: attr(data-tip); position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%); width: max-content; max-width: 260px; padding: 7px 10px; border-radius: 8px; background: var(--text); color: var(--bg); font: 500 12.5px/1.45 ui-sans-serif, system-ui, sans-serif; white-space: normal; text-align: left; pointer-events: none; z-index: 20; display: none; }
+.tip:hover::after, .tip:focus::after { display: block; }
+th .tip::after { bottom: auto; top: calc(100% + 8px); }
 .status { display: inline-block; padding: 3px 10px; border-radius: 99px; font-size: 12.5px; font-weight: 700; vertical-align: middle; margin-left: 8px; }
 .status.ok { background: var(--ok-soft); color: var(--ok); }
 .status.auto { background: var(--ok-soft); color: var(--ok); }
@@ -247,6 +251,24 @@ function rateCell(rate: number, best = false, i = 0): string {
 /** A rate's 95% range, as text: `43–82%`. */
 const range = (low: number, high: number) => `${Math.round(low * 100)}–${Math.round(high * 100)}%`;
 
+/** A small (i) that explains a term in one line, on hover, focus or tap. */
+const tip = (text: string) => `<span class="tip" tabindex="0" role="note" aria-label="${esc(text)}" data-tip="${esc(text)}">i</span>`;
+
+/** The one-line explanations, the same wherever a term appears. */
+const TIPS = {
+  automation: "Lean's own tactics (omega, simp, linarith, grind…) closed it before any model wrote a proof. Free, and checked like any proof.",
+  range: "95% confidence interval. With few problems it is wide; two runs differ only when their ranges barely overlap.",
+  quick: "A run on part of the set. Listed, not ranked: its sample can be easier or harder than the whole set.",
+  within: "Problems solved within k model attempts. Like pass@k, but attempts learn from Lean's errors.",
+  reported: "Self-reported by the run; cannot be checked. Solves can: CI re-checks every proof with Lean.",
+  thinking: "How deeply the model was asked to reason (reasoning effort). auto = the model's default.",
+  perSolve: "The run's whole cost divided by problems solved.",
+  time: "Wall-clock per problem: model calls, Lean checks and automation together.",
+  verified: "Accepted by Mack's strict verifier and re-checked with Lean in CI.",
+  contamination: "Recent Putnam problems are least likely to be in training data. Much weaker there suggests memorization helped elsewhere.",
+  harness: "Mack's version and the Open Math Harness commit it follows; hover a cell for the procedures used.",
+} as const;
+
 /** A duration as people read it: 45s, 3m 20s, 1h 05m. */
 const dur = (ms: number) => {
   const sec = Math.round(ms / 1000);
@@ -255,14 +277,11 @@ const dur = (ms: number) => {
   return `${Math.floor(sec / 3600)}h ${String(Math.floor((sec % 3600) / 60)).padStart(2, "0")}m`;
 };
 
-/** What "solved by automation" means, in two sentences. */
-const AUTOMATION = `<b>Solved by automation</b> means Lean's own tactics closed the problem before any model wrote a proof: Mack first tries <code>omega</code>, <code>norm_num</code>, <code>simp</code>, <code>linarith</code>, <code>nlinarith</code>, <code>positivity</code>, <code>aesop</code>, <code>grind</code> and <code>exact?</code> on the statement, all in one Lean run. No proof attempts are spent (at most the short proof plan, when that setting is on), and the proof is checked by the same strict verifier.`;
-
 /** The tactic that closed a problem by automation, read from its proof. */
 const closingTactic = (proof?: string) => (proof ? (/:=\s*by\s*\n\s*(.+)\s*$/.exec(proof.trim())?.[1] ?? "").trim() : "");
 
 /** What cannot be checked in a shared run, said once under each table that shows it. */
-const SELF_REPORTED = `<p class="note">* As the run reported it: cost, time, tokens and the model served cannot be checked from here. Solves can: CI re-checks every solved proof with Lean before a run is merged.</p>`;
+const SELF_REPORTED = `<p class="note">* self-reported ${tip(TIPS.reported)}</p>`;
 
 type Row = { r: SharedRun; p: ReturnType<typeof publishedScore>; usd: number };
 
@@ -290,7 +309,7 @@ function runTable(rows: Row[], root: string, withModel = true): string {
 ${withModel ? `<td class="wrap"><a href="${root}models/${esc(modelSlug(r))}.html">${esc(models(r))}</a>*</td>` : ""}
 <td>${esc(METHOD_LABELS[r.config.method ?? "single"])}${r.config.method === "search" || r.config.method === "ultramath" ? ' <span class="pill omh">OMH</span>' : ""}</td>
 <td>${thinking(r)}</td>
-<td><a href="${root}runs/${esc(r.folder)}.html"><b>${p.solved}/${p.of}</b></a>${ranked ? "" : ' <span class="pill">quick</span>'}</td>
+<td><a href="${root}runs/${esc(r.folder)}.html"><b>${p.solved}/${p.of}</b></a>${ranked ? "" : ` <span class="pill">quick</span>${i === rows.findIndex((x) => !x.p.full) ? tip(TIPS.quick) : ""}`}</td>
 <td>${rateCell(p.rate, best, i)}</td>
 <td class="muted">${range(p.low, p.high)}</td>
 <td>${p.solved ? usd(spent / p.solved) : "–"}</td>
@@ -300,7 +319,7 @@ ${withModel ? `<td class="wrap"><a href="${root}models/${esc(modelSlug(r))}.html
     })
     .join("\n");
   return `<div class="scroll"><table>
-<thead><tr><th>#</th>${withModel ? "<th>Model*</th>" : ""}<th>Method</th><th>Thinking</th><th>Solved</th><th>Rate</th><th>95% range</th><th>$ / solve*</th><th>Date</th><th>Harness</th></tr></thead>
+<thead><tr><th>#</th>${withModel ? "<th>Model*</th>" : ""}<th>Method</th><th>Thinking${tip(TIPS.thinking)}</th><th>Solved</th><th>Rate</th><th>95% range${tip(TIPS.range)}</th><th>$ / solve*${tip(TIPS.perSolve)}</th><th>Date</th><th>Harness${tip(TIPS.harness)}</th></tr></thead>
 <tbody>
 ${body}
 </tbody></table></div>`;
@@ -347,7 +366,7 @@ function setTabs(runs: SharedRun[]): string {
       const full = rows.filter((x) => x.p.full).length;
       return `<div class="panel panel-${i}">
 ${runTable(rows, "")}
-<p class="note">${set.problems.length} problems. ${full ? `${full} run${full === 1 ? "" : "s"} on the whole set, ranked.` : `No run on all ${set.problems.length} yet: only whole-set runs are ranked.`} Quick runs (part of the set) are listed, unranked.</p>
+<p class="note">${set.problems.length} problems · ${full ? `${full} ranked` : "none on the whole set yet"}</p>
 </div>`;
     })
     .join("\n");
@@ -377,7 +396,7 @@ ${bar(g.best.p.rate, i)}
     "Mack benchmark",
     `<section class="hero compact">
 <h1>Proving competition math <em>in Lean</em></h1>
-<p class="lead">Open models on miniF2F and PutnamBench. A problem counts only when Lean's kernel accepts the proof, and CI re-checks every solve.</p>
+<p class="lead">Open models on miniF2F and PutnamBench. Only Lean-verified proofs count.</p>
 <div class="cta">
 <a class="btn primary" href="${RELEASES}">Download Mack for Windows or Linux</a>
 <a class="btn" href="${esc(repo)}">GitHub</a>
@@ -396,24 +415,21 @@ ${runs.length ? SELF_REPORTED : ""}
 </section>
 ${groups.length ? `<section id="models" class="reveal"><h2>Models</h2><div class="cards">${cards}</div></section>` : '<section id="models"></section>'}
 <section id="recent" class="reveal">
-<h2>Recent problems: the contamination check</h2>
-<p class="sub">Putnam ${RECENT_YEARS.join(" and ")} is least likely to be in training data. A model much weaker there than on older problems was probably helped by memory.</p>
+<h2>Recent problems: the contamination check ${tip(TIPS.contamination)}</h2>
 ${
   contamination
     ? `<div class="scroll"><table><thead><tr><th>Model*</th><th>Older Putnam</th><th>Recent</th></tr></thead><tbody>
 ${contamination}
 </tbody></table></div>`
-    : `<p class="note">No runs yet: run <b>${esc(setLabel(RECENT_SET))}</b>, or all of PutnamBench, and share it.</p>`
+    : `<p class="note">No runs yet. Run <b>${esc(setLabel(RECENT_SET))}</b> in Mack to add one.</p>`
 }
 </section>
 <section id="method" class="reveal">
 <h2>Methodology</h2>
 <ul class="bullets">
-<li><b>Solved</b> = Lean's strict verifier accepted the proof: statement unchanged, no sorry or extra axiom.</li>
-<li><b>Re-checked:</b> CI re-verifies every solved proof with the run's Mathlib before merging; a run must list its whole sample.</li>
-<li><b>Ranked</b> only on a whole set; the 95% range shows how much one run can vary.</li>
-<li><b>Self-reported</b> (*): cost, time, tokens and the model served.</li>
-<li><b>Not pass@k:</b> Mack's attempts learn from Lean's errors; each run shows solves within 1, 4, 16 and 64 attempts.</li>
+<li><b>Solved:</b> Lean's strict verifier accepted the proof; CI re-checks every one.</li>
+<li><b>Ranked:</b> whole-set runs only, with a 95% range.</li>
+<li><b>*</b> cost, time, tokens and model are self-reported.</li>
 </ul>
 <details style="margin-top:12px"><summary>How to read these results (glossary)</summary>
 <div class="card basics" style="margin-top:10px">${BENCH_BASICS.map((b) => `<p><b>${esc(b.term)}.</b> ${esc(b.text)}</p>`).join("\n")}</div>
@@ -501,7 +517,7 @@ export function runPage(r: SharedRun, repo: string): string {
 </section>
 <div class="kpis">
 ${kpi(`${p.solved}/${p.of}`, `solved${p.full ? ", whole set" : `, ${p.of} of the set`}`)}
-${kpi(`<span data-count="${(p.rate * 100).toFixed(1)}" data-dec="1" data-suffix="%">${pct(p.rate)}</span>`, "solve rate", `95% range ${range(p.low, p.high)}`)}
+${kpi(`<span data-count="${(p.rate * 100).toFixed(1)}" data-dec="1" data-suffix="%">${pct(p.rate)}</span>`, `solve rate${tip(TIPS.range)}`, `95% range ${range(p.low, p.high)}`)}
 ${kpi(usd(s.usd), "cost*", p.solved ? `${usd(s.usd / p.solved)} per solve` : "")}
 ${kpi(`${Math.round(s.ms / 60000)} min`, "time*")}
 ${m.attempts ? kpi(m.attemptsPerSolve !== null ? m.attemptsPerSolve.toFixed(1) : "–", "attempts per solve", `${s.byAutomation} by automation alone`) : ""}
@@ -509,14 +525,13 @@ ${m.attempts ? kpi(`${tokens(m.promptTokens)} / ${tokens(m.completionTokens)}`, 
 </div>
 <section class="reveal"><h2>Problems</h2>
 <div class="card"><div class="tiles">${tiles}</div>
-<div class="legend"><span><i style="background:var(--ok)"></i>solved by a model</span><span><i style="background:color-mix(in srgb, var(--ok) 55%, var(--surface))"></i>solved by automation</span><span><i style="background:var(--bad)"></i>not solved</span><span><i style="background:var(--bar)"></i>skipped</span><span>Hover for the time; click for the deep dive.</span></div>
-${s.byAutomation ? `<div class="explain">${AUTOMATION}</div>` : ""}</div>
+<div class="legend"><span><i style="background:var(--ok)"></i>solved by a model</span><span><i style="background:color-mix(in srgb, var(--ok) 55%, var(--surface))"></i>solved by automation${tip(TIPS.automation)}</span><span><i style="background:var(--bad)"></i>not solved</span><span><i style="background:var(--bar)"></i>skipped</span><span>Click a square for its deep dive.</span></div></div>
 </section>
 ${timeSection(r)}
 <section class="reveal grid2">
 ${
   p.solved
-    ? `<div class="card"><h3>Solved within k attempts</h3>${within.map((w, i) => `<div class="why"><span>within ${w.k} attempt${w.k === 1 ? "" : "s"}</span>${bar(p.of ? w.solved / p.of : 0, i, "okbar")}<span class="muted">${w.solved}</span></div>`).join("\n")}<p class="note">Like pass@k, but attempts learn from Lean's errors.</p></div>`
+    ? `<div class="card"><h3>Solved within k attempts${tip(TIPS.within)}</h3>${within.map((w, i) => `<div class="why"><span>within ${w.k} attempt${w.k === 1 ? "" : "s"}</span>${bar(p.of ? w.solved / p.of : 0, i, "okbar")}<span class="muted">${w.solved}</span></div>`).join("\n")}</div>`
     : ""
 }
 ${attemptsSection(r)}
@@ -556,7 +571,7 @@ ${r.env?.mathlib ? kv("Mathlib", `<code>${esc(r.env.mathlib.slice(0, 12))}</code
 ${r.env?.lean ? kv("Lean", esc(r.env.lean)) : ""}
 ${r.env?.platform ? kv("Machine*", esc(r.env.platform)) : ""}
 </div>
-${r.harness ? `<p class="note">Harness Mack ${esc(r.harness.mack)}, Open Math Harness <b>${esc(r.harness.openMathHarness)}</b>; procedures: ${esc(r.harness.procedures.join(", "))}.</p>` : ""}
+${r.harness ? `<p class="note">Open Math Harness <b>${esc(r.harness.openMathHarness)}</b> · ${esc(r.harness.procedures.join(", "))}</p>` : ""}
 </div></section>
 <section class="reveal"><details><summary>All ${r.results.length} results as a table</summary>
 <div class="scroll" style="margin-top:10px"><table>
@@ -582,7 +597,7 @@ function timeSection(r: SharedRun): string {
   const slowest = [...tried].sort((a, b) => b.ms - a.ms).slice(0, 8);
   const max = slowest[0].ms || 1;
   const avg = (xs: BenchResult[]) => (xs.length ? xs.reduce((a, x) => a + x.ms, 0) / xs.length : 0);
-  return `<section class="reveal"><h2>Time per problem</h2>
+  return `<section class="reveal"><h2>Time per problem${tip(TIPS.time)}</h2>
 <div class="kpis">
 ${kpi(dur(q(0.5)), "median")}
 ${kpi(dur(q(0.9)), "90th percentile")}
@@ -592,7 +607,7 @@ ${tried.length > solved.length ? kpi(dur(avg(tried.filter((x) => x.outcome !== "
 </div>
 <div class="card"><h3>Slowest problems</h3>${slowest
     .map((x, i) => `<div class="why"><span>${hasPage(x) ? `<a href="${esc(r.folder)}/${esc(x.id)}.html">${esc(x.id)}</a>` : esc(x.id)}</span>${bar(x.ms / max, i, x.outcome === "solved" ? "okbar" : "badbar")}<span class="muted">${dur(x.ms)}</span></div>`)
-    .join("\n")}<p class="note">Time is wall-clock per problem*: model calls, Lean checks and automation together.</p></div>
+    .join("\n")}</div>
 </section>`;
 }
 
@@ -625,7 +640,7 @@ const clock = (ms: number | null) => (ms === null ? "" : `+${ms < 60_000 ? `${Ma
 export function problemPage(r: SharedRun, x: BenchResult, source: string | undefined, repo: string): string {
   const rows = timelineOf(x);
   const auto = x.outcome === "solved" && x.attempts === 0;
-  const status = x.outcome === "solved" ? (auto ? '<span class="status auto">Solved by automation</span>' : '<span class="status ok">Solved</span>') : x.outcome === "skipped" ? '<span class="status">Skipped</span>' : '<span class="status bad">Not solved</span>';
+  const status = x.outcome === "solved" ? (auto ? `<span class="status auto">Solved by automation</span>${tip(TIPS.automation)}` : '<span class="status ok">Solved</span>') : x.outcome === "skipped" ? '<span class="status">Skipped</span>' : '<span class="status bad">Not solved</span>';
   const autoRows = rows.filter((row) => row.n === 0);
   const autoMs = autoRows.reduce((a, row) => a + row.ms, 0);
   const modelMs = rows.filter((row) => row.n > 0).reduce((a, row) => a + row.ms, 0);
@@ -643,19 +658,17 @@ export function problemPage(r: SharedRun, x: BenchResult, source: string | undef
   const story: string[] = [];
   if (auto) {
     const tactic = closingTactic(x.proof);
-    story.push(`Lean's automation proved it on its own${tactic ? `, with <code>${esc(tactic)}</code>` : ""}, before any model wrote a proof: no proof attempts spent, ${dur(x.ms)} in all${autoMs ? `, ${dur(autoMs)} of it the automation` : ""}.`);
+    story.push(`Closed by Lean's automation${tactic ? ` (<code>${esc(tactic)}</code>)` : ""} before any model wrote a proof.`);
   } else if (x.outcome === "solved") {
-    story.push(`Solved on attempt ${verified?.n ?? x.attempts} of ${x.attempts}${verified?.model ? ` by <b>${esc(short(verified.model))}</b>` : ""}, in ${dur(x.ms)}.`);
-    if (failedRows.length) story.push(`Before that, ${failedRows.length} attempt${failedRows.length === 1 ? "" : "s"} failed: ${esc(reasonText)}. Each failure's Lean errors went back to the model for the next try.`);
-    else story.push("The first proof the model wrote was accepted.");
+    story.push(`Solved on attempt ${verified?.n ?? x.attempts}${verified?.model ? ` by <b>${esc(short(verified.model))}</b>` : ""}.`);
+    if (failedRows.length) story.push(`Earlier attempts failed: ${esc(reasonText)}.`);
+    else story.push("The first proof was accepted.");
   } else if (x.outcome === "skipped") {
     story.push(`Not tried: ${esc(x.message ?? "the run stopped or its budget ran out")}.`);
   } else {
-    story.push(`Not solved after ${x.attempts} attempt${x.attempts === 1 ? "" : "s"} and ${dur(x.ms)}${x.failure ? `; mostly <b>${esc(FAILURES[x.failure].label.toLowerCase())}</b>` : ""}.`);
-    if (reasonText) story.push(`How the attempts ended: ${esc(reasonText)}.`);
-    if (x.failure) story.push(`<span class="muted">What would help: ${esc(FAILURES[x.failure].fix)}.</span>`);
+    story.push(`Not solved in ${x.attempts} attempt${x.attempts === 1 ? "" : "s"}${reasonText ? `: ${esc(reasonText)}` : ""}.${x.failure ? tip(`What would help: ${FAILURES[x.failure].fix}.`) : ""}`);
   }
-  if (repeated) story.push(`<span class="muted">${repeated} attempt${repeated === 1 ? "" : "s"} repeated an error an earlier attempt had already hit.</span>`);
+  if (repeated) story.push(`<span class="muted">${repeated} repeated an earlier error.</span>`);
 
   // Where the time went: each attempt, then everything else (automation, Lean set-up, planning).
   const total = Math.max(x.ms, modelMs + autoMs) || 1;
@@ -693,7 +706,6 @@ ${modelMs ? kpi(dur(modelMs), "in model attempts", `${dur(x.ms - modelMs)} other
 </div>
 <section><h2>How it went</h2>
 <div class="card story">${story.map((t) => `<p>${t}</p>`).join("")}
-${auto ? `<div class="explain">${AUTOMATION}</div>` : ""}
 ${timebar}</div></section>
 ${source ? `<section><h2>The problem</h2><pre class="code">${esc(source.trim())}</pre></section>` : ""}
 ${rows.length ? `<section><h2>Attempts</h2><div class="attempts">${attempts}</div></section>` : ""}
@@ -702,7 +714,7 @@ ${
     ? `<section><h2>Every step</h2><div class="card"><ol class="steps-list">${x.timeline.map((t) => `<li><span class="t">${clock(t.t)}</span>${esc(t.message)}</li>`).join("")}</ol></div></section>`
     : ""
 }
-${x.proof ? `<section><h2>The verified proof</h2><pre class="code">${esc(x.proof)}</pre><p class="note">Accepted by Mack's strict verifier and re-checked with Lean in CI.</p></section>` : ""}
+${x.proof ? `<section><h2>The verified proof${tip(TIPS.verified)}</h2><pre class="code">${esc(x.proof)}</pre></section>` : ""}
 ${SELF_REPORTED}
 <p class="small"><a href="${esc(repo)}/blob/main/benchmarks/runs/${esc(r.folder)}/attempts.jsonl">attempts.jsonl</a></p>`,
     "../../",
