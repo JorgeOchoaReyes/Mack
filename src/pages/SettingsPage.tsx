@@ -6,6 +6,7 @@ import { Button, Field, Toggle } from "../components/ui";
 import { useEffect, useState } from "react";
 import type { LedgerState, UpdateState } from "../api";
 import { GitHubAccounts } from "../components/GitHubAccounts";
+import { ModelSelect, useModelLists } from "../components/ModelSelect";
 import { formatUsd } from "../../core/model/metered";
 import { EFFORT_LABELS, PROOF_EFFORTS, type ProofEffort } from "../../core/model/provider";
 import type { Limits } from "../../core/search/tree";
@@ -406,6 +407,7 @@ function LeanLimit({ value, onChange }: { value: number; onChange: (n: number) =
 
 /** The models trained for Lean that write the attempts, on any provider, each with its price for the spending limits. */
 function ProverModel({ settings, saveSettings }: { settings: Settings; saveSettings: (p: Partial<Settings>) => Promise<unknown> }) {
+  const lists = useModelLists([settings.proverProvider]);
   const models = settings.proverModel
     .split(",")
     .map((m) => m.trim())
@@ -418,7 +420,7 @@ function ProverModel({ settings, saveSettings }: { settings: Settings; saveSetti
     <>
       <Field
         label="Prover models (optional)"
-        hint="Models trained only to write Lean proofs (DeepSeek-Prover-V2, Kimina-Prover, Goedel-Prover-V2) prove far more competition problems per dollar than a general model. When set, they write every attempt and your main model only plans. Name several, separated by commas, and the attempts take them in turn: different models fail on different problems, so a mix solves more. Their provider needs a key in Setup."
+        hint="Models trained only to write Lean proofs (DeepSeek-Prover-V2, Kimina-Prover, Goedel-Prover-V2) prove far more competition problems per dollar than a general model. When set, they write every attempt and your main model only plans. Pick one from your provider's list, or choose Other to type several, separated by commas: the attempts take them in turn: different models fail on different problems, so a mix solves more. Their provider needs a key in Setup."
       >
         <div className="inline-fields">
           <select className="input" style={{ width: 150, flex: "none" }} value={settings.proverProvider} onChange={(e) => void saveSettings({ proverProvider: e.target.value as ProviderId })}>
@@ -428,7 +430,14 @@ function ProverModel({ settings, saveSettings }: { settings: Settings; saveSetti
               </option>
             ))}
           </select>
-          <input className="input" placeholder="e.g. deepseek/deepseek-prover-v2, another/prover (empty: off)" value={settings.proverModel} onChange={(e) => void saveSettings({ proverModel: e.target.value })} />
+          <ModelSelect
+            label="Prover models"
+            placeholder="e.g. deepseek/deepseek-prover-v2, another/prover (empty: off)"
+            none="No prover model"
+            value={settings.proverModel}
+            onChange={(v) => void saveSettings({ proverModel: v })}
+            list={lists[settings.proverProvider]}
+          />
         </div>
       </Field>
       {models.map((model) => {
