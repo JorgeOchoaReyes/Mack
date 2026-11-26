@@ -46,7 +46,7 @@ import { decompose } from "../core/decompose";
 import { stepSearch } from "../core/stepsearch";
 import { helperLemmas, relevantLemmas } from "../core/bench/pool";
 import { easierVersions } from "../core/variants";
-import { attemptKind, attemptsDataset, harnessOf, BENCH_SETS, BENCH_SHARE_DIR, benchReport, benchSet, benchShare, benchSlug, classifyFailure, LOG_LIMITS, splitReply, type AttemptLog, type BenchEnv, pickSample, runBench, type AttemptNote, type BenchEvent, type BenchResult, type BenchRun } from "../core/bench/bench";
+import { attemptKind, attemptsDataset, harnessOf, ranToEnd, BENCH_SETS, BENCH_SHARE_DIR, benchReport, benchSet, benchShare, benchSlug, classifyFailure, LOG_LIMITS, splitReply, type AttemptLog, type BenchEnv, pickSample, runBench, type AttemptNote, type BenchEvent, type BenchResult, type BenchRun } from "../core/bench/bench";
 import { newerMackRelease, UPSTREAM } from "../core/upstream";
 import type { ApprovalPolicy } from "../core/chat/executor";
 import { PROOF_EFFORTS, withEffort, type ProofEffort, type ReasoningEffort } from "../core/model/provider";
@@ -1115,7 +1115,7 @@ const benchLabel = (m: BenchModels) => `${m.effort && m.effort !== "default" ? `
  * comparison is a group of runs. Stopping stops the run going and the ones
  * queued behind it.
  */
-ipcMain.handle("bench:start", async (e, setId: string, n: number, budget: number, method?: string, models?: BenchModels[], opts?: { lemmaPool?: boolean }) => {
+ipcMain.handle("bench:start", async (e, setId: string, n: number, budget: number, method?: string, models?: BenchModels[], opts?: { lemmaPool?: boolean; autoShare?: boolean }) => {
   if (benching) throw new Error("A benchmark is already running.");
   const base = readSettings();
   const set = benchSet(String(setId));
@@ -1132,6 +1132,8 @@ ipcMain.handle("bench:start", async (e, setId: string, n: number, budget: number
   if (!list.length) throw new Error(`Choose a model for the run, or one in Setup.`);
   if (list.length > 6) throw new Error("Compare at most 6 models at once.");
   if (!leanReady(base)) throw new Error("Install Lean and Mathlib in Setup first.");
+  // Sharing on completion needs a GitHub account: say so now, not after hours of running.
+  if (opts?.autoShare && !(await githubAuth()).token) throw new Error(`Opening a pull request when the run completes needs GitHub. ${NO_GITHUB}`);
   if (method === "steps" && !(base.useRepl && (remoteOn(base) ? base.remoteLean.repl : hasRepl(base.leanWorkspace))))
     throw new Error("Step by step works on Lean's live proof states, so it needs the Lean REPL: turn it on in Settings → Prover, or build it in Settings → Setup.");
   const sample = pickSample(set, Math.floor(Number(n)) || 10);
@@ -1176,6 +1178,7 @@ ipcMain.handle("bench:start", async (e, setId: string, n: number, budget: number
       ...(group ? { group } : {}),
       label: benchLabel(m),
       env,
+      ...(opts?.autoShare ? { autoShare: true } : {}),
     };
     run.harness = harnessOf(run.config, app.getVersion(), UPSTREAM.baseline);
     return run;
@@ -1205,6 +1208,14 @@ ipcMain.handle("bench:start", async (e, setId: string, n: number, budget: number
         run.message = err.message;
       });
       saveBench(run);
+      // Shared on its own only when it ran to the end: a stopped run, or one its budget cut short, waits for a person.
+      if (run.autoShare && ranToEnd(run) && !ctl.signal.aborted) {
+        await shareBenchRun(run, true).catch((err: Error) => {
+          run.shareError = err.message;
+          saveBench(run);
+        });
+        send(run)({ type: "shared", run });
+      }
     }
   })().finally(() => {
     benching = null;
@@ -1248,20 +1259,27 @@ ipcMain.handle("bench:export", async (e, id: string) => {
   writeFileSync(r.filePath, benchReport(run, benchSet(run.set), app.getVersion()), "utf8");
   return r.filePath;
 });
-// A run shared as a pull request on the Mack repo, so its results can be reviewed there.
+const NO_GITHUB = "Connect GitHub first: Settings → GitHub, or log in with the GitHub CLI (gh auth login).";
+
+/** Share a finished run as a pull request on the Mack repo, so its results can be reviewed there; the run remembers its pull request. */
+async function shareBenchRun(run: BenchRun, logs: boolean): Promise<NonNullable<BenchRun["sharedPr"]>> {
+  if (run.status === "running") throw new Error("Wait for the run to finish, or stop it, before sharing it.");
+  const { token } = await githubAuth();
+  if (!token) throw new Error(NO_GITHUB);
+  if (run.sharedPr) throw new Error(`This run is already shared: ${run.sharedPr.url}`);
+  const set = benchSet(run.set);
+  const opened = await openCommunityPr(token, { ...COMMUNITY_REPO, dir: BENCH_SHARE_DIR }, benchSlug(run), (_slug, login) => benchShare(run, set, app.getVersion(), login, { logs }), "benchmark");
+  // The run remembers its pull request, so the screen can show it and follow whether it was merged.
+  run.sharedPr = { url: opened.url, number: Number(/\/pull\/(\d+)/.exec(opened.url)?.[1] ?? 0), at: Date.now(), logs };
+  delete run.shareError;
+  saveBench(run);
+  return run.sharedPr;
+}
+
 ipcMain.handle("bench:share", async (_e, id: string, logs?: boolean) => {
   const run = readBench(String(id));
   if (!run) throw new Error("That benchmark run is gone.");
-  if (run.status === "running") throw new Error("Wait for the run to finish, or stop it, before sharing it.");
-  const { token } = await githubAuth();
-  if (!token) throw new Error("Connect GitHub first: Settings → GitHub, or log in with the GitHub CLI (gh auth login).");
-  if (run.sharedPr) throw new Error(`This run is already shared: ${run.sharedPr.url}`);
-  const set = benchSet(run.set);
-  const opened = await openCommunityPr(token, { ...COMMUNITY_REPO, dir: BENCH_SHARE_DIR }, benchSlug(run), (_slug, login) => benchShare(run, set, app.getVersion(), login, { logs: logs !== false }), "benchmark");
-  // The run remembers its pull request, so the screen can show it and follow whether it was merged.
-  run.sharedPr = { url: opened.url, number: Number(/\/pull\/(\d+)/.exec(opened.url)?.[1] ?? 0), at: Date.now(), logs: logs !== false };
-  saveBench(run);
-  return run.sharedPr;
+  return shareBenchRun(run, logs !== false);
 });
 // Where each shared run's pull request stands, for the runs that have one.
 ipcMain.handle("bench:prs", async (): Promise<Record<string, "open" | "merged" | "closed" | "unknown">> => {

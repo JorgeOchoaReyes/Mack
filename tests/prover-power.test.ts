@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { sweep, SWEEP_SUITE } from "../core/lean/analysis";
 import type { LeanCheck } from "../core/lean/check";
 import { describeExamples, ProofStore } from "../core/proof-store";
-import { BENCH_SETS, pickSample, runBench, summarize, type BenchRun } from "../core/bench/bench";
+import { BENCH_SETS, pickSample, ranToEnd, runBench, summarize, type BenchRun } from "../core/bench/bench";
 import { freshRunScript, shq, sshArgs } from "../core/lean/remote";
 
 const check = async (src: string): Promise<LeanCheck> => {
@@ -115,6 +115,17 @@ describe("the benchmark", () => {
     expect(finished.status).toBe("stopped");
     expect(finished.results.map((r) => r.outcome)).toEqual(["skipped", "skipped", "skipped"]);
     expect(finished.results.every((r) => r.message === "stopped")).toBe(true);
+  });
+
+  it("counts as complete, for opening a PR on its own, only a run that gave every problem a result", () => {
+    const sample = pickSample(set, 2);
+    const base = { status: "done" as const, sample, results: sample.map((id) => ({ id, outcome: "failed" as const, attempts: 1, ms: 1, usd: 0 })) };
+    expect(ranToEnd(base)).toBe(true);
+    // Stopped early, or the budget ran out and the rest were skipped, or still going: never.
+    expect(ranToEnd({ ...base, status: "stopped" })).toBe(false);
+    expect(ranToEnd({ ...base, results: [base.results[0], { ...base.results[1], outcome: "skipped" }] })).toBe(false);
+    expect(ranToEnd({ ...base, results: [base.results[0]] })).toBe(false);
+    expect(ranToEnd({ ...base, status: "running" })).toBe(false);
   });
 });
 
