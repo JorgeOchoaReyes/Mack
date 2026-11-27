@@ -249,6 +249,16 @@ jobs:
           git push origin "$branch"
           draft=()
           [ "$COMPLETE" = true ] || draft=(--draft)
-          url=$(gh pr create "${draft[@]}" --base main --head "$branch" --title "Official $TITLE" --body-file "$RUNNER_TEMP/mack-bench/pr-body.md")
+          # The default token may not open pull requests (and one it opens would not start the checks): MACK_BENCH_TOKEN can.
+          if ! url=$(gh pr create "${draft[@]}" --base main --head "$branch" --title "Official $TITLE" --body-file "$RUNNER_TEMP/mack-bench/pr-body.md"); then
+            link="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/compare/main...$branch?expand=1"
+            {
+              echo "### ⚠️ The results were pushed, but the pull request could not be opened"
+              echo ""
+              echo "Add the \`MACK_BENCH_TOKEN\` secret (a fine-grained token on this repo with Contents and Pull requests read/write) so the next run opens it itself. For this run, open it by hand: $link"
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error title=No pull request::The results are on branch $branch, but this token may not open pull requests. Add the MACK_BENCH_TOKEN secret, or open it by hand: $link"
+            exit 1
+          fi
           echo "### Pull request for review: $url" >> "$GITHUB_STEP_SUMMARY"
           [ "$COMPLETE" = true ] || echo "Opened as a draft: the run was cut short (see above). Mark it ready to publish it anyway." >> "$GITHUB_STEP_SUMMARY"
