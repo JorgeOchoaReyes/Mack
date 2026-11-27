@@ -8,3 +8,4 @@ out/
 *.key
 *.log
 release/
+__pycache__/
