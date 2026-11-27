@@ -16,6 +16,7 @@ import { ultramath } from "../core/ultramath/swarm";
 import { metered, priceFor, type Meter } from "../core/model/metered";
 import { withEffort, type ModelProvider } from "../core/model/provider";
 import { decompose } from "../core/decompose";
+import { research } from "../core/research";
 import { stepSearch } from "../core/stepsearch";
 import { helperLemmas, relevantLemmas } from "../core/bench/pool";
 import { easierVersions } from "../core/variants";
@@ -62,7 +63,7 @@ export const parallelOf = (s: Settings) => Math.max(1, Math.min(32, Math.floor(s
 export async function attemptProof(
   host: BenchHost,
   s: Settings,
-  mode: "single" | "decompose",
+  mode: "single" | "decompose" | "research",
   problem: string,
   o: {
     provider: ModelProvider;
@@ -125,6 +126,19 @@ export async function attemptProof(
     onEvent: o.onEvent,
   };
   if (mode === "decompose") await decompose({ ...options, maxDepth: s.decomposeDepth, lemmaAttempts: s.decomposeAttempts, rounds: s.decomposeRounds });
+  else if (mode === "research")
+    // Research reports its own steps as the events every caller already shows: rounds and lemmas as status, plans as the plan in words.
+    await research({
+      ...options,
+      maxDepth: s.decomposeDepth,
+      splitRounds: s.decomposeRounds,
+      onEvent: (e) => {
+        if (e.type === "round") options.onEvent({ type: "status", message: `Research round ${e.round} of ${e.of}: ${e.attempts} attempts.` });
+        else if (e.type === "plans") options.onEvent({ type: "idea", text: `Round ${e.round} plans (kept: ${e.kept.map((k) => k + 1).join(", ") || "none"}):\n\n${e.plans.map((p, i) => `PLAN ${i + 1}:\n${p}`).join("\n\n")}${e.critique ? `\n\nReferee:\n${e.critique}` : ""}` });
+        else if (e.type === "lemma") options.onEvent({ type: "status", message: `Verified lemma kept for the problem: ${e.name}` });
+        else options.onEvent(e);
+      },
+    });
   else await prove(options);
 }
 
@@ -205,6 +219,7 @@ export async function benchOne(host: BenchHost, s: Settings, p: { id: string; so
   const both = AbortSignal.any([signal, ctl.signal]);
   const passk = bench.config.protocol === "passk";
   const method = passk ? "single" : (bench.config.method ?? "single");
+  const proofMode = method === "decompose" || method === "research" ? method : "single";
   const check = () => (async (src: string) => checkFromRun(await run(src)));
   if (method === "search") {
     await search({
@@ -277,7 +292,7 @@ export async function benchOne(host: BenchHost, s: Settings, p: { id: string; so
     const offered = bench.config.lemmaPool ? relevantLemmas(pool, p.source) : [];
     if (offered.length) trace(`Offered ${offered.length} lemma${offered.length === 1 ? "" : "s"} proved earlier in this run: ${offered.map((l) => /^(?:private\s+)?(?:theorem|lemma)\s+(\S+)/.exec(l.source)?.[1] ?? "?").join(", ")}`);
     // Never the person's own past proofs as examples: they are private, so no one else could reproduce the run.
-    await attemptProof(host, passk ? passkSettings(s) : { ...s, reuseProofs: false }, method, p.source, {
+    await attemptProof(host, passk ? passkSettings(s) : { ...s, reuseProofs: false }, proofMode, p.source, {
       lemmas: passk ? [] : offered,
       repair: !passk,
       // As the labs run pass@k: room for a reasoning model to think, so no reply is cut short.

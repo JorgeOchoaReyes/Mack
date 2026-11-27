@@ -155,6 +155,7 @@ th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--bo
 th { font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 650; background: var(--surface-2); }
 tbody tr { transition: background .15s ease; }
 tbody tr:hover { background: var(--surface-2); }
+tr.link-row { cursor: pointer; }
 tr:last-child td { border-bottom: 0; }
 td.wrap { white-space: normal; min-width: 180px; }
 .rank { font-weight: 750; color: var(--muted); }
@@ -203,6 +204,14 @@ footer.bottom .wrap-page { display: flex; flex-wrap: wrap; gap: 10px 22px; justi
 /** Counters count up and sections rise in as they come into view; nothing depends on it. */
 const SCRIPT = `
 document.documentElement.classList.add("js");
+// A row that opens a page opens it wherever it is clicked; its own links and tips keep working, and a cmd/ctrl-click opens a new tab.
+document.querySelectorAll("tr[data-href]").forEach((tr) => {
+  tr.addEventListener("click", (e) => {
+    if (e.target.closest("a, .tip, button") || getSelection().toString()) return;
+    if (e.metaKey || e.ctrlKey) window.open(tr.dataset.href, "_blank");
+    else location.href = tr.dataset.href;
+  });
+});
 const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const io = "IntersectionObserver" in window ? new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } }), { threshold: 0.08 }) : null;
 document.querySelectorAll(".reveal").forEach((el) => (io && !still ? io.observe(el) : el.classList.add("in")));
@@ -322,7 +331,7 @@ function runTable(rows: Row[], root: string, withModel = true, ranked = true): s
   const body = rows
     .map(({ r, p, usd: spent }, i) => {
       const best = ranked && i === 0 && rows.length > 1;
-      return `<tr class="${ranked && i === 0 ? "first" : ""}">
+      return `<tr class="link-row${ranked && i === 0 ? " first" : ""}" data-href="${root}runs/${esc(r.folder)}.html">
 ${ranked ? `<td class="rank">${i + 1}</td>` : ""}
 ${withModel ? `<td class="wrap"><a href="${root}models/${esc(modelSlug(r))}.html">${esc(models(r))}</a>*${officialPill(r)}</td>` : `<td>${esc(setLabel(r.set))}${officialPill(r)}</td>`}
 <td class="opt" title="${esc(r.harness?.procedures.join(", ") ?? "")}">${protocolOf(r) === "passk" ? esc(protocolLabel(r)) : esc(METHOD_LABELS[r.config.method ?? "single"].replace(/ \(.*\)$/, ""))}${r.config.method === "search" || r.config.method === "ultramath" ? ' <span class="pill omh">OMH</span>' : ""}<span class="cell-sub">${esc(harnessLabel(r.harness, r.appVersion ?? r.env?.app))}</span></td>
@@ -367,11 +376,11 @@ function contaminationRows(runs: SharedRun[]): string {
     const recent = r.results.filter((x) => recentIds.has(x.id));
     if (!older.length || !recent.length) continue;
     const solved = (xs: BenchResult[]) => xs.filter((x) => x.outcome === "solved").length;
-    lines.push(`<tr><td class="wrap"><a href="runs/${esc(r.folder)}.html">${esc(models(r))}</a></td><td>${solved(older)}/${older.length} (${pct(solved(older) / older.length)})</td><td>${solved(recent)}/${recent.length} (${pct(solved(recent) / recent.length)})</td></tr>`);
+    lines.push(`<tr class="link-row" data-href="runs/${esc(r.folder)}.html"><td class="wrap"><a href="runs/${esc(r.folder)}.html">${esc(models(r))}</a></td><td>${solved(older)}/${older.length} (${pct(solved(older) / older.length)})</td><td>${solved(recent)}/${recent.length} (${pct(solved(recent) / recent.length)})</td></tr>`);
   }
   for (const { r, p } of rowsOf(runs.filter((x) => x.set === RECENT_SET))) {
     const older = rowsOf(runs.filter((x) => x.set === "putnambench" && models(x) === models(r)))[0];
-    lines.push(`<tr><td class="wrap"><a href="runs/${esc(r.folder)}.html">${esc(models(r))}</a></td><td>${older ? `${older.p.solved}/${older.p.of} (${pct(older.p.rate)}), PutnamBench run` : '<span class="muted">no PutnamBench run</span>'}</td><td>${p.solved}/${p.of} (${pct(p.rate)}, range ${range(p.low, p.high)})</td></tr>`);
+    lines.push(`<tr class="link-row" data-href="runs/${esc(r.folder)}.html"><td class="wrap"><a href="runs/${esc(r.folder)}.html">${esc(models(r))}</a></td><td>${older ? `${older.p.solved}/${older.p.of} (${pct(older.p.rate)}), PutnamBench run` : '<span class="muted">no PutnamBench run</span>'}</td><td>${p.solved}/${p.of} (${pct(p.rate)}, range ${range(p.low, p.high)})</td></tr>`);
   }
   return lines.join("\n");
 }
@@ -512,7 +521,7 @@ export function runPage(r: SharedRun, repo: string): string {
         x.lastError || x.lastCandidate
           ? `<details><summary>${esc(why || "details")}</summary>${x.lastError ? `<p class="small">Lean's last feedback</p><pre>${esc(x.lastError)}</pre>` : ""}${x.lastCandidate ? `<p class="small">Last attempt</p><pre>${esc(x.lastCandidate)}</pre>` : ""}</details>`
           : esc(why);
-      return `<tr><td>${hasPage(x) ? `<a href="${esc(r.folder)}/${esc(x.id)}.html">${esc(x.id)}</a>` : esc(x.id)}</td><td>${outcome}</td><td>${x.attempts}</td><td>${Math.round(x.ms / 1000)}s</td><td>${usd(x.usd)}</td><td class="wrap">${detail}</td></tr>`;
+      return `<tr${hasPage(x) ? ` class="link-row" data-href="${esc(r.folder)}/${esc(x.id)}.html"` : ""}><td>${hasPage(x) ? `<a href="${esc(r.folder)}/${esc(x.id)}.html">${esc(x.id)}</a>` : esc(x.id)}</td><td>${outcome}</td><td>${x.attempts}</td><td>${Math.round(x.ms / 1000)}s</td><td>${usd(x.usd)}</td><td class="wrap">${detail}</td></tr>`;
     })
     .join("\n");
   const kv = (label: string, value: string) => `<div><span>${label}</span><b>${value}</b></div>`;
@@ -736,6 +745,7 @@ ${SELF_REPORTED}
 const METHODS: { label: string; from: string; how: string }[] = [
   { label: METHOD_LABELS.single, from: "Mack", how: "The model writes a whole Lean proof; Lean checks it; the errors go back and the model revises. Several chains can run at once, and a chain starts over from a clean conversation after a set number of revisions." },
   { label: METHOD_LABELS.decompose, from: "Mack", how: "Attempts first. If they fail, a planning model splits the statement into lemmas; each lemma is proved like a problem of its own (and split again, to a set depth), then the pieces are put back together and the whole proof is verified." },
+  { label: METHOD_LABELS.research, from: "Mack", how: "Rounds, as the strongest proving systems work: several plans in words checked by a referee, worked at once by attempts and by a split into lemmas, every helper lemma Lean accepts kept for later attempts, and each round re-planned from what failed with twice the attempts." },
   { label: METHOD_LABELS.steps, from: "Mack", how: "The proof is built one tactic at a time on Lean's live proof states (the REPL). Only steps Lean accepts are kept; the most promising state (fewest, smallest goals) is extended next." },
   { label: METHOD_LABELS.search, from: "Open Math Harness", how: "A tree of partial proofs. Workers continue chosen nodes; the harness scores each child with Lean (scoring v3: only steps Lean closes count) and picks the next nodes. Limits: workers per round, rounds, fan-out, calls per worker, a model-call budget." },
   { label: METHOD_LABELS.ultramath, from: "Open Math Harness", how: "Several agents attack one problem, each on a direction registered on a shared board; duplicates are refused, and abandoned directions are posted with a reason. Limits: members, rounds, a model-call budget." },

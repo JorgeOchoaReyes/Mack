@@ -68,6 +68,8 @@ export type ProveOptions = {
   revisions?: number;
   /** Verified proofs of similar statements, shown to every attempt as worked examples. */
   examples?: string;
+  /** Anything else every attempt is told: a plan in words and a critic's notes on it (core/research.ts). */
+  notes?: string;
   /** Premise selection: the Mathlib theorems likely to help prove this statement, as a note for every attempt; empty for none. */
   premises?: (frozen: string) => Promise<string>;
   /**
@@ -150,7 +152,7 @@ export async function prove(o: ProveOptions): Promise<void> {
     }
   }
   const premises = o.premises ? await o.premises(o.frozen).catch(() => "") : "";
-  const notes = [prep.notes, o.examples, premises].filter(Boolean).join("\n\n");
+  const notes = [o.notes, prep.notes, o.examples, premises].filter(Boolean).join("\n\n");
   const provers = o.provers?.length ? o.provers : null;
   let chainNo = 0;
 

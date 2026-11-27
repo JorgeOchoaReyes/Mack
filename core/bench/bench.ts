@@ -188,7 +188,7 @@ export function failureBreakdown(results: BenchResult[]): { kind: FailureKind; c
   return [...by.entries()].map(([kind, ids]) => ({ kind, count: ids.length, ids })).sort((a, b) => b.count - a.count);
 }
 
-export type BenchMethod = "single" | "decompose" | "steps" | "search" | "ultramath";
+export type BenchMethod = "single" | "decompose" | "research" | "steps" | "search" | "ultramath";
 
 export type BenchProtocol = "passk" | "agent";
 
@@ -202,6 +202,7 @@ export const protocolLabel = (r: Pick<BenchRun, "config">): string => (protocolO
 export const METHOD_LABELS: Record<BenchMethod, string> = {
   single: "Attempts (Mack)",
   decompose: "Decompose into lemmas (Mack)",
+  research: "Research loop (Mack)",
   steps: "Step by step (Mack)",
   search: "Search tree (Open Math Harness)",
   ultramath: "Ultramath swarm (Open Math Harness)",
@@ -777,6 +778,7 @@ export function harnessOf(config: BenchConfig, mack: string, openMathHarness: st
   if (config.easierFirst) procedures.push("easier versions first");
   if (config.effort) procedures.push(`thinking ${config.effort}`);
   if (config.method === "decompose") procedures.push("decompose");
+  if (config.method === "research") procedures.push("research loop: plans, referee, portfolio, lemma library, re-plan");
   if (config.prover) procedures.push(config.prover.includes(",") ? "prover ensemble" : "prover model");
   if (config.revisions) procedures.push(`restart after ${config.revisions} revisions`);
   if (config.lemmaPool) procedures.push("run-wide lemma pool");

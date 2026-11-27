@@ -65,7 +65,7 @@ export const TOOL_SPECS: ToolSpec[] = [
   {
     name: "start_proof",
     description: "Start a proof run on a frozen .lean file of the project with the prover (spends model budget). Needs the person's approval. Returns the outcome and the proof if found.",
-    args: { path: "the frozen .lean file", "mode?": "single, decompose (attempts, then split into lemmas proved in parallel: best for hard statements) or search (default search)" },
+    args: { path: "the frozen .lean file", "mode?": "single, decompose (attempts, then split into lemmas proved in parallel: best for hard statements), research (rounds of plans, a referee, attempts and splits at once, a library of verified lemmas, re-planning: for the hardest statements, spends the most) or search (default search)" },
     protected: true,
   },
   { name: "remove_file", description: "Delete a file or an empty folder of the project. Needs the person's approval.", args: { path: "file relative to the project" }, protected: true },
