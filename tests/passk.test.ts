@@ -89,3 +89,18 @@ describe("pass@k, the labs' protocol", () => {
     expect(done.status).toBe("done");
   });
 });
+
+import { attemptKind, benchSlug as slugOfRun, FAILURES as REASONS } from "../core/bench/bench";
+
+describe("a pass@k run's names and labels", () => {
+  it("labels a reply cut off before the theorem as cut off, not as a changed statement", () => {
+    expect(attemptKind({ outcome: "refused", detail: "the frozen theorem statement must appear verbatim", truncated: true })).toBe("cutoff");
+    expect(attemptKind({ outcome: "refused", detail: "the frozen theorem statement must appear verbatim" })).toBe("statement");
+    expect(REASONS.cutoff.label).toMatch(/cut off/i);
+  });
+
+  it("names a pass@k run's folder after its protocol", () => {
+    const run = { set: "minif2f-test", startedAt: Date.UTC(2026, 10, 27, 21, 18), config: { protocol: "passk", maxAttempts: 32, model: "m" } } as never;
+    expect(slugOfRun(run)).toBe("minif2f-test-pass32-202611272118");
+  });
+});

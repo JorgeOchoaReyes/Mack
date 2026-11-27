@@ -71,7 +71,7 @@ on:
         description: Machines in parallel (1-20)
         default: "20"
       budget:
-        description: Budget in USD for the whole run (0 = none; a run cut short by it opens no PR)
+        description: Budget in USD for the whole run (0 = none; a run cut short by it opens a draft PR marked incomplete)
         default: "0"
 permissions:
   contents: write

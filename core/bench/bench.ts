@@ -156,6 +156,7 @@ export const FAILURES = {
   gaps: { label: "Tactics did not close goals", fix: "the proof idea is right but steps stay open: decompose, more attempts, or easier versions first" },
   sorries: { label: "Gaps automation could not close", fix: "sorries left for automation were too hard: decompose turns each into a lemma of its own" },
   timeout: { label: "Lean timed out", fix: "heavy tactics (nlinarith, decide, simp on big terms): a longer Lean deadline or lighter proofs" },
+  cutoff: { label: "Reply cut off before the proof", fix: "the reply hit its token limit while the model was still working, so no proof reached Lean: a longer reply limit, or a lower thinking level" },
   statement: { label: "Statement changed or forbidden", fix: "the attempts edited the theorem or used a banned shortcut: a prover model that follows the format" },
   rejected: { label: "Verifier rejected", fix: "Lean accepted the file but the verifier did not (sorry, axioms, a different type)" },
   split: { label: "Could not split", fix: "decompose's planner could not write steps Lean accepts, or a step's goal could not be stated as a lemma" },
@@ -169,7 +170,7 @@ export const FAILURES = {
 export type FailureKind = keyof typeof FAILURES;
 
 /** What one attempt left: its outcome and Lean's feedback. */
-export type AttemptNote = { outcome: string; detail: string };
+export type AttemptNote = { outcome: string; detail: string; truncated?: boolean };
 
 /** The likeliest reason a problem failed: the most common kind among its attempts, or what stopped the run. */
 /** Failures that are Mack's or the machine's, never the model's: Lean did not start, crashed, or its connection dropped. */
@@ -196,6 +197,8 @@ export function attemptKind(a: AttemptNote): FailureKind {
   const d = errs || a.detail;
   if (a.outcome === "no verdict") return HARNESS.test(a.detail) ? "harness" : "timeout";
   if (/exceeded the \d+ ms deadline|deterministic\) timeout|maximum recursion depth|maxHeartbeats/i.test(d)) return "timeout";
+  // A reply cut off at its token limit never reached the theorem: that is not a changed statement.
+  if (a.outcome === "refused" && a.truncated) return "cutoff";
   if (a.outcome === "refused") return "statement";
   if (a.outcome === "rejected") return "rejected";
   if (a.outcome === "sorries") return "sorries";
@@ -522,7 +525,7 @@ export const benchSiteRun = (run: BenchRun) => `${BENCH_SITE}runs/${benchSlug(ru
 /** A folder name for a shared run: set, method and date. */
 export function benchSlug(run: BenchRun): string {
   const d = new Date(run.startedAt).toISOString().slice(0, 16).replace(/[-:T]/g, "");
-  return `${run.set}-${run.config.method ?? "single"}-${d}`;
+  return `${run.set}-${protocolOf(run) === "passk" ? `pass${run.config.maxAttempts}` : (run.config.method ?? "single")}-${d}`;
 }
 
 /**
@@ -542,7 +545,7 @@ export function benchShare(run: BenchRun, set: BenchSet | undefined, appVersion:
     `A benchmark run shared from Mack ${appVersion}${contributor ? ` by @${contributor}` : ""}, for review of where Mack loses problems.`,
     "",
     `- **${sum.solved}/${sum.tried} solved** (${(sum.rate * 100).toFixed(1)}%), ${sum.byAutomation} by Lean's automation alone; $${sum.usd.toFixed(2)} in ${Math.round(sum.ms / 60000)} min`,
-    `- Method ${c.method ?? "single"}; model ${c.model}${c.prover ? `; prover ${c.prover}` : ""}; ${c.maxAttempts} attempts, ${c.parallel} at once`,
+    `- ${c.protocol === "passk" ? protocolLabel(run) : `Method ${c.method ?? "single"}`}; model ${c.model}${c.prover ? `; prover ${c.prover}` : ""}; ${c.maxAttempts} attempts, ${c.parallel} at once`,
     "",
     "Unsolved, by reason:",
     breakdown || "- none",

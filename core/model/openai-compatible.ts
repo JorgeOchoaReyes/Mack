@@ -21,7 +21,14 @@ export type ProviderOptions = {
   backoffMs?: number;
   /** Where `listPrices` reads: `pricing` on `/models` (OpenRouter), or LiteLLM's `/model/info`. */
   prices?: "models" | "litellm";
+  /** A streamed reply that sends nothing for this long has stalled: it is given up (3 minutes by default). */
+  idleTimeoutMs?: number;
+  /** The most one call may take, start to finish (20 minutes by default): a reply slower than that is given up. */
+  callTimeoutMs?: number;
 };
+
+/** A call given up for taking too long: before anything arrived it is made again, as a refused connection would be. */
+export class TimeoutError extends Error {}
 
 class HttpError extends Error {
   constructor(
@@ -32,7 +39,7 @@ class HttpError extends Error {
   }
 }
 
-const transient = (e: unknown) => (e instanceof HttpError ? e.status === 429 || e.status >= 500 : e instanceof TypeError);
+const transient = (e: unknown) => (e instanceof HttpError ? e.status === 429 || e.status >= 500 : e instanceof TypeError || e instanceof TimeoutError);
 
 function wireMessage(m: ChatMessage): Record<string, unknown> {
   if (!m.images?.length) return { role: m.role, content: m.content };
@@ -52,7 +59,7 @@ export class OpenAICompatibleProvider implements ModelProvider {
     o: ProviderOptions = {},
   ) {
     if (!/^https?:\/\//.test(baseUrl)) throw new Error(`${name}: the endpoint must be an http(s) URL`);
-    this.opts = { extraHeaders: o.extraHeaders ?? {}, reasoning: o.reasoning ?? "openai", retries: o.retries ?? 2, backoffMs: o.backoffMs ?? 1500, prices: o.prices ?? "models" };
+    this.opts = { extraHeaders: o.extraHeaders ?? {}, reasoning: o.reasoning ?? "openai", retries: o.retries ?? 2, backoffMs: o.backoffMs ?? 1500, prices: o.prices ?? "models", idleTimeoutMs: o.idleTimeoutMs ?? 3 * 60_000, callTimeoutMs: o.callTimeoutMs ?? 20 * 60_000 };
   }
 
   private headers(): Record<string, string> {
@@ -94,15 +101,39 @@ export class OpenAICompatibleProvider implements ModelProvider {
   }
 
   private async once(request: ChatRequest, markStreamed: () => void): Promise<ChatResponse> {
+    // A reply that stalls, or crawls past the limit, is given up instead of holding its caller forever.
+    const ctl = new AbortController();
+    const signal = request.signal ? AbortSignal.any([request.signal, ctl.signal]) : ctl.signal;
+    const callMs = this.opts.callTimeoutMs;
+    const whole = setTimeout(() => ctl.abort(new TimeoutError(`${this.name} gave no complete reply within ${Math.round(callMs / 60_000)} min`)), callMs);
+    let idle: ReturnType<typeof setTimeout> | undefined;
+    const alive = () => {
+      clearTimeout(idle);
+      const ms = this.opts.idleTimeoutMs;
+      idle = setTimeout(() => ctl.abort(new TimeoutError(`${this.name}'s reply stalled: nothing for ${Math.round(ms / 1000)}s`)), ms);
+    };
+    try {
+      return await this.request(request, signal, markStreamed, alive);
+    } catch (e) {
+      // Our own limit, not the caller's stop: say which.
+      if (ctl.signal.aborted && !request.signal?.aborted) throw ctl.signal.reason;
+      throw e;
+    } finally {
+      clearTimeout(whole);
+      clearTimeout(idle);
+    }
+  }
+
+  private async request(request: ChatRequest, signal: AbortSignal, markStreamed: () => void, alive: () => void): Promise<ChatResponse> {
     const res = await fetch(this.url("/chat/completions"), {
       method: "POST",
       headers: this.headers(),
       body: JSON.stringify(this.body(request)),
-      signal: request.signal,
+      signal,
     });
     if (!res.ok) throw new HttpError(`${this.name} returned ${res.status}: ${(await res.text()).slice(0, 500)}`, res.status);
     if (request.onDelta && (res.headers.get("content-type") ?? "").includes("text/event-stream") && res.body) {
-      return this.readStream(res.body, request.onDelta, markStreamed);
+      return this.readStream(res.body, request.onDelta, markStreamed, alive);
     }
     const json = (await res.json()) as {
       choices?: { message?: { content?: string | null; reasoning?: string | null; reasoning_content?: string | null }; finish_reason?: string | null }[];
@@ -123,7 +154,7 @@ export class OpenAICompatibleProvider implements ModelProvider {
   }
 
   /** Server-sent events: `data: {choices:[{delta:{content}}]}` lines until `data: [DONE]`. */
-  private async readStream(body: ReadableStream<Uint8Array>, onDelta: (t: string) => void, markStreamed: () => void): Promise<ChatResponse> {
+  private async readStream(body: ReadableStream<Uint8Array>, onDelta: (t: string) => void, markStreamed: () => void, alive: () => void): Promise<ChatResponse> {
     const reader = body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
@@ -143,7 +174,11 @@ export class OpenAICompatibleProvider implements ModelProvider {
       }
       if (j.error) throw new Error(`${this.name}: ${j.error.message ?? "error"}`);
       const thought = j.choices?.[0]?.delta?.reasoning ?? j.choices?.[0]?.delta?.reasoning_content;
-      if (thought) reasoning += thought;
+      if (thought) {
+        reasoning += thought;
+        // Thinking already paid for: the call is not made again if it then stalls.
+        markStreamed();
+      }
       const piece = j.choices?.[0]?.delta?.content;
       if (piece) {
         content += piece;
@@ -153,9 +188,11 @@ export class OpenAICompatibleProvider implements ModelProvider {
       if (j.choices?.[0]?.finish_reason === "length") truncated = true;
       if (j.usage) usage = { promptTokens: j.usage.prompt_tokens ?? 0, completionTokens: j.usage.completion_tokens ?? 0 };
     };
+    alive();
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
+      alive();
       buffer += decoder.decode(value, { stream: true });
       let i: number;
       while ((i = buffer.indexOf("\n")) !== -1) {
