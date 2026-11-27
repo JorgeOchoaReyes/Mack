@@ -243,6 +243,13 @@ export type BenchRun = {
   harness?: BenchHarness;
   /** The pull request that shared the run on the Mack repo, once opened. */
   sharedPr?: { url: string; number: number; at: number; logs: boolean };
+  /**
+   * An official run: made by the Mack repo's own workflow on a fixed cloud
+   * machine (.github/workflows/benchmark-run.yml), so its time and cost compare
+   * across models. CI accepts the mark only on a pull request from the Mack repo
+   * itself, never from a fork.
+   */
+  official?: { runner: string; url: string };
   /** Share as a pull request on its own once every problem has a result; never for a stopped run or one cut short by its budget. */
   autoShare?: boolean;
   /** Why sharing it on its own failed, to show beside the run (it can still be shared by hand). */

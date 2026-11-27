@@ -18,7 +18,8 @@ let failed = 0;
 for (const dir of dirs) {
   const files: Record<string, string> = {};
   for (const f of readdirSync(dir)) if (statSync(join(dir, f)).isFile() && f !== ".gitkeep") files[f] = readFileSync(join(dir, f), "utf8");
-  const problems = validateRun(basename(dir), files);
+  // Set by CI only when the pull request's branch is in the Mack repo itself (not a fork).
+  const problems = validateRun(basename(dir), files, { officialAllowed: process.env.MACK_OFFICIAL_ALLOWED === "1" });
   if (problems.length) {
     failed++;
     lines.push(`- ❌ \`${basename(dir)}\``, ...problems.map((p) => `  - ${p}`));

@@ -16,7 +16,7 @@ import { PROVIDERS, providerInfo, type ProviderId } from "../core/model/provider
 import { ghCliToken, githubLogin, openCommunityPr, pullState, type GitHubTokenSource } from "../core/github";
 import { activeAccount, ghAccounts, ghToken, type GitHubAccount } from "../core/github-accounts";
 import { COMMUNITY_REPO } from "../core/community";
-import { prove, type ProveEvent } from "../core/prove";
+import type { ProveEvent } from "../core/prove";
 import { lemmaSource, type Lemma } from "../core/prepare";
 import { describeDecls, describePremises, MathlibIndex, mathlibRev, mathlibSource, nameHints, renameFor, premises, searchDecls } from "../core/lean/mathlib-index";
 import { describeEnvironment, probeEnvironment } from "../core/environment";
@@ -31,6 +31,7 @@ import { ASSUMED_PRICE, formatUsd, metered, priceFor, type Meter, type Price } f
 import { Ledger, type Period } from "../core/model/ledger";
 import type { ModelProvider } from "../core/model/provider";
 import { registerChat } from "./chat";
+import { attemptProof, benchOne, parallelOf, proverModels, type BenchHost } from "./bench-run";
 import { RunManager, type Problem, type RunStatus } from "../core/search/runs";
 import { RUN_TOOLS } from "../core/search/run-tools";
 import { CHAT_TOOLS as SWARM_CHAT_TOOLS, SwarmService } from "../core/ultramath/service";
@@ -42,11 +43,7 @@ import { statSync } from "node:fs";
 import { registerUpdates } from "./updates";
 import { remoteLean, setRemoteLean } from "../core/lean/remote";
 import { describeExamples, ProofStore, trainingData } from "../core/proof-store";
-import { decompose } from "../core/decompose";
-import { stepSearch } from "../core/stepsearch";
-import { helperLemmas, relevantLemmas } from "../core/bench/pool";
-import { easierVersions } from "../core/variants";
-import { attemptKind, attemptsDataset, harnessOf, ranToEnd, BENCH_SETS, BENCH_SHARE_DIR, benchReport, benchSet, benchShare, benchSlug, classifyFailure, LOG_LIMITS, splitReply, type AttemptLog, type BenchEnv, pickSample, runBench, type AttemptNote, type BenchEvent, type BenchResult, type BenchRun } from "../core/bench/bench";
+import { attemptsDataset, harnessOf, ranToEnd, BENCH_SETS, BENCH_SHARE_DIR, benchReport, benchSet, benchShare, benchSlug, type BenchEnv, pickSample, runBench, type BenchEvent, type BenchRun } from "../core/bench/bench";
 import { newerMackRelease, UPSTREAM } from "../core/upstream";
 import type { ApprovalPolicy } from "../core/chat/executor";
 import { PROOF_EFFORTS, withEffort, type ProofEffort, type ReasoningEffort } from "../core/model/provider";
@@ -718,86 +715,6 @@ async function projectLemmas(projectId: string, except?: string): Promise<Lemma[
 let proofs: ProofStore | null = null;
 const proofStore = () => (proofs ??= new ProofStore(userData("proofs.jsonl")));
 
-/** The prover models named in Settings (comma-separated), each priced into the same meter as the run's main model; empty when none is set. */
-const proverModels = (s: Settings) =>
-  s.proverModel
-    .split(",")
-    .map((m) => m.trim())
-    .filter(Boolean);
-
-function proversFor(s: Settings, meter: Meter, hooks: { onCharge?: (m: Meter) => void; onCap?: (why: string) => void }): { provider: ModelProvider; model: string }[] {
-  return proverModels(s).map((model) => ({ provider: metered(withEffort(makeProvider(s, s.proverProvider, model), s.proofEffort), priceFor(s.prices, model, s.assumedPrice).price, meter, hooks), model }));
-}
-
-const parallelOf = (s: Settings) => Math.max(1, Math.min(32, Math.floor(s.parallelAttempts) || 1));
-
-/**
- * A single or decompose proof run of `problem` with the settings' attempts, prover models, automation and
- * reuse of earlier proofs; with `easierFirst`, easier versions are proved first and offered as lemmas.
- * Shared by proof runs and the benchmark.
- */
-async function attemptProof(
-  s: Settings,
-  mode: "single" | "decompose",
-  problem: string,
-  o: {
-    provider: ModelProvider;
-    model: string;
-    meter: Meter;
-    hooks: { onCharge?: (m: Meter) => void; onCap?: (why: string) => void };
-    run: ReturnType<typeof leanRunner>;
-    prepare?: { checkStatement: boolean; idea: boolean };
-    lemmas?: Lemma[];
-    signal: AbortSignal;
-    onEvent: (e: ProveEvent) => void;
-  },
-): Promise<void> {
-  const parallel = parallelOf(s);
-  const base = {
-    provider: o.provider,
-    model: o.model,
-    run: o.run,
-    check: quickCheck(s, parallel),
-    parallel,
-    lookup: mathlibHints,
-    rename: mathlibRenames,
-    provers: proversFor(s, o.meter, o.hooks),
-    revisions: s.revisionsPerChain,
-    automation: s.leanAutomation,
-    premises: s.premiseSelection ? (frozen: string) => premisesFor(s, frozen) : undefined,
-    signal: o.signal,
-  };
-  let lemmas = o.lemmas ?? [];
-  if (s.easierFirst) {
-    const check = base.check ?? (async (src: string) => checkFromRun(await o.run(src)));
-    const easier = await easierVersions({
-      frozen: problem,
-      provider: o.provider,
-      model: o.model,
-      check,
-      signal: o.signal,
-      onStatus: (message) => o.onEvent({ type: "status", message }),
-      prove: async (v) => {
-        let proof: string | null = null;
-        await prove({ ...base, frozen: v, maxAttempts: Math.max(2, Math.min(8, Math.floor(s.maxAttempts / 4))), onEvent: (e) => e.type === "solved" && (proof = e.proof) });
-        return proof;
-      },
-    });
-    lemmas = [...easier, ...lemmas];
-  }
-  const options = {
-    ...base,
-    frozen: problem,
-    maxAttempts: s.maxAttempts,
-    prepare: o.prepare,
-    lemmas,
-    examples: s.reuseProofs ? describeExamples(proofStore().similar(problem)) : "",
-    onEvent: o.onEvent,
-  };
-  if (mode === "decompose") await decompose({ ...options, maxDepth: s.decomposeDepth, lemmaAttempts: s.decomposeAttempts, rounds: s.decomposeRounds });
-  else await prove(options);
-}
-
 /** One proof run in the given mode, recorded in the run history. Shared by the Prove screen and the chat's `start_proof`. */
 async function runProof(problem: string, mode: RunMode, forward: (ev: RunEvent) => void, origin: RunOrigin = {}): Promise<RunRecord> {
   if (proving) throw new Error("a proof run is already in progress");
@@ -869,7 +786,7 @@ async function runProof(problem: string, mode: RunMode, forward: (ev: RunEvent) 
         onEvent: send,
       });
     } else {
-      await attemptProof(s, s.mode === "decompose" ? "decompose" : "single", problem, {
+      await attemptProof(host, s, s.mode === "decompose" ? "decompose" : "single", problem, {
         provider,
         model,
         meter,
@@ -920,172 +837,18 @@ const benchDir = () => {
 };
 const saveBench = (run: BenchRun) => writeFileSync(join(benchDir(), `${run.id}.json`), JSON.stringify(run));
 
-async function benchOne(s: Settings, p: { id: string; source: string }, bench: BenchRun, signal: AbortSignal, status: (m: string) => void, pool: Lemma[] = []): Promise<BenchResult> {
-  const t0 = Date.now();
-  const model = s.models[s.provider];
-  const left = bench.budget > 0 ? bench.budget - bench.results.reduce((a, r) => a + r.usd, 0) : 0;
-  const meter: Meter = { spent: 0, limit: Math.max(0, left), estimated: false };
-  const ctl = new AbortController();
-  const hooks = { onCap: () => ctl.abort() };
-  const provider = metered(withEffort(makeProvider(s, s.provider), s.proofEffort), priceFor(s.prices, model, s.assumedPrice).price, meter, hooks);
-  // A stop kills this problem's Lean runs at once, as well as its model calls.
-  const run = leanRunner({ workspace: s.leanWorkspace, timeoutMs: s.timeoutMs, signal: AbortSignal.any([signal, ctl.signal]) });
-  let attempts = 0;
-  let proof: string | undefined;
-  let message = "";
-  // How each attempt ended, to say afterwards why the problem was not solved.
-  const notes: AttemptNote[] = [];
-  let lastCandidate = "";
-  const log: AttemptLog[] = [];
-  const timeline: { t: number; message: string }[] = [];
-  // The run's own steps, once each and in order: everything the agent did besides its attempts.
-  const trace = (message: string) => {
-    if (timeline.length < LOG_LIMITS.timeline && timeline[timeline.length - 1]?.message !== message) timeline.push({ t: Date.now() - t0, message: message.slice(0, LOG_LIMITS.step) });
-  };
-  // Every method's attempts land in one log: a Mack attempt, a search node, or a swarm member's turn.
-  const onEvent = (ev: ProveEvent) => {
-      if (ev.type === "attempt") {
-        if (log.length < LOG_LIMITS.attempts) {
-          const { thinking, prose } = splitReply(ev.reply ?? "", ev.reasoning);
-          log.push({
-            n: ev.n,
-            outcome: ev.outcome,
-            kind: ev.outcome === "verified" ? "verified" : attemptKind(ev),
-            ...(ev.model ? { model: ev.model } : {}),
-            ...(ev.at ? { at: new Date(ev.at).toISOString() } : {}),
-            ms: ev.ms,
-            tokens: ev.tokens,
-            ...(ev.promptTokens ? { promptTokens: ev.promptTokens } : {}),
-            ...(ev.truncated ? { truncated: true } : {}),
-            detail: ev.detail.slice(0, LOG_LIMITS.detail),
-            candidate: ev.candidate.slice(0, LOG_LIMITS.candidate),
-            ...(thinking ? { thinking: thinking.slice(0, LOG_LIMITS.thinking) } : {}),
-            ...(prose ? { prose: prose.slice(0, LOG_LIMITS.prose) } : {}),
-          });
-        }
-      }
-      if (ev.type === "attempt" && ev.n > 0) {
-        attempts++;
-        if (ev.outcome !== "verified") {
-          notes.push({ outcome: ev.outcome, detail: ev.detail });
-          lastCandidate = ev.candidate;
-        }
-      }
-      if (ev.type === "solved") proof = ev.proof;
-      if (ev.type === "failed") message = ev.message;
-      if (ev.type === "status") {
-        status(ev.message);
-        trace(ev.message);
-      }
-      if (ev.type === "idea") trace(`The plan in words, which every attempt was given:\n${ev.text}`);
-      if (ev.type === "statementCheck") trace(`Statement check: ${JSON.stringify(ev.check).slice(0, 400)}`);
-  };
-  const both = AbortSignal.any([signal, ctl.signal]);
-  const method = bench.config.method ?? "single";
-  const check = () => (async (src: string) => checkFromRun(await run(src)));
-  if (method === "search") {
-    await search({
-      frozen: p.source,
-      provider,
-      model,
-      run,
-      check: quickCheck(s, Math.min(2, s.search.w)) ?? check(),
-      prepare: { checkStatement: false, idea: s.proofIdea },
-      lookup: mathlibHints,
-      limits: s.search,
-      analysis: s.searchAnalysis,
-      sketch: sketchFor(p.source),
-      worker: s.searchWorker,
-      workspace: userData("bench-workspaces", bench.id, p.id),
-      signal: both,
-      onEvent: (ev) => {
-        if (ev.type === "node") {
-          const n = ev.node;
-          const outcome = n.status === "invalid" ? "refused" : n.status === "complete" ? "rejected" : n.status;
-          onEvent({ type: "attempt", n: n.id + 1, candidate: n.file, outcome, detail: n.detail, ms: ev.ms, tokens: ev.tokens, model, at: Date.now() - ev.ms });
-          trace(`Node ${n.id + 1}${n.parent !== null ? ` (from node ${n.parent + 1})` : ""}, round ${n.round}: ${n.status}, score ${n.score.toFixed(2)}${n.approach ? `. Approach: ${n.approach}` : ""}`);
-        } else if (ev.type === "round") trace(`Round ${ev.round}: continuing node${ev.batch.length === 1 ? "" : "s"} ${ev.batch.map((b) => b + 1).join(", ")}`);
-        else if (ev.type === "solved" || ev.type === "failed" || ev.type === "status" || ev.type === "idea" || ev.type === "statementCheck") onEvent(ev);
-      },
-    });
-  } else if (method === "steps") {
-    quickCheck(s, 2);
-    const pool = repl?.pool;
-    if (!pool) onEvent({ type: "failed", message: "Step by step needs the Lean REPL, and it is not running." });
-    else
-      await stepSearch({
-        frozen: p.source,
-        provider,
-        model,
-        session: pool.session,
-        run,
-        maxCalls: s.maxAttempts,
-        automation: s.leanAutomation,
-        notes: s.premiseSelection ? await premisesFor(s, p.source).catch(() => "") : "",
-        signal: both,
-        onEvent,
-      });
-  } else if (method === "ultramath") {
-    let turn = 0;
-    await ultramath({
-      problem: p.source,
-      provider,
-      model,
-      run,
-      check: quickCheck(s, 2) ?? check(),
-      limits: s.ultramath,
-      signal: both,
-      onEvent: (ev) => {
-        if (ev.type === "turn") {
-          // A member's turn is the swarm's attempt: what its Lean check said, when it ran one, judges it.
-          const said = ev.check ?? "";
-          const outcome = !said ? "no verdict" : /error/i.test(said) ? "errors" : /sorry/i.test(said) ? "sorries" : "rejected";
-          onEvent({ type: "attempt", n: ++turn, candidate: ev.summary, outcome, detail: said || "(the member ran no Lean check this turn)", ms: 0, tokens: ev.tokens, model: `${model} · member ${ev.member}`, at: Date.now() });
-          trace(`Member ${ev.member}, round ${ev.round}: ${ev.summary}`);
-        } else if (ev.type === "direction") trace(`A member registered a direction: ${JSON.stringify(ev.direction).slice(0, 600)}`);
-        else if (ev.type === "refused") trace(`Member ${ev.member}'s direction was refused (${ev.reason}): ${ev.text}`);
-        else if (ev.type === "post") trace(`Board post: ${JSON.stringify(ev.post).slice(0, 800)}`);
-        else if (ev.type === "report") trace(`Member ${ev.member} reported (${ev.accepted ? "accepted" : "not accepted"}: ${ev.reason}): ${ev.report}`);
-        else if (ev.type === "solved" || ev.type === "failed" || ev.type === "status") onEvent(ev);
-      },
-    });
-  } else {
-    // Lemmas this run proved on earlier problems, the ones related to this statement.
-    const offered = bench.config.lemmaPool ? relevantLemmas(pool, p.source) : [];
-    if (offered.length) trace(`Offered ${offered.length} lemma${offered.length === 1 ? "" : "s"} proved earlier in this run: ${offered.map((l) => /^(?:private\s+)?(?:theorem|lemma)\s+(\S+)/.exec(l.source)?.[1] ?? "?").join(", ")}`);
-    // Never the person's own past proofs as examples: they are private, so no one else could reproduce the run.
-    await attemptProof({ ...s, reuseProofs: false }, method, p.source, {
-      lemmas: offered,
-      provider,
-      model,
-      meter,
-      hooks,
-      run,
-      // Benchmark statements are known to be right; the random tester would only spend time.
-      prepare: { checkStatement: false, idea: s.proofIdea },
-      signal: both,
-      onEvent,
-    });
-  }
-  if (proof && bench.config.lemmaPool) pool.push(...helperLemmas(proof, p.source, p.id));
-  if (proof) return { id: p.id, outcome: "solved", attempts, ms: Date.now() - t0, usd: meter.spent, proof, log, timeline };
-  const outcomes: Record<string, number> = {};
-  for (const n of notes) outcomes[n.outcome] = (outcomes[n.outcome] ?? 0) + 1;
-  const failure = classifyFailure(notes, message);
-  return {
-    id: p.id,
-    outcome: "failed",
-    attempts,
-    ms: Date.now() - t0,
-    usd: meter.spent,
-    message,
-    failure,
-    outcomes,
-    ...(notes.length ? { lastError: notes[notes.length - 1].detail.slice(0, 2000), lastCandidate: lastCandidate.slice(0, 4000) } : {}),
-    log,
-    timeline,
-  };
-}
+/** Benchmarks and proof runs in the app: keys from Setup, the shared REPL pool, Mathlib's index here. */
+const host: BenchHost = {
+  makeProvider: (s, id, model) => makeProvider(s, id, model),
+  quickCheck,
+  replPool: () => repl?.pool,
+  sketchFor,
+  mathlibHints,
+  mathlibRenames,
+  premisesFor,
+  examples: (problem) => describeExamples(proofStore().similar(problem)),
+  scratch: (...parts) => userData(...parts),
+};
 
 ipcMain.handle("proofs:stats", () => ({ count: proofStore().all().length }));
 ipcMain.handle("proofs:export", async (e) => {
@@ -1203,7 +966,7 @@ ipcMain.handle("bench:start", async (e, setId: string, n: number, budget: number
         send(run)({ type: "finished", run });
         continue;
       }
-      await runBench({ run, set, signal: ctl.signal, onEvent: send(run), proveOne: (p, signal) => benchOne(s, p, run, signal, (message) => send(run)({ type: "status", id: p.id, message }), pool) }).catch((err: Error) => {
+      await runBench({ run, set, signal: ctl.signal, onEvent: send(run), proveOne: (p, signal) => benchOne(host, s, p, run, signal, (message) => send(run)({ type: "status", id: p.id, message }), pool) }).catch((err: Error) => {
         run.status = "stopped";
         run.message = err.message;
       });

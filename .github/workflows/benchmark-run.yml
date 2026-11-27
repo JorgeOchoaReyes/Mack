@@ -1,0 +1,146 @@
+# Official benchmark runs: Mack's benchmark on a fixed cloud machine, started
+# by hand from the Actions tab ("Run workflow"). Only the repository owner can
+# start it. A run that gives every problem a result opens a pull request with
+# the run marked official (benchmarks/runs/<folder>/); CI then re-checks every
+# proof as for any shared run, and the site shows it with an Official badge. A
+# run cut short (a cancel, the budget, or Lean or the model never working)
+# opens nothing; its run.json is kept as an artifact either way.
+#
+# Needs, in Settings → Secrets and variables → Actions:
+# - the API key of each provider used: FIREWORKS_API_KEY, OPENROUTER_API_KEY,
+#   CHEAPER_INFERENCE_API_KEY;
+# - MACK_BENCH_TOKEN (recommended): a fine-grained token on this repo with
+#   Contents and Pull requests read/write. A pull request opened with the
+#   default token does not start the required checks, so it could not be
+#   merged without them.
+name: Official benchmark run
+on:
+  workflow_dispatch:
+    inputs:
+      set:
+        description: Problem set
+        type: choice
+        options: [minif2f-test, putnambench, putnam-recent]
+        default: minif2f-test
+      problems:
+        description: Problems (the fixed sample of this size; the whole set for its size)
+        default: "20"
+      method:
+        description: Method
+        type: choice
+        options: [single, decompose, steps, search, ultramath]
+        default: single
+      provider:
+        description: Provider
+        type: choice
+        options: [openrouter, fireworks, cheaperinference]
+        default: openrouter
+      model:
+        description: Model id, as the provider names it
+        required: true
+      prover:
+        description: Prover models, comma-separated (optional)
+        default: ""
+      effort:
+        description: Thinking level
+        type: choice
+        options: [default, off, low, medium, high, xhigh]
+        default: default
+      attempts:
+        description: Attempts per problem
+        default: "8"
+      parallel:
+        description: Attempts at once
+        default: "1"
+      budget:
+        description: Budget in USD (0 = none; a run cut short by it opens no PR)
+        default: "0"
+permissions:
+  contents: write
+  pull-requests: write
+concurrency:
+  group: official-benchmark
+  cancel-in-progress: false
+jobs:
+  run:
+    # Official runs are the owner's to make.
+    if: github.actor == github.repository_owner
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.MACK_BENCH_TOKEN || github.token }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install elan
+        shell: bash
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - uses: actions/cache@v4
+        with:
+          path: community/lean/.lake
+          key: community-lake-${{ hashFiles('community/lean/lake-manifest.json', 'community/lean/lean-toolchain') }}
+      - name: Mathlib
+        working-directory: community/lean
+        run: |
+          lake exe cache get
+          lake build Mathlib
+      - name: Lean REPL (as Mack's setup builds it)
+        shell: bash
+        run: |
+          tag=$(cut -d: -f2 community/lean/lean-toolchain)
+          git clone --depth 1 --branch "$tag" https://github.com/leanprover-community/repl community/lean/.mack/repl
+          (cd community/lean/.mack/repl && lake build)
+      - run: npm ci
+      - run: npx tsc -p tsconfig.electron.json
+      - name: Run the benchmark
+        id: bench
+        shell: bash
+        # Inputs reach the command only as environment variables, never as code.
+        env:
+          IN_SET: ${{ inputs.set }}
+          IN_PROBLEMS: ${{ inputs.problems }}
+          IN_METHOD: ${{ inputs.method }}
+          IN_PROVIDER: ${{ inputs.provider }}
+          IN_MODEL: ${{ inputs.model }}
+          IN_PROVER: ${{ inputs.prover }}
+          IN_EFFORT: ${{ inputs.effort }}
+          IN_ATTEMPTS: ${{ inputs.attempts }}
+          IN_PARALLEL: ${{ inputs.parallel }}
+          IN_BUDGET: ${{ inputs.budget }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          FIREWORKS_API_KEY: ${{ secrets.FIREWORKS_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          CHEAPER_INFERENCE_API_KEY: ${{ secrets.CHEAPER_INFERENCE_API_KEY }}
+        run: |
+          node dist-electron/scripts/run-bench.js \
+            --set "$IN_SET" --problems "$IN_PROBLEMS" --method "$IN_METHOD" \
+            --provider "$IN_PROVIDER" --model "$IN_MODEL" --prover "$IN_PROVER" --effort "$IN_EFFORT" \
+            --attempts "$IN_ATTEMPTS" --parallel "$IN_PARALLEL" --budget "$IN_BUDGET" \
+            --workspace "$PWD/community/lean" --lean-processes 2 --scratch "$RUNNER_TEMP/mack-bench" \
+            --official "$RUN_URL" --platform "GitHub Actions ubuntu-latest"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-run
+          path: ${{ runner.temp }}/mack-bench/run.json
+          if-no-files-found: ignore
+      - name: Open the pull request
+        if: steps.bench.outputs.complete == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.MACK_BENCH_TOKEN || github.token }}
+          FOLDER: ${{ steps.bench.outputs.folder }}
+          TITLE: ${{ steps.bench.outputs.title }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          branch="official/$FOLDER-${{ github.run_id }}"
+          git checkout -b "$branch"
+          git add "benchmarks/runs/$FOLDER"
+          git commit -m "Official $TITLE"
+          git push origin "$branch"
+          gh pr create --base main --head "$branch" --title "Official $TITLE" --body-file "$RUNNER_TEMP/mack-bench/pr-body.md"

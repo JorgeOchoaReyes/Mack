@@ -171,6 +171,8 @@ tr.first .rank { color: var(--accent-text); }
 .pill { display: inline-block; padding: 2px 9px; border-radius: 99px; font-size: 11.5px; font-weight: 650; background: var(--bar); color: var(--muted); }
 .pill.best { background: var(--accent-soft); color: var(--accent-text); }
 .pill.omh { background: var(--ok-soft); color: var(--ok); }
+.pill.official { background: var(--accent); color: #17150a; text-decoration: none; vertical-align: middle; }
+h1 .pill.official { font-size: 13px; }
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 16px 0; }
 .stat b { display: block; font-size: 24px; font-variant-numeric: tabular-nums; }
 .why { display: grid; grid-template-columns: minmax(120px, 200px) 1fr minmax(36px, auto); gap: 12px; align-items: center; margin: 7px 0; font-size: 13.5px; }
@@ -275,6 +277,7 @@ const TIPS = {
   time: "Wall-clock per problem: model calls, Lean checks and automation together.",
   verified: "Accepted by Mack's strict verifier and re-checked with Lean in CI.",
   contamination: "Recent Putnam problems are least likely to be in training data. Much weaker there suggests memorization helped elsewhere.",
+  official: "Run by Mack's own workflow on a fixed cloud machine (GitHub Actions, 4 CPUs, 16 GB), so its time and cost compare across official runs.",
   harness: "Under each method: the Mack version and Open Math Harness commit it ran. Hover for the procedures used.",
 } as const;
 
@@ -293,6 +296,9 @@ const closingTactic = (proof?: string) => (proof ? (/:=\s*by\s*\n\s*(.+)\s*$/.ex
 const SELF_REPORTED = `<p class="note">* self-reported ${tip(TIPS.reported)}</p>`;
 
 type Row = { r: SharedRun; p: ReturnType<typeof publishedScore>; usd: number };
+
+/** The Official badge, linking the workflow run that made it. */
+const officialPill = (r: BenchRun) => (r.official ? ` <a class="pill official" href="${esc(r.official.url)}">Official</a>${tip(TIPS.official)}` : "");
 
 /** A model setup as a file name: `deepseek-v4-deepseek-prover-v2`. */
 export const modelSlug = (r: BenchRun) => models(r).toLowerCase().replace(/[^a-z0-9.]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "model";
@@ -316,7 +322,7 @@ function runTable(rows: Row[], root: string, withModel = true, ranked = true): s
       const best = ranked && i === 0 && rows.length > 1;
       return `<tr class="${ranked && i === 0 ? "first" : ""}">
 ${ranked ? `<td class="rank">${i + 1}</td>` : ""}
-${withModel ? `<td class="wrap"><a href="${root}models/${esc(modelSlug(r))}.html">${esc(models(r))}</a>*</td>` : `<td>${esc(setLabel(r.set))}</td>`}
+${withModel ? `<td class="wrap"><a href="${root}models/${esc(modelSlug(r))}.html">${esc(models(r))}</a>*${officialPill(r)}</td>` : `<td>${esc(setLabel(r.set))}${officialPill(r)}</td>`}
 <td class="opt" title="${esc(r.harness?.procedures.join(", ") ?? "")}">${esc(METHOD_LABELS[r.config.method ?? "single"].replace(/ \(.*\)$/, ""))}${r.config.method === "search" || r.config.method === "ultramath" ? ' <span class="pill omh">OMH</span>' : ""}<span class="cell-sub">${esc(harnessLabel(r.harness, r.appVersion ?? r.env?.app))}</span></td>
 <td class="opt">${thinking(r)}</td>
 <td><a href="${root}runs/${esc(r.folder)}.html"><b>${p.solved}/${p.of}</b></a></td>
@@ -509,7 +515,7 @@ export function runPage(r: SharedRun, repo: string): string {
     `${models(r)} on ${setLabel(r.set)} ${p.solved}/${p.of}: Mack benchmark`,
     `<p class="crumbs"><a href="../index.html#leaderboard">Leaderboard</a> / <a href="../models/${esc(modelSlug(r))}.html">${esc(models(r))}</a></p>
 <section class="hero compact" style="padding:14px 0 4px">
-<h1 style="font-size:30px">${esc(models(r))} · ${esc(setLabel(r.set))}</h1>
+<h1 style="font-size:30px">${esc(models(r))} · ${esc(setLabel(r.set))}${officialPill(r)}</h1>
 <p class="muted">${esc(METHOD_LABELS[c.method ?? "single"])} · thinking ${c.effort ? esc(c.effort) : "auto"} · ${day(r.startedAt)}${r.sharedBy ? ` · by ${esc(r.sharedBy)}` : ""}${r.appVersion ? ` · Mack ${esc(r.appVersion)}` : ""}</p>
 </section>
 <div class="kpis">
@@ -861,6 +867,11 @@ ${failures}
 <li>Every solved proof is re-verified with Lean and the strict verifier, against the same Mathlib.</li>
 <li>The sample is exactly the fixed problems for its size, each with one result.</li>
 <li>A run that fails either is not merged.</li>
+</ul></div>
+<div class="card"><h3>Official runs</h3><ul class="bullets">
+<li>Made by the Mack repo's own workflow on one fixed cloud machine (GitHub Actions, 4 CPUs, 16 GB), linked from their badge.</li>
+<li>Only those time and cost figures compare across models; community runs ran on their sharers' computers.</li>
+<li>CI refuses the official mark on a pull request from a fork.</li>
 </ul></div>
 <div class="card"><h3>Self-reported</h3><ul class="bullets">
 <li>Model names, thinking level, cost, time and tokens.</li>
