@@ -148,7 +148,7 @@ jobs:
           node dist-electron/scripts/run-bench.js \
             --set "$IN_SET" --problems "$IN_PROBLEMS" --method "$IN_METHOD" \
             --provider "$IN_PROVIDER" --model "$IN_MODEL" --prover "$IN_PROVER" --effort "$IN_EFFORT" \
-            --attempts "$IN_ATTEMPTS" --parallel 1 --budget "$IN_BUDGET" --lemma-pool false \
+            --attempts "$IN_ATTEMPTS" --budget "$IN_BUDGET" --lemma-pool false \
             --shard "$SHARD" --shards "$SHARDS" \
             --workspace "$PWD/community/lean" --lean-processes 2 --scratch "$RUNNER_TEMP/mack-bench" \
             --official "$RUN_URL" --platform "GitHub Actions ubuntu-latest"

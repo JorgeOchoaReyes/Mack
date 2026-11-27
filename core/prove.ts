@@ -81,6 +81,11 @@ export type ProveOptions = {
    * their goal closed (default on). Off for pass@k, where the model's proof is checked exactly as it wrote it.
    */
   repair?: boolean;
+  /**
+   * The longest reply a model may write (default 8k tokens, 16k for prover models). Pass@k raises it, as the labs give
+   * reasoning models room to think: a reply cut off loses a problem the model would have solved.
+   */
+  maxTokens?: number;
   signal?: AbortSignal;
   onEvent: (e: ProveEvent) => void;
 };
@@ -191,7 +196,13 @@ export async function prove(o: ProveOptions): Promise<void> {
       let truncated = false;
       const at = Date.now();
       try {
-        const r = await writer.provider.chat({ model: writer.model, messages, maxTokens: isProver ? 16384 : 8192, temperature: isProver ? 0.9 : 0.6, signal });
+        const usual = isProver ? 16384 : 8192;
+        const ask = (maxTokens: number) => writer.provider.chat({ model: writer.model, messages, maxTokens, temperature: isProver ? 0.9 : 0.6, signal });
+        // A provider that refuses a reply this long (above the model's own limit) is asked again with the usual one.
+        const r = await ask(Math.max(usual, o.maxTokens ?? usual)).catch((e: Error) => {
+          if ((o.maxTokens ?? usual) > usual && !signal.aborted && /max_tokens|max tokens|maximum.*tokens|context (length|window)|too (large|long)/i.test(e.message)) return ask(usual);
+          throw e;
+        });
         reply = r.content;
         tokens = r.usage?.completionTokens ?? 0;
         promptTokens = r.usage?.promptTokens ?? 0;

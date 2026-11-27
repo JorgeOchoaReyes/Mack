@@ -74,6 +74,8 @@ export async function attemptProof(
     lemmas?: Lemma[];
     /** Mack's repairs of a candidate (lemma names, dead tactics); off for pass@k. */
     repair?: boolean;
+    /** The longest reply a model may write; pass@k raises it. */
+    maxTokens?: number;
     signal: AbortSignal;
     onEvent: (e: ProveEvent) => void;
   },
@@ -88,6 +90,7 @@ export async function attemptProof(
     lookup: host.mathlibHints,
     rename: o.repair === false ? undefined : host.mathlibRenames,
     repair: o.repair,
+    maxTokens: o.maxTokens,
     provers: proversFor(host, s, o.meter, o.hooks),
     revisions: s.revisionsPerChain,
     automation: s.leanAutomation,
@@ -131,6 +134,12 @@ export async function attemptProof(
  * the model wrote it. No automation, premise hints, easier versions, plan in
  * words or earlier proofs.
  */
+/** The longest reply in a pass@k run: what the labs give reasoning models (a provider that allows less is asked again with the usual limit). */
+export const PASSK_MAX_TOKENS = 32768;
+
+/** How many of a problem's samples run at once in a pass@k run by default: they are independent, so this changes only the time. */
+export const passkParallel = (k: number, parallel = 1) => Math.max(parallel, Math.min(k, 8));
+
 export const passkSettings = (s: Settings): Settings => ({ ...s, leanAutomation: false, premiseSelection: false, easierFirst: false, proofIdea: false, revisionsPerChain: 1, reuseProofs: false });
 
 export async function benchOne(host: BenchHost, s: Settings, p: { id: string; source: string }, bench: BenchRun, signal: AbortSignal, status: (m: string) => void, pool: Lemma[] = []): Promise<BenchResult> {
@@ -271,6 +280,8 @@ export async function benchOne(host: BenchHost, s: Settings, p: { id: string; so
     await attemptProof(host, passk ? passkSettings(s) : { ...s, reuseProofs: false }, method, p.source, {
       lemmas: passk ? [] : offered,
       repair: !passk,
+      // As the labs run pass@k: room for a reasoning model to think, so no reply is cut short.
+      ...(passk ? { maxTokens: PASSK_MAX_TOKENS } : {}),
       provider,
       model,
       meter,

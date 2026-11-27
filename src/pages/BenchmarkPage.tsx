@@ -100,7 +100,7 @@ export function BenchmarkPage({ settings, onGo }: Props) {
   const model = models.some((m) => m.model.trim());
   const config =
     protocol === "passk"
-      ? [`${settings.parallelAttempts} sample${settings.parallelAttempts === 1 ? "" : "s"} at once`]
+      ? [`${Math.max(settings.parallelAttempts, Math.min(k, 8))} samples at once`, "replies up to 32k tokens"]
       : [`${settings.maxAttempts} attempts`, `${settings.parallelAttempts} at once`, settings.leanAutomation ? "automation on" : "automation off", ...(settings.easierFirst ? ["easier versions first"] : [])];
   const past = runs.filter((r) => r.id !== live?.id);
   const best = past.filter((r) => r.set === setId && summarize(r).tried > 0).reduce<BenchRun | null>((b, r) => (!b || summarize(r).rate > summarize(b).rate ? r : b), null);

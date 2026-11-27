@@ -39,9 +39,26 @@ describe("pass@k, the labs' protocol", () => {
     expect(asked[0].messages[0].content).not.toContain("may be left as `sorry`");
   });
 
+  it("gives a reasoning model room to think, and asks again with the usual limit when the provider allows less", async () => {
+    const limits: number[] = [];
+    const provider: ModelProvider = {
+      name: "fake",
+      listModels: async () => [],
+      chat: async (r: ChatRequest) => {
+        limits.push(r.maxTokens ?? 0);
+        if ((r.maxTokens ?? 0) > 16000) throw new Error("400: max_tokens is too large: 32768 > 16384");
+        return { content: "```lean\nimport Mathlib\n\ntheorem t (x : ℕ) : x + 0 = x := by\n  exact Nat.add_zero x\n```" };
+      },
+    };
+    const events: ProveEvent[] = [];
+    await prove({ frozen, provider, model: "m", run, check, maxAttempts: 1, revisions: 1, automation: false, repair: false, maxTokens: 32768, onEvent: (e) => events.push(e) });
+    expect(limits).toEqual([32768, 8192]);
+    expect(events.some((e) => e.type === "solved")).toBe(true);
+  });
+
   it("names its harness and its label by k", () => {
     const config = { model: "m", maxAttempts: 32, parallel: 1, automation: false, revisions: 1, protocol: "passk" as const };
-    expect(harnessOf(config, "0.2.42", "687f2a20").procedures).toEqual(["strict verifier", "linters off", "pass@32: independent samples, checked as written"]);
+    expect(harnessOf(config, "0.2.42", "687f2a20").procedures).toEqual(["strict verifier", "linters off", "pass@32: independent samples, checked as written", "replies up to 32k tokens"]);
     expect(protocolLabel({ config })).toBe("pass@32");
     expect(protocolLabel({ config: { ...config, protocol: undefined } })).toBe("Mack agent");
   });

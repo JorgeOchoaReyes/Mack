@@ -31,7 +31,7 @@ import { ASSUMED_PRICE, formatUsd, metered, priceFor, type Meter, type Price } f
 import { Ledger, type Period } from "../core/model/ledger";
 import type { ModelProvider } from "../core/model/provider";
 import { registerChat } from "./chat";
-import { attemptProof, benchOne, parallelOf, passkSettings, proverModels, type BenchHost } from "./bench-run";
+import { attemptProof, benchOne, parallelOf, passkParallel, passkSettings, proverModels, type BenchHost } from "./bench-run";
 import { RunManager, type Problem, type RunStatus } from "../core/search/runs";
 import { RUN_TOOLS } from "../core/search/run-tools";
 import { CHAT_TOOLS as SWARM_CHAT_TOOLS, SwarmService } from "../core/ultramath/service";
@@ -884,7 +884,8 @@ ipcMain.handle("bench:start", async (e, setId: string, n: number, budget: number
   // Pass@k, the labs' protocol: k independent samples per problem, checked as written; the agent is Mack's own system.
   const passk = opts?.protocol === "passk";
   const k = Math.max(1, Math.min(1024, Math.floor(Number(opts?.k)) || 32));
-  const settingsFor = (m: BenchModels): Settings => (passk ? { ...passkSettings(withModels(base, m)), maxAttempts: k } : withModels(base, m));
+  // A pass@k problem's samples are independent: several run at once (at least as many as Settings asks), which changes only the time.
+  const settingsFor = (m: BenchModels): Settings => (passk ? { ...passkSettings(withModels(base, m)), maxAttempts: k, parallelAttempts: passkParallel(k, base.parallelAttempts) } : withModels(base, m));
   // Problems at once: each holds its own Lean checks, so Mack's Lean limit still bounds the memory.
   const concurrency = Math.max(1, Math.min(8, Math.floor(Number(opts?.concurrency)) || 1));
   const set = benchSet(String(setId));

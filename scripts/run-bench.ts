@@ -28,7 +28,7 @@ import { DEFAULT_LIMITS } from "../core/search/tree";
 import { DEFAULT_ULTRAMATH } from "../core/ultramath/swarm";
 import { UPSTREAM } from "../core/upstream";
 import type { Lemma } from "../core/prepare";
-import { benchOne, parallelOf, passkSettings, proverModels, type BenchHost } from "../electron/bench-run";
+import { benchOne, parallelOf, passkParallel, passkSettings, proverModels, type BenchHost } from "../electron/bench-run";
 import type { Settings } from "../electron/main";
 
 const METHODS: BenchMethod[] = ["single", "decompose", "steps", "search", "ultramath"];
@@ -113,7 +113,8 @@ const agentSettings: Settings = {
   activeProject: "",
   proveFolder: "",
 };
-const s: Settings = passk ? passkSettings(agentSettings) : agentSettings;
+// A pass@k problem's samples are independent: several run at once unless --parallel says otherwise, so long runs fit in a machine's 6 hours.
+const s: Settings = passk ? { ...passkSettings(agentSettings), parallelAttempts: a.parallel ? agentSettings.parallelAttempts : passkParallel(agentSettings.maxAttempts) } : agentSettings;
 
 // Mathlib's index (premises and name repair), built once per run in the scratch folder.
 const index = mathlibSource(workspace) ? new MathlibIndex(workspace, join(scratchRoot, "mathlib-index.json")) : undefined;
