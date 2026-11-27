@@ -166,7 +166,8 @@ void (async () => {
   const priceLine = (m: string) => (s.prices[m] ? `${m} $${s.prices[m].input}/$${s.prices[m].output} per million tokens` : `${m}: no published price, the assumed $${s.assumedPrice.input}/$${s.assumedPrice.output} is charged`);
   const prices = [model, ...proverModels(s)].map(priceLine).join("; ");
   console.log(`Prices: ${prices}`);
-  const appVersion = (JSON.parse(readFileSync(join(__dirname, "..", "..", "package.json"), "utf8")) as { version: string }).version;
+  // The release the run's code is (the workflow passes the latest tag); package.json's version is only set when a release is built.
+  const appVersion = (process.env.MACK_VERSION ?? "").replace(/^v/, "") || (JSON.parse(readFileSync(join(__dirname, "..", "..", "package.json"), "utf8")) as { version: string }).version;
   const fullSample = pickSample(set, num("problems", 20));
   // Split across machines (--shard i --shards n): this machine runs its share of the fixed sample, and merge-bench joins the parts.
   const shards = Math.max(1, Math.floor(num("shards", 1)));
