@@ -22,7 +22,7 @@
 #   merged without them.
 name: Official benchmark run
 # What ran, in the list of runs: "Official · passk@32 · minif2f-test ×244 · model".
-run-name: "Official · ${{ inputs.method }}${{ inputs.method == 'passk' && format('@{0}', inputs.attempts) || '' }} · ${{ inputs.set }} ×${{ inputs.problems }} · ${{ inputs.model }}"
+run-name: "Official · ${{ inputs.method }}${{ inputs.method == 'passk' && format('@{0}', inputs.attempts) || '' }} · ${{ inputs.set }} ×${{ inputs.problems }} · ${{ (inputs.model == 'custom' && inputs.custom_model || inputs.model) }}"
 on:
   workflow_dispatch:
     inputs:
@@ -45,8 +45,17 @@ on:
         options: [openrouter, fireworks, cheaperinference]
         default: openrouter
       model:
-        description: Model id, as the provider names it
-        required: true
+        description: Model (pick "custom" to type any other id below)
+        type: choice
+        options:
+          - deepseek-v4.1-flash
+          - glm-5.3
+          - deepseek/deepseek-r1
+          - custom
+        default: deepseek-v4.1-flash
+      custom_model:
+        description: Custom model id, as the provider names it (used when Model is "custom")
+        default: ""
       prover:
         description: Prover models, comma-separated (optional)
         default: ""
@@ -87,13 +96,14 @@ jobs:
           IN_PROBLEMS: ${{ inputs.problems }}
           IN_METHOD: ${{ inputs.method }}
           IN_PROVIDER: ${{ inputs.provider }}
-          IN_MODEL: ${{ inputs.model }}
+          IN_MODEL: ${{ (inputs.model == 'custom' && inputs.custom_model || inputs.model) }}
           IN_PROVER: ${{ inputs.prover }}
           IN_EFFORT: ${{ inputs.effort }}
           IN_ATTEMPTS: ${{ inputs.attempts }}
           IN_BUDGET: ${{ inputs.budget }}
         # The run's settings on its summary page at once, while the machines work.
         run: |
+          if [ -z "$IN_MODEL" ] || [ "$IN_MODEL" = custom ]; then echo "::error::Model is \"custom\" but no custom model id was given."; exit 1; fi
           {
             echo "## Official benchmark run: started"
             echo ""
@@ -160,7 +170,7 @@ jobs:
           IN_PROBLEMS: ${{ inputs.problems }}
           IN_METHOD: ${{ inputs.method }}
           IN_PROVIDER: ${{ inputs.provider }}
-          IN_MODEL: ${{ inputs.model }}
+          IN_MODEL: ${{ (inputs.model == 'custom' && inputs.custom_model || inputs.model) }}
           IN_PROVER: ${{ inputs.prover }}
           IN_EFFORT: ${{ inputs.effort }}
           IN_ATTEMPTS: ${{ inputs.attempts }}
