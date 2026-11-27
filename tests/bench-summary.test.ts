@@ -32,10 +32,22 @@ describe("the job summary of a cloud run", () => {
 
   it("explains why no pull request was opened, and names a spent budget", () => {
     expect(incompleteReason(run)).toMatch(/^the budget ran out: 1 problem was skipped/);
-    expect(runSummary(run, "x")).toContain("> ⚠️ Not complete, so no pull request: the budget ran out");
+    expect(runSummary(run, "x")).toContain("> ⚠️ Not complete: the budget ran out");
     const done = { ...run, results: run.results.slice(0, 2).concat({ ...run.results[1], id: sample[2] }) };
     expect(incompleteReason(done)).toBe("");
     expect(runSummary(done, "x", { pr: "https://github.com/o/r/pull/1" })).toContain("> ✅ Complete: https://github.com/o/r/pull/1");
+  });
+
+  it("gives the review pull request the whole run, and says when the budget cut it short", async () => {
+    const { prBody } = await import("../scripts/bench-finish");
+    const cut = prBody(run, "SHARE BODY", incompleteReason(run));
+    expect(cut).toMatch(/^> \[!WARNING\]\n> \*\*Incomplete: the budget ran out/);
+    expect(cut).toContain(`| ${sample[2]} | ⏭️ skipped |`);
+    expect(cut).toContain("Before merging");
+    expect(cut.trim().endsWith("SHARE BODY")).toBe(true);
+    const ok = prBody(run, "SHARE BODY", "");
+    expect(ok).toMatch(/^> \[!NOTE\]\n> Opened for review/);
+    expect(ok).toContain("✅ Every problem has a result.");
   });
 });
 

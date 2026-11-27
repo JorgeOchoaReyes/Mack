@@ -2,11 +2,11 @@
 // A benchmark run without the app: the official runs (.github/workflows/benchmark-run.yml)
 // use it on a fixed cloud machine. It runs the same code as the Benchmark screen
 // (electron/bench-run.ts), with the API key from the provider's environment
-// variable (FIREWORKS_API_KEY, OPENROUTER_API_KEY, …). When every problem has a
-// result it writes the run as a share would (benchmarks/runs/<folder>/), ready
-// for a pull request; a run cut short by a stop or its budget is never written
-// there. Progress goes to stdout; with $GITHUB_OUTPUT set, it also writes
-// `complete`, `folder` and `title` there. With --shard i --shards n it runs
+// variable (FIREWORKS_API_KEY, OPENROUTER_API_KEY, …). When every problem is
+// listed it writes the run as a share would (benchmarks/runs/<folder>/), ready
+// for a pull request to review (marked incomplete when its budget ran out).
+// Progress goes to stdout; with $GITHUB_OUTPUT set, it also writes
+// `complete`, `listed`, `folder` and `title` there. With --shard i --shards n it runs
 // only its share of the sample and writes shard-<i>.json for merge-bench.js.
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";

@@ -525,7 +525,7 @@ export function benchShare(run: BenchRun, set: BenchSet | undefined, appVersion:
   const sum = summarize(run);
   const c = run.config;
   const models = `${c.model.split("/").pop()}${c.prover ? ` + ${c.prover.split(",").map((m) => m.trim().split("/").pop()).join(", ")}` : ""}`;
-  const title = `Benchmark: ${set?.label ?? run.set} ${sum.solved}/${sum.tried} (${(sum.rate * 100).toFixed(0)}%), ${c.method ?? "single"}, ${models}`;
+  const title = `Benchmark: ${set?.label ?? run.set} ${sum.solved}/${sum.tried} (${(sum.rate * 100).toFixed(0)}%), ${c.protocol === "passk" ? protocolLabel(run) : (c.method ?? "single")}, ${models}`;
   const breakdown = failureBreakdown(run.results)
     .map((b) => `- ${FAILURES[b.kind].label}: ${b.count}`)
     .join("\n");

@@ -31,7 +31,7 @@ export function runSummary(run: BenchRun, title: string, opts: { prices?: string
     "",
     `**${score.solved}/${score.of} solved (${pct(score.rate)})** · ${protocolLabel(run)} · $${sum.usd.toFixed(2)} · ${mins(sum.ms)} of problem time${sum.byAutomation ? ` · ${sum.byAutomation} by automation` : ""}`,
     "",
-    opts.verdict ? `> ${opts.verdict}` : why ? `> ⚠️ Not complete, so no pull request: ${why}` : opts.pr ? `> ✅ Complete: ${opts.pr}` : "> ✅ Complete: every problem has a result.",
+    opts.verdict ? `> ${opts.verdict}` : why ? `> ⚠️ Not complete: ${why}` : opts.pr ? `> ✅ Complete: ${opts.pr}` : "> ✅ Complete: every problem has a result.",
     "",
     "| Setting | Value |",
     "|---|---|",

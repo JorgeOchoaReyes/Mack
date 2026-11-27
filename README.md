@@ -150,8 +150,8 @@ Runs published so far:
 
 An **official run** starts from *Actions → Official benchmark run → Run
 workflow*. It splits the set across machines, joins the parts, and opens a pull
-request only when every problem has a result; a stopped run or a spent budget
-opens nothing. Its summary page shows the settings at once, each machine's
+request for you to review: merge it to publish, close it to drop it. A run
+whose budget ran out opens as a draft that says so. Its summary page shows the settings at once, each machine's
 problems as they finish, and then the score, cost, failures and pull request.
 It needs the provider's API key as a repository secret (`FIREWORKS_API_KEY`,
 `OPENROUTER_API_KEY` or `CHEAPER_INFERENCE_API_KEY`) and, so the PR's checks

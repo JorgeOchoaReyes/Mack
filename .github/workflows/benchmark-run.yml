@@ -5,13 +5,13 @@
 # - Pass@k by default, as the labs report: k independent samples per problem,
 #   each checked exactly as written. Every problem gets the same budget and is
 #   independent of the others: no lemmas are shared between problems.
-# - A last job joins the parts into one run. Only when every problem has a
-#   result does it open a pull request with the run marked official
-#   (benchmarks/runs/<folder>/); CI then re-checks every proof as for any
-#   shared run, and the site shows it with an Official badge. A part that was
-#   cancelled, hit the 6-hour limit or ran out of budget leaves the run
-#   incomplete, and nothing is opened; the parts and the joined run.json are
-#   kept as artifacts either way.
+# - A last job joins the parts into one run and opens a pull request with the
+#   run marked official (benchmarks/runs/<folder>/), for the owner to review
+#   and merge; CI re-checks every proof as for any shared run, and once merged
+#   the site shows it with an Official badge. A run whose budget ran out opens
+#   as a draft that says so (its skipped problems count as unsolved); one
+#   missing a machine's part (cancelled, or past the 6-hour limit) opens
+#   nothing. The parts and the joined run.json are kept as artifacts.
 #
 # Needs, in Settings → Secrets and variables → Actions:
 # - the API key of each provider used: FIREWORKS_API_KEY, OPENROUTER_API_KEY,
@@ -229,13 +229,16 @@ jobs:
           name: benchmark-run
           path: ${{ runner.temp }}/mack-bench/run.json
           if-no-files-found: ignore
-      - name: Open the pull request
-        if: steps.bench.outputs.complete == 'true'
+      # Opened for review, never merged here: the owner reads the results and merges to publish. A run cut short
+      # (a spent budget) opens as a draft that says why; one missing a machine's part opens nothing.
+      - name: Open the pull request for review
+        if: steps.bench.outputs.listed == 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.MACK_BENCH_TOKEN || github.token }}
           FOLDER: ${{ steps.bench.outputs.folder }}
           TITLE: ${{ steps.bench.outputs.title }}
+          COMPLETE: ${{ steps.bench.outputs.complete }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -244,5 +247,8 @@ jobs:
           git add "benchmarks/runs/$FOLDER"
           git commit -m "Official $TITLE"
           git push origin "$branch"
-          url=$(gh pr create --base main --head "$branch" --title "Official $TITLE" --body-file "$RUNNER_TEMP/mack-bench/pr-body.md")
-          echo "### Pull request: $url" >> "$GITHUB_STEP_SUMMARY"
+          draft=()
+          [ "$COMPLETE" = true ] || draft=(--draft)
+          url=$(gh pr create "${draft[@]}" --base main --head "$branch" --title "Official $TITLE" --body-file "$RUNNER_TEMP/mack-bench/pr-body.md")
+          echo "### Pull request for review: $url" >> "$GITHUB_STEP_SUMMARY"
+          [ "$COMPLETE" = true ] || echo "Opened as a draft: the run was cut short (see above). Mark it ready to publish it anyway." >> "$GITHUB_STEP_SUMMARY"
