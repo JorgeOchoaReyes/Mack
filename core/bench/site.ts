@@ -5,7 +5,7 @@
 // with its settings, its failures by reason and every problem's result.
 // Pure functions of the runs, so the page is the same wherever it is built.
 
-import { attemptKinds, BENCH_BASICS, BENCH_SETS, LOG_LIMITS, WITHIN, harnessLabel, METHOD_LABELS, FAILURES, failureBreakdown, publishedScore, RECENT_SET, RECENT_YEARS, runMetrics, solvedWithin, summarize, timelineOf, topErrors, type AttemptLog, type BenchResult, type BenchRun } from "./bench";
+import { attemptKinds, BENCH_BASICS, BENCH_SETS, protocolLabel, protocolOf, LOG_LIMITS, WITHIN, harnessLabel, METHOD_LABELS, FAILURES, failureBreakdown, publishedScore, RECENT_SET, RECENT_YEARS, runMetrics, solvedWithin, summarize, timelineOf, topErrors, type AttemptLog, type BenchResult, type BenchRun } from "./bench";
 
 /** A run as shared: its folder in the repo, who shared it and from which Mack. */
 export type SharedRun = BenchRun & { folder: string; sharedBy?: string; appVersion?: string; attemptsLogged?: boolean };
@@ -270,13 +270,15 @@ const TIPS = {
   range: "95% confidence interval. With few problems it is wide; two runs differ only when their ranges barely overlap.",
   quick: "Runs of the same size face the same problems, so they are ranked against each other. A sample can be easier or harder than the whole set.",
   whole: "Every problem of the set: the number to compare with published results.",
-  within: "Problems solved within k model attempts. Like pass@k, but attempts learn from Lean's errors.",
+  within: "Problems solved within k model attempts: pass@k for a pass@k run; for an agent run, attempts learn from Lean's errors.",
   reported: "Self-reported by the run; cannot be checked. Solves can: CI re-checks every proof with Lean.",
   thinking: "How deeply the model was asked to reason (reasoning effort). auto = the model's default.",
   perSolve: "The run's whole cost divided by problems solved.",
   time: "Wall-clock per problem: model calls, Lean checks and automation together.",
   verified: "Accepted by Mack's strict verifier and re-checked with Lean in CI.",
   contamination: "Recent Putnam problems are least likely to be in training data. Much weaker there suggests memorization helped elsewhere.",
+  passk: "The labs' protocol: k independent samples per problem, each checked exactly as written. Compares with published pass@k.",
+  agent: "Mack's own system (Lean's feedback, automation, repairs). Compares only with other Mack agent runs, not with pass@k.",
   official: "Run by Mack's own workflow on a fixed cloud machine (GitHub Actions, 4 CPUs, 16 GB), so its time and cost compare across official runs.",
   harness: "Under each method: the Mack version and Open Math Harness commit it ran. Hover for the procedures used.",
 } as const;
@@ -323,7 +325,7 @@ function runTable(rows: Row[], root: string, withModel = true, ranked = true): s
       return `<tr class="${ranked && i === 0 ? "first" : ""}">
 ${ranked ? `<td class="rank">${i + 1}</td>` : ""}
 ${withModel ? `<td class="wrap"><a href="${root}models/${esc(modelSlug(r))}.html">${esc(models(r))}</a>*${officialPill(r)}</td>` : `<td>${esc(setLabel(r.set))}${officialPill(r)}</td>`}
-<td class="opt" title="${esc(r.harness?.procedures.join(", ") ?? "")}">${esc(METHOD_LABELS[r.config.method ?? "single"].replace(/ \(.*\)$/, ""))}${r.config.method === "search" || r.config.method === "ultramath" ? ' <span class="pill omh">OMH</span>' : ""}<span class="cell-sub">${esc(harnessLabel(r.harness, r.appVersion ?? r.env?.app))}</span></td>
+<td class="opt" title="${esc(r.harness?.procedures.join(", ") ?? "")}">${protocolOf(r) === "passk" ? esc(protocolLabel(r)) : esc(METHOD_LABELS[r.config.method ?? "single"].replace(/ \(.*\)$/, ""))}${r.config.method === "search" || r.config.method === "ultramath" ? ' <span class="pill omh">OMH</span>' : ""}<span class="cell-sub">${esc(harnessLabel(r.harness, r.appVersion ?? r.env?.app))}</span></td>
 <td class="opt">${thinking(r)}</td>
 <td><a href="${root}runs/${esc(r.folder)}.html"><b>${p.solved}/${p.of}</b></a></td>
 <td>${rateCell(p.rate, best, i)}<span class="cell-sub">${range(p.low, p.high)}</span></td>
@@ -341,12 +343,16 @@ ${body}
 
 /** A set's runs grouped by sample size, largest first (the whole set leads): each size its own ranked table, since runs of one size face the same problems. */
 function sizeTables(set: (typeof BENCH_SETS)[number], rows: Row[]): string {
-  const sizes = [...new Set(rows.map((x) => x.p.of))].sort((a, b) => b - a);
-  return sizes
-    .map((n) => {
-      const group = rows.filter((x) => x.p.of === n);
-      const title = n === set.problems.length ? `Whole set · ${n} problems` : `${n} problems`;
-      return `<h3 class="size-head">${title} <span class="muted">· ${group.length} run${group.length === 1 ? "" : "s"}</span>${tip(n === set.problems.length ? TIPS.whole : TIPS.quick)}</h3>
+  // One table per protocol and size: pass@k runs (largest k first) before Mack agent runs, the whole set first within each.
+  const k = (x: Row) => (protocolOf(x.r) === "passk" ? x.r.config.maxAttempts : -1);
+  const groups = [...new Map(rows.map((x) => [`${protocolLabel(x.r)}|${x.p.of}`, { label: protocolLabel(x.r), passk: protocolOf(x.r) === "passk", k: k(x), n: x.p.of }])).values()].sort(
+    (a, b) => Number(b.passk) - Number(a.passk) || b.k - a.k || b.n - a.n,
+  );
+  return groups
+    .map((g) => {
+      const group = rows.filter((x) => protocolLabel(x.r) === g.label && x.p.of === g.n);
+      const size = g.n === set.problems.length ? `Whole set · ${g.n} problems` : `${g.n} problems`;
+      return `<h3 class="size-head">${esc(g.label)} · ${size} <span class="muted">· ${group.length} run${group.length === 1 ? "" : "s"}</span>${tip(g.passk ? TIPS.passk : TIPS.agent)}${tip(g.n === set.problems.length ? TIPS.whole : TIPS.quick)}</h3>
 ${runTable(group, "")}`;
     })
     .join("\n");
@@ -764,6 +770,7 @@ export function methodologyPage(repo: string): string {
     .join("\n");
   const toc = [
     ["solved", "What counts as solved"],
+    ["protocols", "Protocols"],
     ["sets", "Problem sets"],
     ["sample", "Which problems"],
     ["methods", "Methods"],
@@ -794,6 +801,15 @@ export function methodologyPage(repo: string): string {
 <li>No forbidden shortcuts (new axioms, <code>native_decide</code>, editing the statement).</li>
 </ul>
 <p class="note">Lean's report is read only after a random per-run marker, so text a proof prints cannot fake a pass.</p>
+</section>
+<section id="protocols">
+<h2>Protocols</h2>
+<p class="sub">Two ways to run a model, never ranked together.</p>
+<div class="scroll"><table class="stack"><thead><tr><th>Protocol</th><th>Each problem gets</th><th>Compares with</th></tr></thead><tbody>
+<tr><td><b>Pass@k</b> <span class="pill">lab standard</span></td><td class="wrap">Up to k independent samples, each from the same opening prompt with no Lean feedback, checked exactly as the model wrote it: no automation, repairs, hints or lemmas from other problems. Solved if any sample is verified.</td><td class="wrap">Published pass@k, as DeepSeek-Prover, Kimina and Goedel report it (usually pass@32).</td></tr>
+<tr><td><b>Mack agent</b></td><td class="wrap">Up to k attempts that revise from Lean's errors, with Lean's automation, name and tactic repairs, premise hints and the chosen method.</td><td class="wrap">Other Mack agent runs, and agent-style systems with an attempt budget.</td></tr>
+</tbody></table></div>
+<p class="note">Both: every problem independent of the others, the same budget for each, the same verifier.</p>
 </section>
 <section id="sets">
 <h2>Problem sets</h2>
@@ -847,7 +863,7 @@ ${procedures}
 <div class="scroll"><table class="stack"><thead><tr><th>Measure</th><th>Definition</th></tr></thead><tbody>
 <tr><td><b>Solve rate</b></td><td class="wrap">Problems solved out of the whole sample (skipped included).</td></tr>
 <tr><td><b>Range</b></td><td class="wrap">95% Wilson interval of the rate. 13 of 20 is 43–82%; two runs differ only when their ranges barely overlap.</td></tr>
-<tr><td><b>Solved within k</b></td><td class="wrap">Problems solved within ${WITHIN.join(", ")} model attempts. Like pass@k, but Mack's attempts learn from Lean's errors, where pass@k samples independently.</td></tr>
+<tr><td><b>Solved within k</b></td><td class="wrap">Problems solved within ${WITHIN.join(", ")} model attempts. For a pass@k run it is pass@1, 4, 16… of the same samples; for an agent run, attempts learn from Lean's errors, so it is not pass@k.</td></tr>
 <tr><td><b>By automation</b></td><td class="wrap">Solved by Lean's own tactics before any model wrote a proof (0 attempts). A floor every model starts from.</td></tr>
 <tr><td><b>Attempts per solve</b></td><td class="wrap">Average attempts the solved problems took.</td></tr>
 <tr><td><b>Contamination check</b></td><td class="wrap">Recent Putnam (${RECENT_YEARS.join(", ")}) against older Putnam. Much weaker on recent problems suggests memory helped on older ones.</td></tr>

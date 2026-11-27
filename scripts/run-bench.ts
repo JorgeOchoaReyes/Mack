@@ -28,7 +28,7 @@ import { DEFAULT_LIMITS } from "../core/search/tree";
 import { DEFAULT_ULTRAMATH } from "../core/ultramath/swarm";
 import { UPSTREAM } from "../core/upstream";
 import type { Lemma } from "../core/prepare";
-import { benchOne, parallelOf, proverModels, type BenchHost } from "../electron/bench-run";
+import { benchOne, parallelOf, passkSettings, proverModels, type BenchHost } from "../electron/bench-run";
 import type { Settings } from "../electron/main";
 
 const METHODS: BenchMethod[] = ["single", "decompose", "steps", "search", "ultramath"];
@@ -53,7 +53,9 @@ const num = (key: string, fallback: number) => (a[key] === undefined || a[key] =
 const isProvider = (id: string): id is ProviderId => PROVIDERS.some((p) => p.id === id);
 
 const set = benchSet(a.set ?? "") ?? fail(`--set must be one of the problem sets (minif2f-test, putnambench, putnam-recent), not "${a.set ?? ""}"`);
-const method = (METHODS.find((m) => m === (a.method || "single")) ?? fail(`--method must be one of ${METHODS.join(", ")}`)) as BenchMethod;
+// --method passk is the labs' protocol (pass@k, k = --attempts); the others are Mack agent methods.
+const passk = a.method === "passk";
+const method = passk ? "single" : ((METHODS.find((m) => m === (a.method || "single")) ?? fail(`--method must be passk or one of ${METHODS.join(", ")}`)) as BenchMethod);
 const provider = isProvider(a.provider ?? "") ? (a.provider as ProviderId) : fail(`--provider must be one of ${PROVIDERS.map((p) => p.id).join(", ")}`);
 const model = (a.model ?? "").trim() || fail("--model is required");
 const proverProvider = a["prover-provider"] && isProvider(a["prover-provider"]) ? (a["prover-provider"] as ProviderId) : provider;
@@ -64,7 +66,7 @@ const scratchRoot = a.scratch || join(os.tmpdir(), "mack-bench");
 const keyOf = (id: ProviderId) => process.env[providerInfo(id).keyEnv] ?? "";
 for (const id of new Set([provider, ...(a.prover ? [proverProvider] : [])])) if (providerInfo(id).keyRequired && !keyOf(id)) fail(`${providerInfo(id).keyEnv} is not set: the ${providerInfo(id).label} API key.`);
 
-const s: Settings = {
+const agentSettings: Settings = {
   provider,
   models: { fireworks: "", openrouter: "", cheaperinference: "", litellm: "", custom: "", [provider]: model },
   customBaseUrl: a["base-url"] ?? "",
@@ -111,6 +113,7 @@ const s: Settings = {
   activeProject: "",
   proveFolder: "",
 };
+const s: Settings = passk ? passkSettings(agentSettings) : agentSettings;
 
 // Mathlib's index (premises and name repair), built once per run in the scratch folder.
 const index = mathlibSource(workspace) ? new MathlibIndex(workspace, join(scratchRoot, "mathlib-index.json")) : undefined;
@@ -169,10 +172,11 @@ void (async () => {
       automation: s.leanAutomation,
       revisions: s.revisionsPerChain,
       method,
+      protocol: passk ? "passk" : "agent",
       easierFirst: s.easierFirst,
       premises: s.premiseSelection,
       ...(effort !== "default" ? { effort } : {}),
-      ...((method === "single" || method === "decompose") && a["lemma-pool"] !== "false" ? { lemmaPool: true } : {}),
+      ...(!passk && (method === "single" || method === "decompose") && a["lemma-pool"] !== "false" ? { lemmaPool: true } : {}),
     },
     sample,
     results: [],

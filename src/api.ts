@@ -69,7 +69,7 @@ export const api = {
   stopProve: () => m().stopProve(),
   onProveEvent: (cb: (e: RunEvent) => void) => m().onProveEvent((e) => cb(e as RunEvent)),
   benchSets: () => m().benchSets() as Promise<BenchSetInfo[]>,
-  benchStart: (setId: string, n: number, budget: number, method: string, models: BenchModels[], opts: { lemmaPool?: boolean; autoShare?: boolean } = {}) => m().benchStart(setId, n, budget, method, models, opts) as Promise<BenchRun[]>,
+  benchStart: (setId: string, n: number, budget: number, method: string, models: BenchModels[], opts: { lemmaPool?: boolean; autoShare?: boolean; protocol?: "passk" | "agent"; k?: number; concurrency?: number } = {}) => m().benchStart(setId, n, budget, method, models, opts) as Promise<BenchRun[]>,
   proofStats: () => m().proofStats() as Promise<{ count: number }>,
   exportProofs: () => m().exportProofs() as Promise<{ path: string; count: number } | null>,
   benchStop: () => m().benchStop() as Promise<void>,

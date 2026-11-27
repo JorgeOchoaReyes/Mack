@@ -72,7 +72,7 @@ describe("the benchmark site", () => {
     const index = site["index.html"];
     expect(index.indexOf("runs/a-run.html")).toBeLessThan(index.indexOf("runs/b-run.html"));
     // Two runs of the same two problems share one table, ranked against each other.
-    expect(index).toContain('<h3 class="size-head">2 problems <span class="muted">· 2 runs</span>');
+    expect(index).toContain(`<h3 class="size-head">Mack agent · 2 problems <span class="muted">· 2 runs</span>`);
     expect(index).toContain("BEST");
     expect(index).toContain('href="models/big-prover-a-prover-b.html"');
     const model = site["models/big-prover-a-prover-b.html"];

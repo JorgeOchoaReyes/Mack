@@ -12,7 +12,7 @@ import { GitHubAccounts } from "../components/GitHubAccounts";
 import { ModelSelect, useModelLists } from "../components/ModelSelect";
 import { formatUsd } from "../../core/model/metered";
 import { EFFORT_LABELS, PROOF_EFFORTS, type ProofEffort } from "../../core/model/provider";
-import { BENCH_BASICS, BENCH_SITE, benchSiteRun, METHOD_LABELS, type BenchMethod, FAILURES, failureBreakdown, harnessLabel, headToHead, rateRange, runMetrics, solvedWithin, summarize, timelineOf } from "../../core/bench/bench";
+import { BENCH_BASICS, BENCH_SITE, protocolLabel, protocolOf, benchSiteRun, METHOD_LABELS, type BenchMethod, FAILURES, failureBreakdown, harnessLabel, headToHead, rateRange, runMetrics, solvedWithin, summarize, timelineOf } from "../../core/bench/bench";
 import { COMMUNITY_REPO } from "../../core/community";
 
 type Props = { settings: Settings; onGo: (page: "settings" | "setup") => void };
@@ -28,6 +28,10 @@ export function BenchmarkPage({ settings, onGo }: Props) {
   const [size, setSize] = useState(20);
   const [budget, setBudget] = useState(5);
   const [method, setMethod] = useState<BenchMethod>("single");
+  // The labs' protocol by default: pass@k, k independent samples per problem, checked as written.
+  const [protocol, setProtocol] = useState<"passk" | "agent">("passk");
+  const [k, setK] = useState(32);
+  const [atOnce, setAtOnce] = useState(2);
   const [runs, setRuns] = useState<BenchRun[]>([]);
   const [live, setLive] = useState<BenchRun | null>(null);
   const [status, setStatus] = useState<{ id: string; message: string } | null>(null);
@@ -84,7 +88,7 @@ export function BenchmarkPage({ settings, onGo }: Props) {
   const start = async () => {
     setError("");
     try {
-      const started = await api.benchStart(setId, size, budget, method, models.filter((m) => m.model.trim()), { lemmaPool, autoShare });
+      const started = await api.benchStart(setId, size, budget, method, models.filter((m) => m.model.trim()), { lemmaPool, autoShare, protocol, k, concurrency: atOnce });
       setQueued(started.map((r) => r.id));
       setLive(started[0]);
     } catch (e) {
@@ -94,12 +98,10 @@ export function BenchmarkPage({ settings, onGo }: Props) {
 
   const total = sets.find((s) => s.id === setId)?.size ?? 244;
   const model = models.some((m) => m.model.trim());
-  const config = [
-    `${settings.maxAttempts} attempts`,
-    `${settings.parallelAttempts} at once`,
-    settings.leanAutomation ? "automation on" : "automation off",
-    ...(settings.easierFirst ? ["easier versions first"] : []),
-  ];
+  const config =
+    protocol === "passk"
+      ? [`${settings.parallelAttempts} sample${settings.parallelAttempts === 1 ? "" : "s"} at once`]
+      : [`${settings.maxAttempts} attempts`, `${settings.parallelAttempts} at once`, settings.leanAutomation ? "automation on" : "automation off", ...(settings.easierFirst ? ["easier versions first"] : [])];
   const past = runs.filter((r) => r.id !== live?.id);
   const best = past.filter((r) => r.set === setId && summarize(r).tried > 0).reduce<BenchRun | null>((b, r) => (!b || summarize(r).rate > summarize(b).rate ? r : b), null);
 
@@ -124,6 +126,30 @@ export function BenchmarkPage({ settings, onGo }: Props) {
         <section className="settings-group">
           <h2>New run</h2>
           <div className="grid-2">
+            <Field
+              label="Protocol"
+              tip={
+                protocol === "passk"
+                  ? "As the labs report: k independent samples per problem, each checked exactly as written. No feedback, automation or repairs. Compares with published pass@k."
+                  : "Mack's own system: Lean's feedback, automation, repairs and the method below. Compares only with other agent runs."
+              }
+            >
+              <select className="input" value={protocol} onChange={(e) => setProtocol(e.target.value as "passk" | "agent")}>
+                <option value="passk">Pass@k (lab standard)</option>
+                <option value="agent">Mack agent</option>
+              </select>
+            </Field>
+            {protocol === "passk" ? (
+              <Field label="k (samples per problem)" tip="Labs usually report pass@32; the run also shows pass@1, 4 and 16.">
+                <select className="input" value={k} onChange={(e) => setK(Number(e.target.value))}>
+                  {[1, 4, 8, 16, 32, 64, 128].map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            ) : null}
             <Field label="Problem set" tip={sets.find((s) => s.id === setId)?.blurb}>
               <select className="input" value={setId} onChange={(e) => setSetId(e.target.value)}>
                 {sets.map((s) => (
@@ -142,6 +168,7 @@ export function BenchmarkPage({ settings, onGo }: Props) {
                 ))}
               </select>
             </Field>
+            {protocol === "agent" && (
             <Field
               label="Method"
               tip={
@@ -162,6 +189,16 @@ export function BenchmarkPage({ settings, onGo }: Props) {
                 ))}
               </select>
             </Field>
+            )}
+            <Field label="Problems at once" tip="Each problem is independent, so this changes only how long the run takes. More needs more memory for Lean.">
+              <select className="input" value={atOnce} onChange={(e) => setAtOnce(Number(e.target.value))}>
+                {[1, 2, 3, 4, 6, 8].map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </Field>
             <Field label="Budget (USD, 0 = no limit)" tip="Problems left when it runs out are skipped. Your global spending limit also applies.">
               <input className="input" type="number" min={0} step={1} value={budget} onChange={(e) => setBudget(Math.max(0, Number(e.target.value) || 0))} />
             </Field>
@@ -175,7 +212,7 @@ export function BenchmarkPage({ settings, onGo }: Props) {
             </Field>
           </div>
           <ModelsEditor models={models} setModels={setModels} />
-          {(method === "single" || method === "decompose") && (
+          {protocol === "agent" && (method === "single" || method === "decompose") && (
             <label className="row gap-sm small">
               <input type="checkbox" checked={lemmaPool} onChange={(e) => setLemmaPool(e.target.checked)} />
               Share proved lemmas across the run
@@ -273,7 +310,8 @@ export function BenchmarkPage({ settings, onGo }: Props) {
                     </span>
                     <span className="muted small">
                       {r.config.model.split("/").pop()}
-                      {r.config.prover ? ` + ${r.config.prover.split(",").map((m) => m.trim().split("/").pop()).join(", ")}` : ""} · {r.config.method && r.config.method !== "single" ? `${r.config.method} · ` : ""}{r.config.maxAttempts} attempts, {r.config.parallel} at once{r.config.automation ? "" : ", no automation"}
+                      {r.config.prover ? ` + ${r.config.prover.split(",").map((m) => m.trim().split("/").pop()).join(", ")}` : ""} ·{" "}
+                      {protocolOf(r) === "passk" ? protocolLabel(r) : `${r.config.method && r.config.method !== "single" ? `${r.config.method} · ` : ""}${r.config.maxAttempts} attempts, ${r.config.parallel} at once${r.config.automation ? "" : ", no automation"}`}
                     </span>
                     <span className="run-meta muted small">
                       {r.sharedPr && (

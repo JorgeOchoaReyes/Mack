@@ -190,6 +190,14 @@ export function failureBreakdown(results: BenchResult[]): { kind: FailureKind; c
 
 export type BenchMethod = "single" | "decompose" | "steps" | "search" | "ultramath";
 
+export type BenchProtocol = "passk" | "agent";
+
+/** A run's protocol; runs from before protocols were Mack agent runs. */
+export const protocolOf = (r: Pick<BenchRun, "config">): BenchProtocol => r.config.protocol ?? "agent";
+
+/** The protocol as tables and reports name it: "pass@32" for a pass@k run with k = 32. */
+export const protocolLabel = (r: Pick<BenchRun, "config">): string => (protocolOf(r) === "passk" ? `pass@${r.config.maxAttempts}` : "Mack agent");
+
 /** The methods, as the screen and the reports name them. */
 export const METHOD_LABELS: Record<BenchMethod, string> = {
   single: "Attempts (Mack)",
@@ -214,6 +222,17 @@ export type BenchConfig = {
    * "search": Open Math Harness's proof search tree; "ultramath": its swarm of members on a shared board.
    */
   method?: BenchMethod;
+  /**
+   * How the run is scored, which decides what it compares with:
+   * - "passk": the labs' pass@k. Up to `maxAttempts` (k) independent samples per
+   *   problem, each from a fresh prompt with no Lean feedback, checked exactly as
+   *   the model wrote it: no automation, repairs, hints or lemmas from other
+   *   problems. Comparable with DeepSeek-Prover, Kimina or Goedel's pass@k.
+   * - "agent" (absent: older runs): Mack's own system, with Lean's feedback,
+   *   automation, repairs and the method's procedures; comparable only with
+   *   other agent runs.
+   */
+  protocol?: BenchProtocol;
   easierFirst?: boolean;
   premises?: boolean;
   /** Helper lemmas from problems solved earlier in the run offered to later ones (core/bench/pool.ts). */
@@ -346,12 +365,15 @@ export async function runBench(o: {
   proveOne: (p: BenchProblem, signal: AbortSignal) => Promise<BenchResult>;
   signal: AbortSignal;
   onEvent: (e: BenchEvent) => void;
+  /** Problems worked on at once (default 1), as the labs run a set: each problem is independent, so the results are the same. */
+  concurrency?: number;
 }): Promise<BenchRun> {
   const run = o.run;
-  // Settles when the run is stopped: the problem in progress is raced against it, so a stop never waits for it.
+  // Settles when the run is stopped: the problems in progress are raced against it, so a stop never waits for them.
   const stopped = new Promise<null>((resolve) => (o.signal.aborted ? resolve(null) : o.signal.addEventListener("abort", () => resolve(null), { once: true })));
   o.onEvent({ type: "started", run });
-  for (const id of run.sample) {
+  let next = 0;
+  const one = async (id: string) => {
     const p = o.set.problems.find((x) => x.id === id);
     const spent = run.results.reduce((a, r) => a + r.usd, 0);
     const over = run.budget > 0 && spent >= run.budget;
@@ -359,7 +381,7 @@ export async function runBench(o: {
       const result: BenchResult = { id, outcome: "skipped", attempts: 0, ms: 0, usd: 0, message: !p ? "not in the set" : over ? "the run's budget is spent" : "stopped" };
       run.results.push(result);
       o.onEvent({ type: "result", result });
-      continue;
+      return;
     }
     o.onEvent({ type: "status", id, message: "starting" });
     const t0 = Date.now();
@@ -371,7 +393,15 @@ export async function runBench(o: {
     }
     run.results.push(result);
     o.onEvent({ type: "result", result });
-  }
+  };
+  // Workers take the next problem of the sample in turn.
+  const worker = async () => {
+    while (next < run.sample.length) await one(run.sample[next++]);
+  };
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(Math.floor(o.concurrency ?? 1) || 1, run.sample.length)) }, worker));
+  // Results in the sample's order, whatever order they finished in.
+  const order = new Map(run.sample.map((id, k) => [id, k]));
+  run.results.sort((x, y) => (order.get(x.id) ?? 0) - (order.get(y.id) ?? 0));
   run.status = o.signal.aborted ? "stopped" : "done";
   run.finishedAt = Date.now();
   o.onEvent({ type: "finished", run });
@@ -730,6 +760,13 @@ export type BenchHarness = { mack: string; openMathHarness: string; procedures: 
 
 /** The harness of a run from its config: the always-on procedures, and the ones its settings turned on. */
 export function harnessOf(config: BenchConfig, mack: string, openMathHarness: string): BenchHarness {
+  // Pass@k uses none of Mack's additions: independent samples, each checked as the model wrote it.
+  if (config.protocol === "passk")
+    return {
+      mack,
+      openMathHarness: openMathHarness.slice(0, 7),
+      procedures: ["strict verifier", "linters off", `pass@${config.maxAttempts}: independent samples, checked as written`, ...(config.effort ? [`thinking ${config.effort}`] : []), ...(config.prover ? [config.prover.includes(",") ? "prover ensemble" : "prover model"] : [])],
+    };
   // Open Math Harness's own searches use none of Mack's additions: only its verifier and Lean rules, as ported.
   if (config.method === "search") return { mack, openMathHarness: openMathHarness.slice(0, 7), procedures: ["strict verifier", "linters off", "OMH search tree"] };
   if (config.method === "ultramath") return { mack, openMathHarness: openMathHarness.slice(0, 7), procedures: ["strict verifier", "linters off", "OMH ultramath swarm"] };

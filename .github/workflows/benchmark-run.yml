@@ -2,7 +2,8 @@
 # hand from the Actions tab ("Run workflow"), by the repository owner only.
 # - The fixed sample is split across up to 20 free GitHub machines that run at
 #   once (each gets every n-th problem, so easy and hard alike).
-# - Every problem gets the same budget (attempts, Lean deadline) and is
+# - Pass@k by default, as the labs report: k independent samples per problem,
+#   each checked exactly as written. Every problem gets the same budget and is
 #   independent of the others: no lemmas are shared between problems.
 # - A last job joins the parts into one run. Only when every problem has a
 #   result does it open a pull request with the run marked official
@@ -32,10 +33,10 @@ on:
         description: Problems (the fixed sample of this size; the set's size runs the whole set)
         default: "244"
       method:
-        description: Method
+        description: "Protocol: passk is the labs' pass@k (attempts = k); the others are Mack agent methods"
         type: choice
-        options: [single, decompose, steps, search, ultramath]
-        default: single
+        options: [passk, single, decompose, steps, search, ultramath]
+        default: passk
       provider:
         description: Provider
         type: choice
@@ -53,8 +54,8 @@ on:
         options: [default, off, low, medium, high, xhigh]
         default: default
       attempts:
-        description: Attempts per problem
-        default: "8"
+        description: Attempts per problem (k for pass@k)
+        default: "32"
       machines:
         description: Machines in parallel (1-20)
         default: "20"

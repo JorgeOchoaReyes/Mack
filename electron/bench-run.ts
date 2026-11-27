@@ -72,6 +72,8 @@ export async function attemptProof(
     run: ReturnType<typeof leanRunner>;
     prepare?: { checkStatement: boolean; idea: boolean };
     lemmas?: Lemma[];
+    /** Mack's repairs of a candidate (lemma names, dead tactics); off for pass@k. */
+    repair?: boolean;
     signal: AbortSignal;
     onEvent: (e: ProveEvent) => void;
   },
@@ -84,7 +86,8 @@ export async function attemptProof(
     check: host.quickCheck(s, parallel),
     parallel,
     lookup: host.mathlibHints,
-    rename: host.mathlibRenames,
+    rename: o.repair === false ? undefined : host.mathlibRenames,
+    repair: o.repair,
     provers: proversFor(host, s, o.meter, o.hooks),
     revisions: s.revisionsPerChain,
     automation: s.leanAutomation,
@@ -121,6 +124,14 @@ export async function attemptProof(
   if (mode === "decompose") await decompose({ ...options, maxDepth: s.decomposeDepth, lemmaAttempts: s.decomposeAttempts, rounds: s.decomposeRounds });
   else await prove(options);
 }
+
+/**
+ * The settings of a pass@k run: every attempt an independent sample from the
+ * opening prompt (a fresh conversation each time, no Lean feedback), checked as
+ * the model wrote it. No automation, premise hints, easier versions, plan in
+ * words or earlier proofs.
+ */
+export const passkSettings = (s: Settings): Settings => ({ ...s, leanAutomation: false, premiseSelection: false, easierFirst: false, proofIdea: false, revisionsPerChain: 1, reuseProofs: false });
 
 export async function benchOne(host: BenchHost, s: Settings, p: { id: string; source: string }, bench: BenchRun, signal: AbortSignal, status: (m: string) => void, pool: Lemma[] = []): Promise<BenchResult> {
   const t0 = Date.now();
@@ -183,7 +194,8 @@ export async function benchOne(host: BenchHost, s: Settings, p: { id: string; so
       if (ev.type === "statementCheck") trace(`Statement check: ${JSON.stringify(ev.check).slice(0, 400)}`);
   };
   const both = AbortSignal.any([signal, ctl.signal]);
-  const method = bench.config.method ?? "single";
+  const passk = bench.config.protocol === "passk";
+  const method = passk ? "single" : (bench.config.method ?? "single");
   const check = () => (async (src: string) => checkFromRun(await run(src)));
   if (method === "search") {
     await search({
@@ -256,15 +268,16 @@ export async function benchOne(host: BenchHost, s: Settings, p: { id: string; so
     const offered = bench.config.lemmaPool ? relevantLemmas(pool, p.source) : [];
     if (offered.length) trace(`Offered ${offered.length} lemma${offered.length === 1 ? "" : "s"} proved earlier in this run: ${offered.map((l) => /^(?:private\s+)?(?:theorem|lemma)\s+(\S+)/.exec(l.source)?.[1] ?? "?").join(", ")}`);
     // Never the person's own past proofs as examples: they are private, so no one else could reproduce the run.
-    await attemptProof(host, { ...s, reuseProofs: false }, method, p.source, {
-      lemmas: offered,
+    await attemptProof(host, passk ? passkSettings(s) : { ...s, reuseProofs: false }, method, p.source, {
+      lemmas: passk ? [] : offered,
+      repair: !passk,
       provider,
       model,
       meter,
       hooks,
       run,
       // Benchmark statements are known to be right; the random tester would only spend time.
-      prepare: { checkStatement: false, idea: s.proofIdea },
+      prepare: { checkStatement: false, idea: !passk && s.proofIdea },
       signal: both,
       onEvent,
     });

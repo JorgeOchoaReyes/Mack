@@ -31,7 +31,7 @@ import { ASSUMED_PRICE, formatUsd, metered, priceFor, type Meter, type Price } f
 import { Ledger, type Period } from "../core/model/ledger";
 import type { ModelProvider } from "../core/model/provider";
 import { registerChat } from "./chat";
-import { attemptProof, benchOne, parallelOf, proverModels, type BenchHost } from "./bench-run";
+import { attemptProof, benchOne, parallelOf, passkSettings, proverModels, type BenchHost } from "./bench-run";
 import { RunManager, type Problem, type RunStatus } from "../core/search/runs";
 import { RUN_TOOLS } from "../core/search/run-tools";
 import { CHAT_TOOLS as SWARM_CHAT_TOOLS, SwarmService } from "../core/ultramath/service";
@@ -878,9 +878,15 @@ const benchLabel = (m: BenchModels) => `${m.effort && m.effort !== "default" ? `
  * comparison is a group of runs. Stopping stops the run going and the ones
  * queued behind it.
  */
-ipcMain.handle("bench:start", async (e, setId: string, n: number, budget: number, method?: string, models?: BenchModels[], opts?: { lemmaPool?: boolean; autoShare?: boolean }) => {
+ipcMain.handle("bench:start", async (e, setId: string, n: number, budget: number, method?: string, models?: BenchModels[], opts?: { lemmaPool?: boolean; autoShare?: boolean; protocol?: string; k?: number; concurrency?: number }) => {
   if (benching) throw new Error("A benchmark is already running.");
   const base = readSettings();
+  // Pass@k, the labs' protocol: k independent samples per problem, checked as written; the agent is Mack's own system.
+  const passk = opts?.protocol === "passk";
+  const k = Math.max(1, Math.min(1024, Math.floor(Number(opts?.k)) || 32));
+  const settingsFor = (m: BenchModels): Settings => (passk ? { ...passkSettings(withModels(base, m)), maxAttempts: k } : withModels(base, m));
+  // Problems at once: each holds its own Lean checks, so Mack's Lean limit still bounds the memory.
+  const concurrency = Math.max(1, Math.min(8, Math.floor(Number(opts?.concurrency)) || 1));
   const set = benchSet(String(setId));
   if (!set) throw new Error("unknown benchmark set");
   const list = (Array.isArray(models) && models.length ? models : [{ provider: base.provider, model: base.models[base.provider], proverProvider: base.proverProvider, proverModel: base.proverModel }])
@@ -897,7 +903,7 @@ ipcMain.handle("bench:start", async (e, setId: string, n: number, budget: number
   if (!leanReady(base)) throw new Error("Install Lean and Mathlib in Setup first.");
   // Sharing on completion needs a GitHub account: say so now, not after hours of running.
   if (opts?.autoShare && !(await githubAuth()).token) throw new Error(`Opening a pull request when the run completes needs GitHub. ${NO_GITHUB}`);
-  if (method === "steps" && !(base.useRepl && (remoteOn(base) ? base.remoteLean.repl : hasRepl(base.leanWorkspace))))
+  if (!passk && method === "steps" && !(base.useRepl && (remoteOn(base) ? base.remoteLean.repl : hasRepl(base.leanWorkspace))))
     throw new Error("Step by step works on Lean's live proof states, so it needs the Lean REPL: turn it on in Settings → Prover, or build it in Settings → Setup.");
   const sample = pickSample(set, Math.floor(Number(n)) || 10);
   const group = list.length > 1 ? `${Date.now()}` : undefined;
@@ -914,7 +920,7 @@ ipcMain.handle("bench:start", async (e, setId: string, n: number, budget: number
     proofIdea: base.proofIdea,
   };
   const runs: BenchRun[] = list.map((m, i) => {
-    const s = withModels(base, m);
+    const s = settingsFor(m);
     const run: BenchRun = {
       id: `${Date.now() + i}`,
       set: set.id,
@@ -929,11 +935,12 @@ ipcMain.handle("bench:start", async (e, setId: string, n: number, budget: number
         parallel: parallelOf(s),
         automation: s.leanAutomation,
         revisions: s.revisionsPerChain,
-        method: (["decompose", "steps", "search", "ultramath"] as const).find((x) => x === method) ?? "single",
+        method: passk ? "single" : ((["decompose", "steps", "search", "ultramath"] as const).find((x) => x === method) ?? "single"),
+        protocol: passk ? "passk" : "agent",
         easierFirst: s.easierFirst,
         premises: s.premiseSelection,
         ...(s.proofEffort && s.proofEffort !== "default" ? { effort: s.proofEffort } : {}),
-        ...((method === "single" || method === "decompose" || !method) && opts?.lemmaPool !== false ? { lemmaPool: true } : {}),
+        ...(!passk && (method === "single" || method === "decompose" || !method) && opts?.lemmaPool !== false ? { lemmaPool: true } : {}),
       },
       sample,
       results: [],
@@ -954,7 +961,7 @@ ipcMain.handle("bench:start", async (e, setId: string, n: number, budget: number
   };
   void (async () => {
     for (const [i, run] of runs.entries()) {
-      const s = withModels(base, list[i]);
+      const s = settingsFor(list[i]);
       // Each run its own lemma pool: runs compared on the same problems never share one.
       const pool: Lemma[] = [];
       benchingId = run.id;
@@ -966,7 +973,7 @@ ipcMain.handle("bench:start", async (e, setId: string, n: number, budget: number
         send(run)({ type: "finished", run });
         continue;
       }
-      await runBench({ run, set, signal: ctl.signal, onEvent: send(run), proveOne: (p, signal) => benchOne(host, s, p, run, signal, (message) => send(run)({ type: "status", id: p.id, message }), pool) }).catch((err: Error) => {
+      await runBench({ run, set, signal: ctl.signal, concurrency, onEvent: send(run), proveOne: (p, signal) => benchOne(host, s, p, run, signal, (message) => send(run)({ type: "status", id: p.id, message }), pool) }).catch((err: Error) => {
         run.status = "stopped";
         run.message = err.message;
       });

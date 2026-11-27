@@ -76,6 +76,11 @@ export type ProveOptions = {
    * reload Mathlib, so the sorries go back to the model instead.
    */
   automation?: boolean;
+  /**
+   * Mack's own repairs of a candidate before Lean judges it: lemma names Mathlib does not have, and tactics left after
+   * their goal closed (default on). Off for pass@k, where the model's proof is checked exactly as it wrote it.
+   */
+  repair?: boolean;
   signal?: AbortSignal;
   onEvent: (e: ProveEvent) => void;
 };
@@ -88,6 +93,12 @@ Rules, enforced by a checker:
 - A step you expect to be routine (arithmetic, a simp lemma, a linear inequality) may be left as \`sorry\`: Mack tries Lean's automation (omega, norm_num, simp, linarith, nlinarith, positivity, aesop, grind, exact?) on every \`sorry\` and puts in what closes it. A \`sorry\` it cannot close comes back to you with its goal.
 - Never use \`axiom\`, \`native_decide\`, \`set_option pp.*\`/\`debug.*\`, \`#eval\`, macros, notation or metaprogramming.
 If the checker reports errors, fix them and reply with the whole corrected file.`;
+
+/** The task without Lean's automation behind it: every step must be proved, as in pass@k, where the file is checked as written. */
+const SYSTEM_STRICT = SYSTEM.split("\n")
+  .filter((l) => !l.includes("may be left as `sorry`"))
+  .join("\n")
+  .replace("- Never use", "- Every step must be proved: a `sorry` fails the attempt.\n- Never use");
 
 /** The same task in the plain form prover models (DeepSeek-Prover, Kimina, Goedel) are trained on. */
 export const PROVER_TASK = (frozen: string, notes: string) =>
@@ -159,7 +170,7 @@ export async function prove(o: ProveOptions): Promise<void> {
       isProver
         ? [{ role: "user", content: PROVER_TASK(o.frozen, notes) }]
         : [
-            { role: "system", content: SYSTEM },
+            { role: "system", content: automation ? SYSTEM : SYSTEM_STRICT },
             { role: "user", content: `Frozen file:\n\`\`\`lean\n${o.frozen}\`\`\`${notes ? `\n\n${notes}` : ""}` },
           ];
     let messages = opening();
@@ -215,7 +226,7 @@ export async function prove(o: ProveOptions): Promise<void> {
           }
         }
         // A lemma name Mathlib does not have, with one clear real name, is fixed here rather than costing an attempt.
-        if (check.status === "errors" && o.rename) {
+        if (check.status === "errors" && o.rename && o.repair !== false) {
           const unknown = unknownNames(check.errors.map((e) => e.message).join("\n"));
           const renames = unknown.length ? await o.rename(unknown).catch(() => ({}) as Record<string, string>) : {};
           const renamed = Object.keys(renames).length ? applyRenames(candidate, renames) : candidate;
@@ -229,7 +240,7 @@ export async function prove(o: ProveOptions): Promise<void> {
           }
         }
         // A tactic left after its goal closed is removed here rather than costing an attempt.
-        if (check.status === "errors") {
+        if (check.status === "errors" && o.repair !== false) {
           const repaired = dropDeadTactics(candidate, check.errors);
           if (repaired) {
             const again = await quick(repaired);
