@@ -27,5 +27,5 @@ if (!set) {
 console.log(`Merged ${parts.length} of ${parts[0].shards} parts: ${run.results.filter((r) => r.outcome !== "skipped").length}/${run.sample.length} problems with a result.`);
 if (run.env) run.env = { ...run.env, platform: `${parts[0].shards} machines in parallel, each ${run.env.platform}` };
 const appVersion = run.env?.app ?? (JSON.parse(readFileSync(join(__dirname, "..", "..", "package.json"), "utf8")) as { version: string }).version;
-finishRun(run, set, appVersion, scratch);
+finishRun(run, set, appVersion, scratch, parts[0].prices);
 process.exit(0);

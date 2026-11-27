@@ -13,7 +13,8 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import { join } from "node:path";
 import { benchSet, harnessOf, pickSample, runBench, shardOf, type BenchMethod, type BenchRun, type BenchShard } from "../core/bench/bench";
-import { finishRun } from "./bench-finish";
+import { finishRun, jobSummary } from "./bench-finish";
+import { runSummary } from "../core/bench/summary";
 import { hasRepl, replPool, splitHeader, type ReplPool } from "../core/lean/repl";
 import { analyzeSketch } from "../core/lean/sketch";
 import { setLeanSlots, splitBudget } from "../core/lean/runner";
@@ -159,7 +160,8 @@ void (async () => {
     Object.assign(s.prices, published);
   }
   const priceLine = (m: string) => (s.prices[m] ? `${m} $${s.prices[m].input}/$${s.prices[m].output} per million tokens` : `${m}: no published price, the assumed $${s.assumedPrice.input}/$${s.assumedPrice.output} is charged`);
-  console.log(`Prices: ${[model, ...proverModels(s)].map(priceLine).join("; ")}`);
+  const prices = [model, ...proverModels(s)].map(priceLine).join("; ");
+  console.log(`Prices: ${prices}`);
   const appVersion = (JSON.parse(readFileSync(join(__dirname, "..", "..", "package.json"), "utf8")) as { version: string }).version;
   const fullSample = pickSample(set, num("problems", 20));
   // Split across machines (--shard i --shards n): this machine runs its share of the fixed sample, and merge-bench joins the parts.
@@ -224,11 +226,12 @@ void (async () => {
   pool?.stop();
 
   if (shards > 1) {
-    const part: BenchShard = { shard, shards, sample: fullSample, run };
+    const part: BenchShard = { shard, shards, sample: fullSample, run, prices };
     mkdirSync(scratchRoot, { recursive: true });
     writeFileSync(join(scratchRoot, `shard-${shard}.json`), JSON.stringify(part));
     console.log(`Part ${shard + 1} of ${shards}: ${run.results.filter((r) => r.outcome === "solved").length}/${sample.length} solved.`);
-  } else finishRun(run, set, appVersion, scratchRoot);
+    jobSummary(runSummary(run, `Machine ${shard + 1} of ${shards}`, { prices }));
+  } else finishRun(run, set, appVersion, scratchRoot, prices);
   process.exit(0);
 })().catch((e: Error) => {
   console.error(e.stack ?? e.message);

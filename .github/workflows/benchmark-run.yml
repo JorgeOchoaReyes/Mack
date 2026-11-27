@@ -21,6 +21,8 @@
 #   default token does not start the required checks, so it could not be
 #   merged without them.
 name: Official benchmark run
+# What ran, in the list of runs: "Official · passk@32 · minif2f-test ×244 · model".
+run-name: "Official · ${{ inputs.method }}${{ inputs.method == 'passk' && format('@{0}', inputs.attempts) || '' }} · ${{ inputs.set }} ×${{ inputs.problems }} · ${{ inputs.model }}"
 on:
   workflow_dispatch:
     inputs:
@@ -81,7 +83,32 @@ jobs:
         shell: bash
         env:
           IN_MACHINES: ${{ inputs.machines }}
+          IN_SET: ${{ inputs.set }}
+          IN_PROBLEMS: ${{ inputs.problems }}
+          IN_METHOD: ${{ inputs.method }}
+          IN_PROVIDER: ${{ inputs.provider }}
+          IN_MODEL: ${{ inputs.model }}
+          IN_PROVER: ${{ inputs.prover }}
+          IN_EFFORT: ${{ inputs.effort }}
+          IN_ATTEMPTS: ${{ inputs.attempts }}
+          IN_BUDGET: ${{ inputs.budget }}
+        # The run's settings on its summary page at once, while the machines work.
         run: |
+          {
+            echo "## Official benchmark run: started"
+            echo ""
+            echo "| Setting | Value |"
+            echo "|---|---|"
+            echo "| Set | \`$IN_SET\`, $IN_PROBLEMS problems |"
+            echo "| Protocol | \`$IN_METHOD\`, $IN_ATTEMPTS attempts per problem |"
+            echo "| Model | \`$IN_MODEL\` ($IN_PROVIDER) |"
+            echo "| Prover models | ${IN_PROVER:-none} |"
+            echo "| Thinking | $IN_EFFORT |"
+            echo "| Machines | $IN_MACHINES |"
+            echo "| Budget | \$$IN_BUDGET (0 = none) |"
+            echo ""
+            echo "Each machine adds its problems' results here when it finishes; the last job adds the whole run."
+          } >> "$GITHUB_STEP_SUMMARY"
           n=$(printf '%s' "$IN_MACHINES" | tr -cd '0-9')
           n=${n:-1}
           [ "$n" -lt 1 ] && n=1
@@ -207,4 +234,5 @@ jobs:
           git add "benchmarks/runs/$FOLDER"
           git commit -m "Official $TITLE"
           git push origin "$branch"
-          gh pr create --base main --head "$branch" --title "Official $TITLE" --body-file "$RUNNER_TEMP/mack-bench/pr-body.md"
+          url=$(gh pr create --base main --head "$branch" --title "Official $TITLE" --body-file "$RUNNER_TEMP/mack-bench/pr-body.md")
+          echo "### Pull request: $url" >> "$GITHUB_STEP_SUMMARY"

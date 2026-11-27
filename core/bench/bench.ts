@@ -290,7 +290,7 @@ export function shardOf(sample: string[], shard: number, shards: number): string
 }
 
 /** One machine's part of a split run, as it hands it to the merge. */
-export type BenchShard = { shard: number; shards: number; sample: string[]; run: BenchRun };
+export type BenchShard = { shard: number; shards: number; sample: string[]; run: BenchRun; /** The prices each model was charged, as the run's summary shows them. */ prices?: string };
 
 /**
  * The parts of a split run joined into one run over the whole sample: results
