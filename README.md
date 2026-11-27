@@ -1,283 +1,240 @@
 # Mack ⚡
 
 <p align="center">
-  <a href="https://github.com/JorgeOchoaReyes/Mack/releases/latest"><b>⬇ Download Mack for Windows or Linux</b></a> ·
+  <a href="https://github.com/JorgeOchoaReyes/Mack/releases/latest"><b>⬇ Download for Windows or Linux</b></a> ·
   <a href="https://jorgeochoareyes.github.io/Mack/"><b>Benchmark leaderboard</b></a> ·
-  <a href="#how-it-works">How it works</a> ·
+  <a href="https://jorgeochoareyes.github.io/Mack/methodology.html">Methodology</a> ·
   <a href="#contributing">Contribute</a>
 </p>
 
-A desktop app for Windows and Linux for Lean-checked math research. Open models (through
-[Fireworks](https://fireworks.ai), [OpenRouter](https://openrouter.ai),
-[Cheaper Inference](https://www.cheaperinference.com), a
-[LiteLLM](https://docs.litellm.ai) proxy or any OpenAI-compatible server) propose proofs; **Lean decides** whether they hold.
+**A desktop app for math research where Lean has the last word.** Open models
+propose proofs; Lean's kernel and a strict verifier decide whether they hold.
+A model saying "proved" counts for nothing.
 
-Mack follows the methodology of
-[Open Math Harness](https://github.com/openmathmodel/open-math-harness), the
-runtime of Open Math OS, which is Linux-only and needs the Open Math OS
-deployment to run. Mack ports its methods into an app that runs on a personal
-Windows machine. See [docs/UPSTREAM.md](docs/UPSTREAM.md) for what is ported
-and how Mack keeps up with upstream.
+Mack brings the methods of
+[Open Math Harness](https://github.com/openmathmodel/open-math-harness) (the
+Linux-only runtime of Open Math OS) to an app for a personal Windows or Linux
+machine, and adds a benchmark you can run yourself and publish.
+[docs/UPSTREAM.md](docs/UPSTREAM.md) maps what is ported.
 
-## What it does today
+- [Features at a glance](#features-at-a-glance)
+- [Proving methods](#proving-methods)
+- [Benchmark](#benchmark)
+- [How it works](#how-it-works)
+- [Install](#install)
+- [Contributing](#contributing)
 
-- **One project for every screen.** Choose the project (a folder, such as
-  `odd-perfect`) once in the sidebar. Prove lists its `.lean` files and
-  follows them as they change, marking the ones the chat's agent (or anything
-  else) wrote or revised since you last looked; Chat works in the same
-  folder, with an *Open in Prove* button on each Lean file the agent writes;
-  History and Runs show that project's runs.
-- **Prove.** Write or open a Lean statement, press Prove, and watch each
-  attempt: the model writes a proof, Lean's errors go back to it, and it
-  revises until the strict verifier accepts or attempts run out.
+## Features at a glance
+
+| | Feature | What you get | Where |
+|---|---|---|---|
+| 🧮 | **Prove** | Write or open a Lean statement and watch every attempt, Lean's errors and the goals left, until the verifier accepts | Prove screen |
+| 🔬 | **Research chat** | An agent that reads project files and PDFs, searches the web, runs Lean, and writes files or starts proofs after you approve each call | Chat screen |
+| 📊 | **Benchmark** | miniF2F and PutnamBench, pass@k as the labs report it or Mack's own agent, locally or on cloud machines | Benchmark screen |
+| 🌐 | **Public leaderboard** | Share a run as a pull request; CI re-checks every proof before it is published | [Site](https://jorgeochoareyes.github.io/Mack/) |
+| 🧪 | **Construction search** | Evolves Python programs that build objects (counterexamples, configurations, better bounds), scored in a separate process | Chat |
+| 📖 | **Walkthroughs** | Any accepted proof explained step by step in plain words, with every version kept | Walkthroughs screen |
+| 🗂️ | **Proof-search runs** | Sets of problems, each with its own tree and journal, that can be stopped and resumed | Runs screen |
+| 🧠 | **Project memory** | Mack writes a record of each chat and gives later chats a short index of the past | Automatic |
+| 🔌 | **MCP and plugins** | Connect MCP servers (stdio or HTTP) and plugins, each with your approval | Chat |
+| 🔍 | **Review and secret scan** | Projects are git repos; see every uncommitted change; likely credentials are masked | Review screen |
+| ⚡ | **Fast checks** | A resident Lean REPL keeps Mathlib loaded, so a partial proof checks in seconds | Everywhere |
+| 🛠️ | **One-click setup** | Installs Lean (elan) and a Mathlib workspace with its prebuilt cache | Setup screen |
+| 🔄 | **Auto-update** | Installed copies update from GitHub Releases after every merge | Automatic |
+
+**Model providers:** [Fireworks](https://fireworks.ai),
+[OpenRouter](https://openrouter.ai),
+[Cheaper Inference](https://www.cheaperinference.com) (Mack sends its model
+lock, so a run is served by the model it names), a
+[LiteLLM](https://docs.litellm.ai) proxy (its prices feed the spending limits),
+or any OpenAI-compatible server (Ollama, LM Studio, vLLM). Each has its own key
+and model, switchable per run. No key ships with Mack.
+
+<details>
+<summary><b>More of what the app does</b></summary>
+
+- **One project for every screen.** Pick a folder once in the sidebar. Prove
+  lists its `.lean` files and marks the ones changed since you looked; Chat
+  works in the same folder; History and Runs show that project's runs.
 - **Before the first attempt.** Lean's random tester (`plausible`) tries to
   break the statement, and a counterexample stops the run before any model
-  call, since no proof can exist. Then the model plans the proof in words, as
-  small steps, and every attempt is given that plan along with the lemmas the
-  project has already proved, to copy in. Several chains of attempts can run
-  at once (Settings), the first verified proof stopping the others.
-- **Proof search tree.** Switch Prove to *Search tree* and several workers
-  branch out from the statement in parallel. Each hands back one file, which
-  may keep `sorry` gaps; Lean scores it, and later rounds continue the most
-  promising nodes instead of starting over, until the verifier accepts one.
-- **Proof-search runs.** Runs over sets of problems, each with its own tree
-  and journal, that can be watched, stopped and resumed (Runs screen, or
-  `discovery_*` in Chat). Workers can use the fixed loop or a tool loop in
-  their own workspaces with upstream's shared plan board. Partial proofs are
-  scored with Lean as upstream's scoring v3 does: automation tries to finish
-  each, and only real closed steps earn credit while hollow `sorry`s earn
-  none.
-- **Ultramath.** Several members attack one hard problem, each on a
-  direction no other holds (a duplicate is refused), sharing a board of
-  lemmas, counterexamples and dead ends. Started from Chat, it runs
-  alongside the conversation: members work in their own `.ultramath/`
-  folders with tools, the chat's agent judges what they submit (with a Lean
-  statement the strict verifier decides first), and an interrupted swarm
-  resumes from its records. The Prove screen also runs a quick in-place
-  version.
-- **Construction search.** For a question whose answer is an object (a
-  configuration, a counterexample, a better bound): the chat writes an
-  evaluator, and the search evolves Python programs that build candidates,
-  each scored in a separate process so a program cannot reach its own score,
-  as FunSearch and AlphaEvolve do. The best program and construction are kept
-  in the project; a score is evidence, never proof.
-- **Walkthroughs.** Every proof Lean accepted can be explained step by step in
-  plain words; the Walkthroughs screen lists each proved result and every
-  walkthrough kept, earlier versions included.
-- **Research chat.** Projects are folders. The assistant reads and searches
-  project files and PDFs, checks and verifies Lean, searches and reads the
-  web, and, once you approve each exact call, writes files or starts proof
-  runs. What it can do is listed in the app and is nothing more.
-- **A full agent.** Streaming replies, a reasoning depth per chat, sub-agents,
-  a shell and background commands (each command approved), reminders the
-  agent sets to come back to long work, attached files and images,
-  messages you send while it works ("send now" or queued), checkpoints that
-  keep long chats going, suggested next messages and chat titles, and the
-  project's skills (`.skill/<name>/SKILL.md`, `/skill` to list or load).
-- **MCP servers and plugins.** The assistant connects MCP servers (stdio or
-  Streamable HTTP) and starts plugins it writes (stdio MCP servers in the
-  project), each with your approval; their tools belong to that chat only.
-- **Review and secret scan.** New projects are git repositories; Review shows
-  their uncommitted changes, whoever made them. Upstream's secret-scan rules
-  mark chat messages that may hold a credential, and mask secrets before a
-  chat reaches memory and in exported chats.
-- **Project memory.** When you leave a chat, Mack (not the assistant) writes a
-  record of it and folds the records into a short index that later chats
-  are given as notes about the past. No chat can write memory by asking.
-- **Fast checks.** A resident Lean REPL keeps Mathlib loaded, so checking a
-  partial proof takes seconds and shows the goal left at each `sorry`. The
-  final verification still runs in a fresh Lean process.
-- **Strict verification**, ported from upstream. A proof counts only if:
-  - the frozen theorem statement appears word for word and the preamble is
-    unchanged;
-  - it contains no `sorry`, `axiom`, `native_decide`, `pp`/`debug` options or
-    metaprogramming;
-  - Lean elaborates it;
-  - it depends only on `propext`, `Classical.choice` and `Quot.sound`;
-  - its fully elaborated type matches the original statement exactly.
-- **Your choice of model provider.** Fireworks, OpenRouter, Cheaper Inference
-  (a marketplace reselling models below list price; Mack sends its model lock
-  so a run is always served by the model it names), a LiteLLM proxy
-  (its configured prices are read for the spending limits), or any
-  OpenAI-compatible endpoint (Ollama, LM Studio, vLLM), each with its own key
-  and model, switchable per run from the Prove screen.
-- **One-click setup.** Mack installs Lean (elan) and a Mathlib workspace with
-  its prebuilt cache, with progress shown in the app.
+  call. Then Lean's automation (aesop, omega, nlinarith, …) tries to close it.
+  What is left goes to a model, which plans the proof in words first.
+- **A full agent in chat.** Streaming replies, a reasoning depth per chat,
+  sub-agents, a shell and background commands (each approved), reminders,
+  attached files and images, messages sent while it works, checkpoints for
+  long chats, and project skills (`.skill/<name>/SKILL.md`).
 - **History.** Every run is kept locally, with each attempt and what Lean said.
-- **Auto-update.** Installed copies update themselves from GitHub Releases.
-- **Upstream tracking.** On launch, Mack checks whether Open Math Harness
-  changed its methodology. The check is optional, and you can stay on your
-  current version.
+- **Upstream tracking.** On launch, Mack can check whether Open Math Harness
+  changed its methods; you can stay on your version.
 
-## Roadmap
+</details>
 
-Each step ports one part of Open Math Harness; docs/UPSTREAM.md maps the
-upstream module each comes from.
+## Proving methods
 
-- [x] **1. Verified proving.** Strict Lean verifier, single-agent prove loop,
-  one-click Lean setup, run history, upstream tracking, Windows installer.
-- [x] **2. Proof search tree.** Keep partial proofs (with `sorry`) as a tree,
-  let parallel workers extend the most promising branches, and let later
-  rounds build on earlier ones instead of starting over. From upstream
-  `program-files/prover`, `program-files/discovery`, `interfaces/explore`.
-  Includes a resident Lean REPL for fast checks of partial proofs, replacing
-  one `lake env lean` run per check.
-- [x] **3. Ultramath.** Several agents attack one hard problem from different
-  directions: a duplicate check on proposed directions, a shared board of
-  lemmas, counterexamples and dead ends, and a coordinating agent that
-  reviews reports and accepts a solution. From upstream `interfaces/swarm`.
-- [x] **4. Chat with tools and memory.** A research chat whose agent can read
-  and write project files, run Lean, search the web and PDFs, and keep a
-  per-project memory across sessions, with protected actions waiting for
-  your approval. From upstream `program-files/chat-agent`,
-  `program-files/memory`, `program-files/approvals`.
-- [x] **5. More model providers.** OpenRouter, LiteLLM and other
-  OpenAI-compatible endpoints next to Fireworks, chosen per run.
-- [x] **6. Distribution.** a GitHub Release built on every merge to
-  `main`, auto-update in the app, and the upstream check comparing against
-  the installed version. See [docs/RELEASING.md](docs/RELEASING.md).
-  - [ ] A code-signed installer (no SmartScreen warning): the release
-    workflow signs once a certificate is added as a repository secret, which
-    only the maintainer can obtain.
+Every method ends at the same strict verifier. Choose one on the Prove screen,
+from chat, or for a benchmark run.
 
-Not planned: upstream's capability microkernel and bubblewrap sandboxing are
-Linux-only. Mack limits each agent's tools inside the app instead, which is
-weaker. The chat's *What it can do* panel states exactly what its agent can
-do: its file tools resolve every path inside the project folder (links
-included), writes and proof runs wait for your approval, and memory is kept
-outside the project folder where no tool reaches.
+| Method | How it works | Best for | From |
+|---|---|---|---|
+| **Attempts** | The model writes a proof, Lean's errors go back, it revises; several chains at once, the first verified proof stops the rest | Most problems | Mack |
+| **Decompose** | Splits the statement into lemmas proved in parallel, then assembles them | Long proofs with clear steps | Mack |
+| **Research loop** | Rounds of: proof plans from different angles → a referee finds each plan's gap and keeps the best two → attempts and a lemma split worked at once → every lemma Lean accepts is offered to later attempts → re-plan with twice the budget | One hard problem | Mack |
+| **Step by step** | Builds the proof one tactic at a time on Lean's live proof states | Tactic-heavy goals | Mack |
+| **Search tree** | Parallel workers extend partial proofs (with `sorry`); Lean scores each and later rounds continue the most promising | Wide search | Open Math Harness |
+| **Ultramath** | A swarm, each member on a direction no other holds, sharing a board of lemmas, counterexamples and dead ends | Open-ended problems | Open Math Harness |
 
-## How it works
+### What counts as a proof
 
-```
- your statement ──► plausible tries to break it ──► model plans the proof in words
-                                                          │
-          ┌───────────────────────────────────────────────┘
-          ▼
-   Lean automation (aesop, omega, nlinarith, …) ── closes it? ──► done
-          │ no
-          ▼
-   model writes a proof ──► Lean checks it ──► errors and goals go back ──┐
-          ▲                                                               │
-          └───────────────────── revise, or start over ◄──────────────────┘
-          │ (or: split into lemmas proved in parallel, a search tree, an Ultramath swarm)
-          ▼
-   strict verifier: same statement, no sorry or extra axiom, Lean's kernel accepts
-```
+The strict verifier, ported from upstream, accepts a proof only if:
 
-1. **A statement goes in.** You write it in Lean (or ask the chat to), in a
-   project folder. Mack freezes it: the proof that comes back must prove
-   exactly that statement.
-2. **Cheap things first.** Lean's random tester looks for a counterexample,
-   and Lean's own automation tries a set of tactics on the statement in one
-   Lean run. Only what is left goes to a model.
-3. **Models propose, Lean disposes.** The model writes a proof; Lean's errors
-   and the goals left at each gap go back to it, and it revises. Several
-   chains run at once, with one model or several (a planner and prover
-   models). Hard statements can be split into lemmas proved in parallel
-   (*Decompose*), built one tactic at a time on Lean's live proof states
-   (*Step by step*), searched as a tree of partial proofs (*Search tree*), or
-   attacked by a swarm (*Ultramath*). A lemma name Mathlib does not have is
-   corrected to the real one when there is a single clear match, before the
-   model is asked again.
-4. **Only Lean decides.** The strict verifier (below) accepts a proof only
-   when the statement is unchanged, nothing is assumed, and Lean's kernel
-   checks it. A model saying "proved" counts for nothing.
+- the frozen statement appears word for word and the preamble is unchanged;
+- it has no `sorry`, `axiom`, `native_decide`, `pp`/`debug` options or
+  metaprogramming;
+- Lean elaborates it, and it depends only on `propext`, `Classical.choice` and
+  `Quot.sound`;
+- its fully elaborated type matches the original statement exactly.
+
+Final verification always runs in a fresh Lean process.
 
 ## Benchmark
 
-The **Benchmark** screen measures how strong Mack is with your models and
-settings, on problems everyone uses:
-[miniF2F](https://github.com/openai/miniF2F) (244 competition problems) and
-[PutnamBench](https://github.com/trishullab/PutnamBench) (Putnam problems
-since 1962), already stated in Lean 4. The same number of problems always picks
-the same problems, so runs compare. Add several models to run them on the same
-problems one after another.
+Measure Mack with your models on the problems everyone uses, then publish the
+result. Every proof on the leaderboard has been re-checked by CI with Lean.
 
-<p align="center"><img src="docs/images/app-bench.png" width="760" alt="The Benchmark screen: problem set, method, budget and the models to compare"></p>
+<p align="center"><img src="docs/images/app-bench.png" width="760" alt="The Benchmark screen: problem set, protocol, budget and the models to compare"></p>
 
-Every run keeps everything: each attempt's proof, Lean's verdict, the model's
-thinking, tokens, cost and timestamps, and a timeline of every step the agent
-took on each problem. Open a run's **metrics** for its numbers, each model's
-hit rate and why problems were not solved, or tick two runs for a
-**head to head**.
+### Problem sets
+
+| Set | Problems | What it measures |
+|---|---|---|
+| [miniF2F test](https://github.com/openai/miniF2F) | 244 | Competition problems (AMC, AIME, IMO, MATH): the set the labs' provers report on |
+| [PutnamBench](https://github.com/trishullab/PutnamBench) | 664 | Putnam problems since 1962: much harder, where the labs compete now |
+| Recent Putnam (2024–2025) | 16 | The contamination check: problems least likely to be in a model's training data |
+
+A given number of problems always picks the same problems, so runs of the same
+size compare. Each problem's page on the site shows the problem in words, its
+source, and the Lean statement the model was given.
+
+### Protocols
+
+| | **Pass@k** (default) | **Mack agent** |
+|---|---|---|
+| Measures | The model, as the labs report it | Mack as a system |
+| Samples | Up to *k* independent samples from the opening prompt | Attempts that learn from Lean's errors |
+| Help given | None: no automation, repairs, premise hints, plans or shared lemmas | All of Mack's procedures (each listed on the run) |
+| Reply length | Up to 32k tokens | The model's usual limit |
+| Compare with | Published pass@k numbers | Other Mack runs |
+
+Both run several problems at once locally, and a pass@k problem runs up to 8
+of its samples at once. The site ranks each protocol and size in its own table.
+
+### Results
+
+Live numbers are on the **[leaderboard](https://jorgeochoareyes.github.io/Mack/)**.
+Runs published so far:
+
+| Set | Problems | Model | Protocol | Solved |
+|---|---|---|---|---|
+| miniF2F test | 20 | `us/gpt-6.1-sol` | Mack agent, attempts | **20 / 20** |
+
+<p align="center"><img src="docs/images/site-leaderboard.png" width="760" alt="The benchmark site: headline numbers and the leaderboard"></p>
+
+### Three ways to run one
+
+| | Where | Who | Published how |
+|---|---|---|---|
+| **In the app** | Your computer | Anyone | **Share as a PR** on the run, or turn on *open the PR when a run completes* |
+| **Official cloud run** | Up to 20 free GitHub Actions machines in parallel | Repository owner | Opens the PR itself, marked **Official** on the site |
+| **Headless CLI** | Any machine with Lean | Anyone | `node dist-electron/scripts/run-bench.js --set minif2f-test --problems 20 --method passk --attempts 32 …` |
+
+An **official run** starts from *Actions → Official benchmark run → Run
+workflow*. It splits the set across machines, joins the parts, and opens a pull
+request for you to review: merge it to publish, close it to drop it. A run
+whose budget ran out opens as a draft that says so. Its summary page shows the settings at once, each machine's
+problems as they finish, and then the score, cost, failures and pull request.
+It needs the provider's API key as a repository secret (`FIREWORKS_API_KEY`,
+`OPENROUTER_API_KEY` or `CHEAPER_INFERENCE_API_KEY`) and, so the PR's checks
+run, `MACK_BENCH_TOKEN`.
 
 <p align="center">
   <img src="docs/images/app-metrics.png" width="49%" alt="A run's metrics: solved, cost, time, each model and how attempts ended">
   <img src="docs/images/app-compare.png" width="49%" alt="Two runs head to head on the same problems">
 </p>
 
-<p align="center"><img src="docs/images/app-run.png" width="760" alt="A run opened: why problems were not solved, sharing, and each problem's result"></p>
-
-### The public leaderboard
-
-Press **Share as a PR** on a run and Mack opens a pull request adding it to
-[`benchmarks/runs/`](benchmarks/runs) (the report, the run, and every attempt,
-with anything that looks like a secret masked). CI checks the run is well
-formed and safe to publish; once merged, it appears on the
-**[benchmark site](https://jorgeochoareyes.github.io/Mack/)** with its
-failures, every attempt, and each problem's trace. The Benchmark screen tracks
-the pull request: open, merged or closed.
-
-<p align="center"><img src="docs/images/site-leaderboard.png" width="760" alt="The benchmark site: headline numbers and the leaderboard"></p>
-
-<p align="center">
-  <img src="docs/images/site-run.png" width="49%" alt="One run on the site: its numbers, each model, and why problems were not solved">
-  <img src="docs/images/site-dark.png" width="49%" alt="The leaderboard by model, and how it works, in dark mode">
-</p>
-
-The screenshots use sample runs; the site shows the real ones.
+Every run keeps each attempt's proof, Lean's verdict, the model's thinking,
+tokens, cost and a timeline of every step. Open a run's **metrics**, or tick
+two runs for a **head to head**.
 
 ### How far the numbers can be trusted
 
-- **Solves are re-checked.** Before a shared run is merged, CI re-verifies
-  every solved proof with Lean and the strict verifier, against Mack's own copy
-  of each problem and the Mathlib version the run recorded. A solve cannot be
-  added by editing `run.json`.
-- **Nothing is left out.** A run must list every problem of the fixed sample
-  for its size; a skipped problem counts as unsolved on the site.
-- **Ranges, not just rates.** Each rate has its 95% range (13 of 20 is
-  43–82%), and only runs on a whole set are ranked; smaller runs are listed
-  apart.
-- **Self-reported numbers are marked.** Cost, time, tokens and the model a
-  provider served come from the person's machine and cannot be checked.
-- **A contamination check.** The latest Putnam competitions form a set of
-  their own (*Recent Putnam*), and every PutnamBench run is split by year on
-  the site: a model much weaker on recent problems was probably helped by
-  having seen the older ones in training.
-- **Close to the labs' measure.** Each run shows how many problems were solved
-  within 1, 4, 16 and 64 attempts, like pass@k (Mack's attempts learn from
-  Lean's errors, so it is close, not equal).
-- **Reproducible settings.** Benchmark runs never use your own past proofs as
-  examples, since nobody else could reproduce that; every procedure a run used
-  is listed with it.
+| Check | How |
+|---|---|
+| ✅ Solves are re-checked | CI re-verifies every solved proof with Lean and the strict verifier, against Mack's own copy of each problem and the recorded Mathlib. Editing `run.json` cannot add a solve |
+| ✅ Nothing left out | A run must list every problem of its fixed sample; a skipped problem counts as unsolved |
+| ✅ Ranges, not just rates | Each rate has its 95% range (13 of 20 is 43–82%) |
+| ✅ Official runs are marked | Only the owner's cloud workflow, on a same-repo PR, can carry the Official badge |
+| ✅ Contamination check | Recent Putnam is its own set, and PutnamBench runs are split by year |
+| ⚠️ Self-reported | Cost, time, tokens and the served model come from the machine that ran it |
+
+The [methodology page](https://jorgeochoareyes.github.io/Mack/methodology.html)
+explains every set, protocol, method, limit and failure label.
+
+## How it works
+
+```
+ your statement ──► plausible tries to break it ──► Lean automation tries to close it
+                                                          │ not closed
+                                                          ▼
+                     model plans the proof in words ──► model writes a proof
+                                                          │
+          ┌───────────────────────────────────────────────┘
+          ▼
+   Lean checks it ──► errors and goals go back ──► revise, or start over ──┐
+          ▲                                                                │
+          └────────────────────────────────────────────────────────────────┘
+          │ (or: decompose, research loop, step by step, search tree, Ultramath)
+          ▼
+   strict verifier: same statement, no sorry or extra axiom, Lean's kernel accepts
+```
+
+1. **A statement goes in.** You write it in Lean (or ask the chat to), and Mack
+   freezes it: the proof must prove exactly that statement.
+2. **Cheap things first.** A counterexample search and Lean's own automation,
+   before any model call.
+3. **Models propose.** One model or several (a planner and prover models),
+   with any of the methods above. A Mathlib lemma name that does not exist is
+   corrected when there is one clear match.
+4. **Lean decides.** Only the strict verifier's verdict counts.
 
 ## Install
 
-You need Windows 10 or 11, or a 64-bit Linux (x86-64),
-[Git](https://git-scm.com) (Lake fetches Mathlib with it), about 10 GB of free disk, and **your own model provider key**
-(Fireworks, OpenRouter or Cheaper Inference), a LiteLLM proxy, or a local OpenAI-compatible
-server. No key or
-credential ships with Mack.
+You need Windows 10 or 11, or 64-bit Linux (x86-64),
+[Git](https://git-scm.com), about 10 GB of free disk, and your own model
+provider key or a local OpenAI-compatible server.
 
 From the [latest release](https://github.com/JorgeOchoaReyes/Mack/releases/latest):
 
-- **Windows:** download `Mack-Setup-<version>.exe` and run it. It installs Mack
-  for your user and adds Start-menu and desktop shortcuts.
-- **Linux:** download `Mack-<version>.AppImage`, make it executable and run it:
+- **Windows:** run `Mack-Setup-<version>.exe`. It installs for your user and
+  adds Start-menu and desktop shortcuts.
+- **Linux:** make `Mack-<version>.AppImage` executable and run it:
 
   ```bash
   chmod +x Mack-*.AppImage
   ./Mack-*.AppImage
   ```
 
-  AppImages need FUSE 2; on Ubuntu 22.04 and later install it with
-  `sudo apt install libfuse2` (`libfuse2t64` on 24.04). Keys are stored with
-  the system keyring (GNOME Keyring or KWallet) when one is running.
+  AppImages need FUSE 2 (`sudo apt install libfuse2`, or `libfuse2t64` on
+  Ubuntu 24.04). Keys are stored in the system keyring when one is running.
 
-Both update themselves after every merge to `main`.
+Then follow **Setup** in the app:
 
-Or from source:
+1. **Lean and Mathlib:** click *Install* (5–20 minutes, about 5 GB).
+2. **Provider and key:** pick a provider and paste your key. It is encrypted
+   with the system's credential protection and sent only to that provider.
+3. **Model:** pick one from your account's list.
+
+Or build from source:
 
 ```bash
 git clone https://github.com/JorgeOchoaReyes/Mack.git
@@ -287,67 +244,61 @@ npm run dist        # Windows: release/Mack-Setup-<version>.exe
 npm run dist:linux  # Linux:   release/Mack-<version>.AppImage
 ```
 
-Then open Mack and follow **Setup**:
-
-1. **Lean and Mathlib**: click *Install*. It takes 5–20 minutes and about
-   5 GB, mostly Mathlib's prebuilt cache.
-2. **Model provider and key**: pick Fireworks, OpenRouter, Cheaper Inference, LiteLLM (its
-   address, default `http://localhost:4000/v1`) or a custom endpoint and paste
-   your key. It is encrypted with the system's credential
-   protection (Windows, or the Linux keyring) and only sent to that provider. For development you can instead
-   copy `.env.example` to `.env` and set `FIREWORKS_API_KEY`,
-   `OPENROUTER_API_KEY`, `CHEAPER_INFERENCE_API_KEY` or `CUSTOM_API_KEY`;
-   `.env` is gitignored.
-3. **Model**: pick one from your account's list.
-
 ## Development
 
-```powershell
+```bash
 npm start            # build and run without installing
-npm test             # verifier rules and upstream check; no Lean or key needed
+npm test             # unit tests; no Lean or key needed
 npm run typecheck
-$env:MACK_LEAN_WORKSPACE="$env:USERPROFILE\mack-lean"; npm test   # also run the verifier against real Lean
-npm run setup:lean   # the same Lean setup as the app, from the terminal
+MACK_LEAN_WORKSPACE=~/mack-lean npm test   # also run the verifier against real Lean
+npm run setup:lean   # the app's Lean setup, from the terminal
 ```
+
+For development keys, copy `.env.example` to `.env` (gitignored) and set
+`FIREWORKS_API_KEY`, `OPENROUTER_API_KEY`, `CHEAPER_INFERENCE_API_KEY` or
+`CUSTOM_API_KEY`.
+
+The code is in three parts: `core/` (prover, verifier, agent and benchmark,
+without Electron), `electron/` (main process and IPC), and `src/` (the React
+screens).
 
 ## Contributing
 
-Contributions are welcome, and three kinds need no code at all.
+Three kinds of contribution need no code:
 
 - **Share a benchmark run.** Run the Benchmark (20 problems is a good start)
-  and press **Share as a PR**, choosing the GitHub account to publish as. To
-  connect an account, [create a token](https://github.com/settings/tokens/new?scopes=repo&description=Mack)
-  (the name and the `repo` scope are filled in: pick an expiration, click
-  *Generate token*, copy it) and paste it in Settings → GitHub; add as many
-  accounts as you like, or log in with the GitHub CLI (`gh auth login`). Mack
-  forks the repo for you when you cannot push to it. A run is merged when CI's *Benchmark runs* check
-  passes: only `REPORT.md`, `run.json` and `attempts.jsonl`, problems that
-  belong to the set, a proof for every solved problem, and nothing that looks
-  like a secret.
+  and press **Share as a PR**. Connect a GitHub account in Settings → GitHub
+  with a [token](https://github.com/settings/tokens/new?scopes=repo&description=Mack)
+  or `gh auth login`; Mack forks the repo when you cannot push to it. CI's
+  *Benchmark runs* check must pass before it is merged.
 - **Add a proof to the community library.** Put `Statement.lean` and
   `Proof.lean` in `community/proofs/<name>/` (see
-  [community/README.md](community/README.md)). CI checks the proof with the
-  strict verifier against the Mathlib pinned in `community/lean`, so an entry
-  merges only when Lean accepts it.
-- **Report where Mack loses.** A run's report lists each unsolved problem's
-  attempts and Lean's feedback; open an issue with it, or with what went wrong
-  in the app (the Feedback screen opens the issue for you).
+  [community/README.md](community/README.md)). CI merges it only when the
+  strict verifier accepts it.
+- **Report where Mack loses.** Open an issue with a run's report, or use the
+  Feedback screen in the app.
 
-For code:
+For code: branch from `main`, run `npm run typecheck` and `npm test`, add a
+test for your change, and open a pull request against `main`. Nothing is pushed
+to `main` directly; every merge publishes a release.
 
-1. Fork the repo, create a branch from `main`, and make your change.
-2. Run `npm run typecheck` and `npm test` (and, with a Lean workspace, the
-   real-Lean tests: see Development). Add a test for a fix or a feature.
-3. Open a pull request against `main`. CI runs the tests on Windows, the
-   real-Lean tests, and the checks for community proofs and benchmark runs as
-   they apply. Nothing is pushed to `main` directly; every merge to `main`
-   publishes a release, and installed copies update themselves.
+## Roadmap
 
-The code is in three parts: `core/` (the prover, verifier, agent and
-benchmark, with no Electron), `electron/` (the main process and IPC), and
-`src/` (the React screens). [docs/UPSTREAM.md](docs/UPSTREAM.md) describes what
-is ported from Open Math Harness and how Mack follows it.
+- [x] Verified proving, one-click Lean setup, run history, Windows installer
+- [x] Proof search tree and a resident Lean REPL
+- [x] Ultramath swarms
+- [x] Research chat with tools and memory
+- [x] More providers: OpenRouter, Cheaper Inference, LiteLLM, any OpenAI-compatible server
+- [x] Releases, auto-update and Linux AppImage ([docs/RELEASING.md](docs/RELEASING.md))
+- [x] Public benchmark: pass@k, official cloud runs, CI-checked leaderboard
+- [x] Research loop for hard problems
+- [ ] A code-signed Windows installer (needs a certificate only the maintainer can obtain)
+
+Not planned: upstream's capability microkernel and bubblewrap sandbox are
+Linux-only. Mack limits each agent's tools inside the app instead, which is
+weaker; the chat's *What it can do* panel states exactly what its agent can do.
 
 ## License
 
 Apache-2.0. Adapts code from Open Math Harness (Apache-2.0); see NOTICE.
+miniF2F informal statements © facebookresearch/miniF2F (MIT).

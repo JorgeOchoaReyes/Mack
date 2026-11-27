@@ -1,8 +1,8 @@
 // `node dist-electron/scripts/merge-bench.js --scratch <dir> <shard-0.json> <shard-1.json> …`
 // Joins the parts of a benchmark run split across machines (run-bench.js
 // --shard/--shards) into one run over the whole sample, then finishes it as a
-// single run would (scripts/bench-finish.ts): shared only when every problem
-// has a result.
+// single run would (scripts/bench-finish.ts): written for a pull
+// request when every problem is listed.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";

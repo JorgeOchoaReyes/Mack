@@ -1,13 +1,13 @@
 // What a finished headless benchmark run leaves behind (scripts/run-bench.ts,
-// scripts/merge-bench.ts): its run.json in the scratch folder, and, only when
-// it ran to the end, the run written as a share would (benchmarks/runs/<folder>/)
+// scripts/merge-bench.ts): its run.json in the scratch folder, and, when every
+// problem is listed, the run written as a share would (benchmarks/runs/<folder>/)
 // with the pull request's body, ready for the workflow to open the PR. A run
 // where Lean or the model never worked fails the job instead.
 
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { BENCH_SHARE_DIR, benchShare, benchSlug, ranToEnd, summarize, type BenchRun, type BenchSet } from "../core/bench/bench";
-import { runSummary } from "../core/bench/summary";
+import { incompleteReason, runSummary } from "../core/bench/summary";
 
 /** Append Markdown to the GitHub Actions job summary, when there is one. */
 export const jobSummary = (markdown: string) => {
@@ -27,18 +27,41 @@ export function finishRun(run: BenchRun, set: BenchSet, appVersion: string, scra
     process.exit(1);
   }
   const complete = ranToEnd(run);
+  // A pull request is opened for review whenever every problem of the sample is listed: a problem a spent budget
+  // skipped counts as unsolved, which the site and CI accept. A run that was cut short opens as a draft that says why,
+  // so it is never published without being read first. A machine's part that never arrived leaves problems unlisted:
+  // nothing is written, since CI would refuse it.
+  const listed = run.results.length === run.sample.length;
+  const why = incompleteReason(run);
   let folder = "";
   let title = "";
-  if (complete) {
+  if (listed) {
     folder = benchSlug(run);
     const share = benchShare(run, set, appVersion, "", { logs: true });
-    title = share.title;
+    title = complete ? share.title : `[incomplete] ${share.title}`;
     const dir = join(BENCH_SHARE_DIR, folder);
     mkdirSync(dir, { recursive: true });
     for (const [name, content] of Object.entries(share.files)) writeFileSync(join(dir, name), content);
-    writeFileSync(join(scratchRoot, "pr-body.md"), share.body);
-    console.log(`Written to ${dir}`);
-  } else console.log("Not complete (stopped, a problem skipped, or a machine's part missing): nothing written for a pull request.");
+    writeFileSync(join(scratchRoot, "pr-body.md"), prBody(run, share.body, why, prices));
+    console.log(`Written to ${dir}${complete ? "" : ` (incomplete: ${why})`}`);
+  } else console.log(`Not every problem has a result (${why}): nothing written for a pull request.`);
   jobSummary(runSummary(run, "Benchmark run", { prices }));
-  if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `complete=${complete}\nfolder=${folder}\ntitle=${title.replace(/\n/g, " ")}\n`);
+  if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `complete=${complete}\nlisted=${listed}\nfolder=${folder}\ntitle=${title.replace(/\n/g, " ")}\n`);
+}
+
+/** The pull request's body: what to check, the whole run as a table, and the shared run's own summary. */
+export function prBody(run: BenchRun, shareBody: string, why: string, prices?: string): string {
+  return [
+    why
+      ? `> [!WARNING]\n> **Incomplete: ${why.replace(/\.$/, "")}.** Opened as a draft so the results can be read; merging publishes it with the skipped problems counted as unsolved.`
+      : "> [!NOTE]\n> Opened for review. Merging publishes the run on the leaderboard; closing it publishes nothing.",
+    "",
+    "**Before merging:** the score and cost look right, the model is the one meant, and CI's *Benchmark runs* check (which re-verifies every solved proof with Lean) is green.",
+    "",
+    runSummary(run, "Results", { prices, verdict: why ? `⚠️ Incomplete: ${why}` : "✅ Every problem has a result." }),
+    "",
+    "---",
+    "",
+    shareBody,
+  ].join("\n");
 }
