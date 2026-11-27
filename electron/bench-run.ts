@@ -40,6 +40,26 @@ export type BenchHost = {
   examples(problem: string): string;
   /** A scratch folder path for a search's workspace. */
   scratch(...parts: string[]): string;
+  /** Each attempt in full (the whole thinking and reply, uncut), for runs that publish their traces. */
+  trace?(line: TraceLine): void;
+};
+
+/** One attempt in full, as published with an official run's traces: nothing cut. */
+export type TraceLine = {
+  problem: string;
+  n: number;
+  model?: string;
+  at?: string;
+  outcome: string;
+  kind: string;
+  ms: number;
+  tokens: number;
+  promptTokens?: number;
+  truncated?: boolean;
+  thinking: string;
+  reply: string;
+  candidate: string;
+  lean: string;
 };
 
 /** The prover models named in Settings (comma-separated), each priced into the same meter as the run's main model; empty when none is set. */
@@ -180,6 +200,25 @@ export async function benchOne(host: BenchHost, s: Settings, p: { id: string; so
   };
   // Every method's attempts land in one log: a Mack attempt, a search node, or a swarm member's turn.
   const onEvent = (ev: ProveEvent) => {
+      if (ev.type === "attempt" && host.trace) {
+        const { thinking } = splitReply(ev.reply ?? "", ev.reasoning);
+        host.trace({
+          problem: p.id,
+          n: ev.n,
+          ...(ev.model ? { model: ev.model } : {}),
+          ...(ev.at ? { at: new Date(ev.at).toISOString() } : {}),
+          outcome: ev.outcome,
+          kind: ev.outcome === "verified" ? "verified" : attemptKind(ev),
+          ms: ev.ms,
+          tokens: ev.tokens,
+          ...(ev.promptTokens ? { promptTokens: ev.promptTokens } : {}),
+          ...(ev.truncated ? { truncated: true } : {}),
+          thinking,
+          reply: (ev.reply ?? "").replace(/<think>[\s\S]*?<\/think>/g, "").trim(),
+          candidate: ev.candidate,
+          lean: ev.detail,
+        });
+      }
       if (ev.type === "attempt") {
         if (log.length < LOG_LIMITS.attempts) {
           const { thinking, prose } = splitReply(ev.reply ?? "", ev.reasoning);

@@ -5,7 +5,7 @@
 // with its settings, its failures by reason and every problem's result.
 // Pure functions of the runs, so the page is the same wherever it is built.
 
-import { attemptKinds, BENCH_BASICS, BENCH_SETS, problemInWords, problemOrigin, protocolLabel, protocolOf, LOG_LIMITS, WITHIN, harnessLabel, METHOD_LABELS, FAILURES, failureBreakdown, publishedScore, RECENT_SET, RECENT_YEARS, runMetrics, solvedWithin, summarize, timelineOf, topErrors, type AttemptLog, type BenchResult, type BenchRun } from "./bench";
+import { attemptKinds, BENCH_BASICS, BENCH_SETS, problemInWords, problemOrigin, protocolLabel, protocolOf, LOG_LIMITS, WITHIN, harnessLabel, METHOD_LABELS, FAILURES, failureBreakdown, publishedScore, RECENT_SET, RECENT_YEARS, runMetrics, solvedWithin, summarize, timelineOf, topErrors, tracesUrl, type AttemptLog, type BenchResult, type BenchRun } from "./bench";
 
 /** A run as shared: its folder in the repo, who shared it and from which Mack. */
 export type SharedRun = BenchRun & { folder: string; sharedBy?: string; appVersion?: string; attemptsLogged?: boolean };
@@ -649,6 +649,7 @@ ${byModel.map((x) => `<tr><td>${esc(short(x.model))}</td><td>${x.attempts}</td><
 <section class="reveal"><h2>Settings</h2>
 <div class="card"><div class="kv">
 ${kv("Model", esc(c.model))}
+${r.traces ? kv("Full traces", `<a href="${esc(tracesUrl(r.traces))}">every attempt on Hugging Face</a>`) : ""}
 ${kv("Prover", c.prover ? esc(c.prover) : "none")}
 ${kv("Thinking", c.effort ? esc(c.effort) : "model default")}
 ${kv("Method", esc(METHOD_LABELS[c.method ?? "single"]))}
@@ -803,7 +804,15 @@ ${modelMs ? kpi(dur(modelMs), "in model attempts", `${dur(x.ms - modelMs)} other
 <section><h2>How it went</h2>
 <div class="card story">${story.map((t) => `<p>${t}</p>`).join("")}
 ${timebar}</div></section>
-${rows.length ? `<section><h2>Attempts</h2><div class="attempts">${attempts}</div></section>` : ""}
+${
+  rows.length
+    ? `<section><h2>Attempts</h2>${
+        r.traces
+          ? `<p class="note traces">Below, each attempt's thinking is cut at ${LOG_LIMITS.thinking.toLocaleString("en-US")} characters. <a href="${esc(tracesUrl(r.traces, x.id))}">Every attempt's full thinking and reply</a> is on Hugging Face.</p>`
+          : ""
+      }<div class="attempts">${attempts}</div></section>`
+    : ""
+}
 ${
   x.timeline?.length
     ? `<section><h2>Every step</h2><div class="card"><ol class="steps-list">${x.timeline.map((t) => `<li><span class="t">${clock(t.t)}</span>${esc(t.message)}</li>`).join("")}</ol></div></section>`
@@ -976,6 +985,7 @@ ${failures}
 <li>Made by the Mack repo's own workflow on one fixed cloud machine (GitHub Actions, 4 CPUs, 16 GB), linked from their badge.</li>
 <li>Only those time and cost figures compare across models; community runs ran on their sharers' computers.</li>
 <li>CI refuses the official mark on a pull request from a fork.</li>
+<li>Every attempt's full trace (the whole thinking and reply, the Lean and Lean's verdict) is published to a Hugging Face dataset, linked from each problem's page; this site shows the first ${LOG_LIMITS.thinking.toLocaleString("en-US")} characters of each attempt's thinking.</li>
 </ul></div>
 <div class="card"><h3>Self-reported</h3><ul class="bullets">
 <li>Model names, thinking level, cost, time and tokens.</li>

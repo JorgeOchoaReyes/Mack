@@ -304,6 +304,8 @@ export type BenchRun = {
    * itself, never from a fork.
    */
   official?: { runner: string; url: string };
+  /** Where every attempt's full trace (whole thinking and reply) is published: a Hugging Face dataset and the run's folder in it. */
+  traces?: { dataset: string; path: string };
   /** Share as a pull request on its own once every problem has a result; never for a stopped run or one cut short by its budget. */
   autoShare?: boolean;
   /** Why sharing it on its own failed, to show beside the run (it can still be shared by hand). */
@@ -354,6 +356,13 @@ export function mergeShards(parts: BenchShard[]): BenchRun {
     budget: parts.reduce((a, p) => a + p.run.budget, 0),
   };
 }
+
+/** A Hugging Face dataset id, owner/name, as a run's traces may name it. */
+export const TRACE_DATASET = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,95}\/[A-Za-z0-9][A-Za-z0-9_.-]{0,95}$/;
+
+/** Where a run's full traces are on Hugging Face: the run's folder, or one problem's file in it. */
+export const tracesUrl = (t: { dataset: string; path: string }, problem?: string) =>
+  `https://huggingface.co/datasets/${t.dataset}/${problem ? `blob/main/${t.path}/${encodeURIComponent(problem)}.jsonl` : `tree/main/${t.path}`}`;
 
 /** A run that ran to the end: finished, not stopped, and no problem skipped (by a stop or a spent budget). Only these are shared on their own. */
 export const ranToEnd = (run: Pick<BenchRun, "status" | "results" | "sample">): boolean =>

@@ -1,4 +1,4 @@
-// `node dist-electron/scripts/merge-bench.js --scratch <dir> <shard-0.json> <shard-1.json> …`
+// `node dist-electron/scripts/merge-bench.js --scratch <dir> [--traces <dir of traces-*.jsonl>] <shard-0.json> <shard-1.json> …`
 // Joins the parts of a benchmark run split across machines (run-bench.js
 // --shard/--shards) into one run over the whole sample, then finishes it as a
 // single run would (scripts/bench-finish.ts): written for a pull
@@ -12,7 +12,9 @@ import { finishRun } from "./bench-finish";
 const argv = process.argv.slice(2);
 const at = argv.indexOf("--scratch");
 const scratch = at >= 0 ? argv[at + 1] : "";
-const files = argv.filter((_, k) => k !== at && k !== at + 1);
+const tr = argv.indexOf("--traces");
+const tracesDir = tr >= 0 ? argv[tr + 1] : "";
+const files = argv.filter((_, k) => k !== at && k !== at + 1 && k !== tr && k !== tr + 1);
 if (!scratch || !files.length) {
   console.error("usage: merge-bench --scratch <dir> <shard.json …>");
   process.exit(2);
@@ -27,5 +29,5 @@ if (!set) {
 console.log(`Merged ${parts.length} of ${parts[0].shards} parts: ${run.results.filter((r) => r.outcome !== "skipped").length}/${run.sample.length} problems with a result.`);
 if (run.env) run.env = { ...run.env, platform: `${parts[0].shards} machines in parallel, each ${run.env.platform}` };
 const appVersion = run.env?.app ?? (JSON.parse(readFileSync(join(__dirname, "..", "..", "package.json"), "utf8")) as { version: string }).version;
-finishRun(run, set, appVersion, scratch, parts[0].prices);
+finishRun(run, set, appVersion, scratch, parts[0].prices, tracesDir);
 process.exit(0);
