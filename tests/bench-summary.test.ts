@@ -38,3 +38,35 @@ describe("the job summary of a cloud run", () => {
     expect(runSummary(done, "x", { pr: "https://github.com/o/r/pull/1" })).toContain("> ✅ Complete: https://github.com/o/r/pull/1");
   });
 });
+
+import { problemInWords, problemOrigin } from "../core/bench/bench";
+import { buildSite } from "../core/bench/site";
+
+describe("a problem in words", () => {
+  it("gives miniF2F's informal statement, with a bare LaTeX answer marked as mathematics", () => {
+    expect(problemInWords("mathd_algebra_107")).toContain("Find the radius of the circle");
+    expect(problemInWords("amc12_2001_p5")).toMatch(/Show that it is \$\\text\{\(D\)\}.*\$\.$/);
+  });
+
+  it("reads PutnamBench's docstring of the theorem, not of its answer", () => {
+    const src = "import Mathlib\n\n/-- the answer -/\nabbrev putnam_2000_a1_solution : ℕ := 1\n\n/--\nShow that 1 = 1.\n-/\ntheorem putnam_2000_a1 : 1 = 1 :=\nsorry\n";
+    expect(problemInWords("putnam_2000_a1", src)).toBe("Show that 1 = 1.");
+    expect(problemInWords("unknown", "theorem unknown : True := by sorry")).toBe("");
+  });
+
+  it("names where a problem comes from, and links the original when it is public", () => {
+    expect(problemOrigin("amc12a_2002_p13")).toEqual({ label: "AMC 12A 2002, Problem 13", url: "https://artofproblemsolving.com/wiki/index.php/2002_AMC_12A_Problems/Problem_13" });
+    expect(problemOrigin("putnam_1962_a1")).toEqual({ label: "Putnam 1962, A1" });
+    expect(problemOrigin("induction_12dvd4expnp1p20")).toBeNull();
+  });
+
+  it("is on the problem's page, above the attempts, with the Lean statement folded away", () => {
+    const id = "amc12_2001_p5";
+    const site = buildSite([{ ...run, folder: "f", sample: [id], results: [{ id, outcome: "solved", attempts: 1, ms: 1, usd: 0, proof: "…" }] }], "https://github.com/o/r");
+    const page = site[`runs/f/${id}.html`];
+    expect(page).toContain('<div class="card statement">What is the product of all positive odd integers');
+    expect(page).toContain("As given to the model, in Lean");
+    expect(page).toContain("katex");
+    expect(page.indexOf("The problem")).toBeLessThan(page.indexOf("How it went"));
+  });
+});

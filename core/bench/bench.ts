@@ -7,6 +7,7 @@
 import { MINIF2F_TEST } from "./minif2f-test";
 import { maskSecrets } from "../secrets";
 import { PUTNAMBENCH } from "./putnambench";
+import { MINIF2F_INFORMAL } from "./minif2f-informal";
 
 export type BenchProblem = { id: string; source: string };
 export type BenchSet = { id: string; label: string; blurb: string; problems: BenchProblem[] };
@@ -42,6 +43,39 @@ export const BENCH_SETS: BenchSet[] = [
 ];
 
 export const benchSet = (id: string): BenchSet | undefined => BENCH_SETS.find((s) => s.id === id);
+
+/**
+ * A problem in words, as people read it: miniF2F's informal statement, or the
+ * statement PutnamBench writes as the docstring of the theorem. "" when there
+ * is none (the Lean statement is then all there is).
+ */
+export function problemInWords(id: string, source?: string): string {
+  // miniF2F appends the answer as "Show that it is …", sometimes as bare LaTeX: marked as mathematics, so it renders.
+  if (MINIF2F_INFORMAL[id]) return MINIF2F_INFORMAL[id].replace(/Show that it is ([^$\n]*\\[^$\n]*?)\.?\s*$/, (_, answer: string) => `Show that it is $${answer.trim()}$.`);
+  if (!source) return "";
+  // The docstring just before the theorem itself (a `_solution` definition may have its own before it).
+  const at = source.search(new RegExp(`^theorem\\s+${id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "m"));
+  const before = at >= 0 ? source.slice(0, at) : source;
+  const last = before.lastIndexOf("/--");
+  const m = last >= 0 ? /^\/--([\s\S]*?)-\/\s*$/.exec(before.slice(last)) : null;
+  return m ? m[1].trim() : "";
+}
+
+/** Where a problem comes from, in words, and the page of the original when there is one (AMC, AIME and IMO on the AoPS wiki). */
+export function problemOrigin(id: string): { label: string; url?: string } | null {
+  const wiki = (page: string) => `https://artofproblemsolving.com/wiki/index.php/${page}`;
+  let m = /^amc12([ab]?)_(\d{4})_p(\d+)$/.exec(id);
+  if (m) {
+    const contest = `AMC 12${m[1].toUpperCase()}`;
+    return { label: `${contest} ${m[2]}, Problem ${m[3]}`, url: wiki(`${m[2]}_${contest.replace(" ", "_")}_Problems/Problem_${m[3]}`) };
+  }
+  if ((m = /^aime_(\d{4})_p(\d+)$/.exec(id))) return { label: `AIME ${m[1]}, Problem ${m[2]}`, url: wiki(`${m[1]}_AIME_Problems/Problem_${m[2]}`) };
+  if ((m = /^imo_(\d{4})_p(\d+)/.exec(id))) return { label: `IMO ${m[1]}, Problem ${m[2]}`, url: wiki(`${m[1]}_IMO_Problems/Problem_${m[2]}`) };
+  if ((m = /^imosl_(\d{4})_(\w+?)_p(\d+)$/.exec(id))) return { label: `IMO Shortlist ${m[1]}, ${m[2][0].toUpperCase()}${m[3]}` };
+  if ((m = /^putnam_(\d{4})_([ab]\d+)$/.exec(id))) return { label: `Putnam ${m[1]}, ${m[2].toUpperCase()}` };
+  if ((m = /^mathd_(\w+?)_\d+$/.exec(id))) return { label: `MATH dataset, ${m[1].replace("numbertheory", "number theory")}` };
+  return null;
+}
 
 export type BenchOutcome = "solved" | "failed" | "error" | "skipped";
 

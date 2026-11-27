@@ -5,7 +5,7 @@
 // with its settings, its failures by reason and every problem's result.
 // Pure functions of the runs, so the page is the same wherever it is built.
 
-import { attemptKinds, BENCH_BASICS, BENCH_SETS, protocolLabel, protocolOf, LOG_LIMITS, WITHIN, harnessLabel, METHOD_LABELS, FAILURES, failureBreakdown, publishedScore, RECENT_SET, RECENT_YEARS, runMetrics, solvedWithin, summarize, timelineOf, topErrors, type AttemptLog, type BenchResult, type BenchRun } from "./bench";
+import { attemptKinds, BENCH_BASICS, BENCH_SETS, problemInWords, problemOrigin, protocolLabel, protocolOf, LOG_LIMITS, WITHIN, harnessLabel, METHOD_LABELS, FAILURES, failureBreakdown, publishedScore, RECENT_SET, RECENT_YEARS, runMetrics, solvedWithin, summarize, timelineOf, topErrors, type AttemptLog, type BenchResult, type BenchRun } from "./bench";
 
 /** A run as shared: its folder in the repo, who shared it and from which Mack. */
 export type SharedRun = BenchRun & { folder: string; sharedBy?: string; appVersion?: string; attemptsLogged?: boolean };
@@ -185,6 +185,7 @@ details pre { white-space: pre-wrap; font-size: 12px; background: var(--bar); pa
 .basics p { margin: 0; color: var(--muted); font-size: 14px; }
 .basics b { color: var(--text); }
 .crumbs { margin: 22px 0 0; font-size: 13px; }
+.statement { white-space: pre-wrap; font-size: 16px; line-height: 1.65; overflow-x: auto; }
 .toc { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
 .toc .pill { text-decoration: none; }
 .toc .pill:hover { background: var(--accent-soft); color: var(--accent-text); }
@@ -226,7 +227,12 @@ document.querySelectorAll("[data-count]").forEach((el) => {
 
 const RELEASES = "https://github.com/JorgeOchoaReyes/Mack/releases/latest";
 
-function page(title: string, body: string, root: string, repo = "https://github.com/JorgeOchoaReyes/Mack"): string {
+/** KaTeX, to show the problems' LaTeX ($…$) as mathematics: only on the pages that have it. */
+const MATH_HEAD = `<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" crossorigin="anonymous">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js" crossorigin="anonymous" onload="renderMathInElement(document.querySelector('.statement'),{delimiters:[{left:'$$',right:'$$',display:true},{left:'\\\\[',right:'\\\\]',display:true},{left:'$',right:'$',display:false},{left:'\\\\(',right:'\\\\)',display:false}],throwOnError:false})"></script>`;
+
+function page(title: string, body: string, root: string, repo = "https://github.com/JorgeOchoaReyes/Mack", head = ""): string {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -236,6 +242,7 @@ function page(title: string, body: string, root: string, repo = "https://github.
 <meta name="description" content="How many competition problems Mack proves in Lean: runs shared by its users, every attempt and Lean's verdict.">
 <link rel="icon" href="data:image/svg+xml,${encodeURIComponent(LOGO)}">
 <style>${CSS}</style>
+${head}
 </head>
 <body>
 <header class="top"><div class="wrap-page">
@@ -656,6 +663,8 @@ const clock = (ms: number | null) => (ms === null ? "" : `+${ms < 60_000 ? `${Ma
 
 /** One problem of a run: its statement, then every attempt in order, each opening to Lean's feedback, the model's thinking and the attempt. */
 export function problemPage(r: SharedRun, x: BenchResult, source: string | undefined, repo: string): string {
+  const words = problemInWords(x.id, source);
+  const origin = problemOrigin(x.id);
   const rows = timelineOf(x);
   const auto = x.outcome === "solved" && x.attempts === 0;
   const status = x.outcome === "solved" ? (auto ? `<span class="status auto">Solved by automation</span>${tip(TIPS.automation)}` : '<span class="status ok">Solved</span>') : x.outcome === "skipped" ? '<span class="status">Skipped</span>' : '<span class="status bad">Not solved</span>';
@@ -715,6 +724,8 @@ ${a.prose ? `<p class="small">What it wrote around the proof</p><pre>${esc(a.pro
     `${x.id}: Mack benchmark`,
     `<p class="crumbs"><a href="../../index.html#leaderboard">Leaderboard</a> / <a href="../../models/${esc(modelSlug(r))}.html">${esc(models(r))}</a> / <a href="../${esc(r.folder)}.html">${esc(setLabel(r.set))}, ${day(r.startedAt)}</a></p>
 <h1 style="font-size:28px;margin:14px 0 4px">${esc(x.id)} ${status}</h1>
+${origin ? `<p class="muted" style="margin:0 0 8px">${origin.url ? `<a href="${esc(origin.url)}">${esc(origin.label)}</a>` : esc(origin.label)}</p>` : ""}
+${words || source ? `<section style="padding-top:10px"><h2>The problem</h2>${words ? `<div class="card statement">${esc(words)}</div>` : ""}${source ? `<details${words ? "" : " open"} style="margin-top:10px"><summary>As given to the model, in Lean</summary><pre class="code">${esc(source.trim())}</pre></details>` : ""}</section>` : ""}
 <div class="kpis">
 ${kpi(dur(x.ms), "time*")}
 ${kpi(String(x.attempts), "model attempts", auto ? "none needed" : verified ? `verified on #${verified.n}` : "")}
@@ -725,7 +736,6 @@ ${modelMs ? kpi(dur(modelMs), "in model attempts", `${dur(x.ms - modelMs)} other
 <section><h2>How it went</h2>
 <div class="card story">${story.map((t) => `<p>${t}</p>`).join("")}
 ${timebar}</div></section>
-${source ? `<section><h2>The problem</h2><pre class="code">${esc(source.trim())}</pre></section>` : ""}
 ${rows.length ? `<section><h2>Attempts</h2><div class="attempts">${attempts}</div></section>` : ""}
 ${
   x.timeline?.length
@@ -737,6 +747,7 @@ ${SELF_REPORTED}
 <p class="small"><a href="${esc(repo)}/blob/main/benchmarks/runs/${esc(r.folder)}/attempts.jsonl">attempts.jsonl</a></p>`,
     "../../",
     repo,
+    words ? MATH_HEAD : "",
   );
 }
 
