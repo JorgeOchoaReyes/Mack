@@ -242,7 +242,7 @@ export async function benchOne(host: BenchHost, s: Settings, p: { id: string; so
       if (ev.type === "attempt" && ev.n > 0) {
         attempts++;
         if (ev.outcome !== "verified") {
-          notes.push({ outcome: ev.outcome, detail: ev.detail });
+          notes.push({ outcome: ev.outcome, detail: ev.detail, ...(ev.truncated ? { truncated: true } : {}) });
           lastCandidate = ev.candidate;
         }
       }

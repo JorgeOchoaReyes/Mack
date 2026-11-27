@@ -118,6 +118,9 @@ export function extractLean(reply: string): string {
   return (blocks.length > 0 ? blocks[blocks.length - 1] : cleaned).trim() + "\n";
 }
 
+/** Attempts stream (the pieces are not shown): a reply that stalls is then noticed within minutes, not after the whole call's limit. */
+const streamQuietly = () => undefined;
+
 export async function prove(o: ProveOptions): Promise<void> {
   const objection = frozenObjection(o.frozen);
   if (objection) return o.onEvent({ type: "failed", message: `The problem file is not usable: ${objection}` });
@@ -199,7 +202,7 @@ export async function prove(o: ProveOptions): Promise<void> {
       const at = Date.now();
       try {
         const usual = isProver ? 16384 : 8192;
-        const ask = (maxTokens: number) => writer.provider.chat({ model: writer.model, messages, maxTokens, temperature: isProver ? 0.9 : 0.6, signal });
+        const ask = (maxTokens: number) => writer.provider.chat({ model: writer.model, messages, maxTokens, temperature: isProver ? 0.9 : 0.6, signal, onDelta: streamQuietly });
         // A provider that refuses a reply this long (above the model's own limit) is asked again with the usual one.
         const r = await ask(Math.max(usual, o.maxTokens ?? usual)).catch((e: Error) => {
           if ((o.maxTokens ?? usual) > usual && !signal.aborted && /max_tokens|max tokens|maximum.*tokens|context (length|window)|too (large|long)/i.test(e.message)) return ask(usual);
