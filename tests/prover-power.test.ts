@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { sweep, SWEEP_SUITE } from "../core/lean/analysis";
 import type { LeanCheck } from "../core/lean/check";
 import { describeExamples, ProofStore } from "../core/proof-store";
-import { BENCH_SETS, pickSample, ranToEnd, runBench, summarize, type BenchRun } from "../core/bench/bench";
+import { BENCH_SETS, mergeShards, pickSample, ranToEnd, runBench, shardOf, summarize, type BenchRun } from "../core/bench/bench";
 import { freshRunScript, shq, sshArgs } from "../core/lean/remote";
 
 const check = async (src: string): Promise<LeanCheck> => {
@@ -115,6 +115,32 @@ describe("the benchmark", () => {
     expect(finished.status).toBe("stopped");
     expect(finished.results.map((r) => r.outcome)).toEqual(["skipped", "skipped", "skipped"]);
     expect(finished.results.every((r) => r.message === "stopped")).toBe(true);
+  });
+
+  it("splits a run across machines and joins the parts into the same run over the whole sample", () => {
+    const sample = pickSample(set, 7);
+    const parts = [0, 1, 2].map((i) => shardOf(sample, i, 3));
+    // Every problem in exactly one part, spread across them.
+    expect(parts.flat().sort()).toEqual([...sample].sort());
+    expect(parts.map((p) => p.length)).toEqual([3, 2, 2]);
+    const base: BenchRun = { id: "x", set: set.id, startedAt: 0, finishedAt: 0, status: "done", config: { model: "m", maxAttempts: 1, parallel: 1, automation: true, revisions: 0 }, sample: [], results: [], budget: 1 };
+    const part = (i: number, status: BenchRun["status"] = "done") => ({
+      shard: i,
+      shards: 3,
+      sample,
+      run: { ...base, startedAt: 10 + i, finishedAt: 100 + i, status, sample: parts[i], results: parts[i].map((id) => ({ id, outcome: "failed" as const, attempts: 1, ms: 1, usd: 0.5 })) },
+    });
+    const merged = mergeShards([part(2), part(0), part(1)]);
+    expect(merged.results.map((r) => r.id)).toEqual(sample);
+    expect(merged).toMatchObject({ status: "done", startedAt: 10, finishedAt: 102, budget: 3 });
+    expect(ranToEnd(merged)).toBe(true);
+    // A machine's part missing, or one stopped: not complete, so never shared.
+    const lost = mergeShards([part(0), part(1)]);
+    expect(lost.status).toBe("stopped");
+    expect(lost.results.filter((r) => r.outcome === "skipped").map((r) => r.id)).toEqual(parts[2]);
+    expect(ranToEnd(mergeShards([part(0), part(1, "stopped"), part(2)]))).toBe(false);
+    // Parts of different runs are never joined.
+    expect(() => mergeShards([part(0), { ...part(1), run: { ...part(1).run, config: { ...base.config, model: "other" } } }])).toThrow("different run");
   });
 
   it("counts as complete, for opening a PR on its own, only a run that gave every problem a result", () => {

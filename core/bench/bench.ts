@@ -190,6 +190,14 @@ export function failureBreakdown(results: BenchResult[]): { kind: FailureKind; c
 
 export type BenchMethod = "single" | "decompose" | "steps" | "search" | "ultramath";
 
+export type BenchProtocol = "passk" | "agent";
+
+/** A run's protocol; runs from before protocols were Mack agent runs. */
+export const protocolOf = (r: Pick<BenchRun, "config">): BenchProtocol => r.config.protocol ?? "agent";
+
+/** The protocol as tables and reports name it: "pass@32" for a pass@k run with k = 32. */
+export const protocolLabel = (r: Pick<BenchRun, "config">): string => (protocolOf(r) === "passk" ? `pass@${r.config.maxAttempts}` : "Mack agent");
+
 /** The methods, as the screen and the reports name them. */
 export const METHOD_LABELS: Record<BenchMethod, string> = {
   single: "Attempts (Mack)",
@@ -214,6 +222,17 @@ export type BenchConfig = {
    * "search": Open Math Harness's proof search tree; "ultramath": its swarm of members on a shared board.
    */
   method?: BenchMethod;
+  /**
+   * How the run is scored, which decides what it compares with:
+   * - "passk": the labs' pass@k. Up to `maxAttempts` (k) independent samples per
+   *   problem, each from a fresh prompt with no Lean feedback, checked exactly as
+   *   the model wrote it: no automation, repairs, hints or lemmas from other
+   *   problems. Comparable with DeepSeek-Prover, Kimina or Goedel's pass@k.
+   * - "agent" (absent: older runs): Mack's own system, with Lean's feedback,
+   *   automation, repairs and the method's procedures; comparable only with
+   *   other agent runs.
+   */
+  protocol?: BenchProtocol;
   easierFirst?: boolean;
   premises?: boolean;
   /** Helper lemmas from problems solved earlier in the run offered to later ones (core/bench/pool.ts). */
@@ -243,6 +262,13 @@ export type BenchRun = {
   harness?: BenchHarness;
   /** The pull request that shared the run on the Mack repo, once opened. */
   sharedPr?: { url: string; number: number; at: number; logs: boolean };
+  /**
+   * An official run: made by the Mack repo's own workflow on a fixed cloud
+   * machine (.github/workflows/benchmark-run.yml), so its time and cost compare
+   * across models. CI accepts the mark only on a pull request from the Mack repo
+   * itself, never from a fork.
+   */
+  official?: { runner: string; url: string };
   /** Share as a pull request on its own once every problem has a result; never for a stopped run or one cut short by its budget. */
   autoShare?: boolean;
   /** Why sharing it on its own failed, to show beside the run (it can still be shared by hand). */
@@ -250,6 +276,49 @@ export type BenchRun = {
 };
 
 export type BenchEvent = { type: "started"; run: BenchRun } | { type: "status"; id: string; message: string } | { type: "result"; result: BenchResult } | { type: "finished"; run: BenchRun } | { type: "shared"; run: BenchRun };
+
+/**
+ * One machine's share of a run split across several, as the labs run a whole
+ * set: every `shards`-th problem of the fixed sample, starting at `shard`, so
+ * each machine gets easy and hard problems alike. Each problem is independent
+ * of the others, so the merged run is the same experiment as one machine
+ * running them all.
+ */
+export function shardOf(sample: string[], shard: number, shards: number): string[] {
+  return sample.filter((_, k) => k % shards === shard);
+}
+
+/** One machine's part of a split run, as it hands it to the merge. */
+export type BenchShard = { shard: number; shards: number; sample: string[]; run: BenchRun };
+
+/**
+ * The parts of a split run joined into one run over the whole sample: results
+ * in the sample's order, from the first start to the last finish. It is "done"
+ * only when every part is done and every problem has a result; a missing part
+ * leaves its problems skipped, so the run is not complete and is never shared
+ * as if it were.
+ */
+export function mergeShards(parts: BenchShard[]): BenchRun {
+  if (!parts.length) throw new Error("no parts to merge");
+  const first = parts[0];
+  const sample = first.sample;
+  const key = (r: BenchRun) => JSON.stringify([r.set, r.config]);
+  for (const p of parts) {
+    if (p.shards !== first.shards || JSON.stringify(p.sample) !== JSON.stringify(sample) || key(p.run) !== key(first.run)) throw new Error(`part ${p.shard} is from a different run`);
+  }
+  const byId = new Map(parts.flatMap((p) => p.run.results.map((r) => [r.id, r] as const)));
+  const shards = new Set(parts.map((p) => p.shard));
+  const missing = sample.filter((id) => !byId.has(id));
+  return {
+    ...first.run,
+    sample,
+    results: sample.map((id) => byId.get(id) ?? { id, outcome: "skipped" as const, attempts: 0, ms: 0, usd: 0, message: "its machine's part is missing" }),
+    startedAt: Math.min(...parts.map((p) => p.run.startedAt)),
+    finishedAt: Math.max(...parts.map((p) => p.run.finishedAt)),
+    status: shards.size === first.shards && !missing.length && parts.every((p) => p.run.status === "done") ? "done" : "stopped",
+    budget: parts.reduce((a, p) => a + p.run.budget, 0),
+  };
+}
 
 /** A run that ran to the end: finished, not stopped, and no problem skipped (by a stop or a spent budget). Only these are shared on their own. */
 export const ranToEnd = (run: Pick<BenchRun, "status" | "results" | "sample">): boolean =>
@@ -296,12 +365,15 @@ export async function runBench(o: {
   proveOne: (p: BenchProblem, signal: AbortSignal) => Promise<BenchResult>;
   signal: AbortSignal;
   onEvent: (e: BenchEvent) => void;
+  /** Problems worked on at once (default 1), as the labs run a set: each problem is independent, so the results are the same. */
+  concurrency?: number;
 }): Promise<BenchRun> {
   const run = o.run;
-  // Settles when the run is stopped: the problem in progress is raced against it, so a stop never waits for it.
+  // Settles when the run is stopped: the problems in progress are raced against it, so a stop never waits for them.
   const stopped = new Promise<null>((resolve) => (o.signal.aborted ? resolve(null) : o.signal.addEventListener("abort", () => resolve(null), { once: true })));
   o.onEvent({ type: "started", run });
-  for (const id of run.sample) {
+  let next = 0;
+  const one = async (id: string) => {
     const p = o.set.problems.find((x) => x.id === id);
     const spent = run.results.reduce((a, r) => a + r.usd, 0);
     const over = run.budget > 0 && spent >= run.budget;
@@ -309,7 +381,7 @@ export async function runBench(o: {
       const result: BenchResult = { id, outcome: "skipped", attempts: 0, ms: 0, usd: 0, message: !p ? "not in the set" : over ? "the run's budget is spent" : "stopped" };
       run.results.push(result);
       o.onEvent({ type: "result", result });
-      continue;
+      return;
     }
     o.onEvent({ type: "status", id, message: "starting" });
     const t0 = Date.now();
@@ -321,7 +393,15 @@ export async function runBench(o: {
     }
     run.results.push(result);
     o.onEvent({ type: "result", result });
-  }
+  };
+  // Workers take the next problem of the sample in turn.
+  const worker = async () => {
+    while (next < run.sample.length) await one(run.sample[next++]);
+  };
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(Math.floor(o.concurrency ?? 1) || 1, run.sample.length)) }, worker));
+  // Results in the sample's order, whatever order they finished in.
+  const order = new Map(run.sample.map((id, k) => [id, k]));
+  run.results.sort((x, y) => (order.get(x.id) ?? 0) - (order.get(y.id) ?? 0));
   run.status = o.signal.aborted ? "stopped" : "done";
   run.finishedAt = Date.now();
   o.onEvent({ type: "finished", run });
@@ -680,6 +760,13 @@ export type BenchHarness = { mack: string; openMathHarness: string; procedures: 
 
 /** The harness of a run from its config: the always-on procedures, and the ones its settings turned on. */
 export function harnessOf(config: BenchConfig, mack: string, openMathHarness: string): BenchHarness {
+  // Pass@k uses none of Mack's additions: independent samples, each checked as the model wrote it.
+  if (config.protocol === "passk")
+    return {
+      mack,
+      openMathHarness: openMathHarness.slice(0, 7),
+      procedures: ["strict verifier", "linters off", `pass@${config.maxAttempts}: independent samples, checked as written`, "replies up to 32k tokens", ...(config.effort ? [`thinking ${config.effort}`] : []), ...(config.prover ? [config.prover.includes(",") ? "prover ensemble" : "prover model"] : [])],
+    };
   // Open Math Harness's own searches use none of Mack's additions: only its verifier and Lean rules, as ported.
   if (config.method === "search") return { mack, openMathHarness: openMathHarness.slice(0, 7), procedures: ["strict verifier", "linters off", "OMH search tree"] };
   if (config.method === "ultramath") return { mack, openMathHarness: openMathHarness.slice(0, 7), procedures: ["strict verifier", "linters off", "OMH ultramath swarm"] };

@@ -28,6 +28,9 @@ jobs:
       - run: npx tsc -p tsconfig.electron.json
       - name: Validate the runs this change adds or edits
         shell: bash
+        env:
+          # Official runs may only come from a branch in this repo (its own workflow), never from a fork.
+          MACK_OFFICIAL_ALLOWED: ${{ github.event.pull_request.head.repo.full_name == github.repository && '1' || '0' }}
         run: |
           dirs=$(git diff --name-only "origin/${{ github.base_ref }}"...HEAD -- benchmarks/runs | awk -F/ 'NF>=4 {print $1"/"$2"/"$3}' | sort -u | tr '\n' ' ')
           node dist-electron/scripts/validate-bench.js $dirs

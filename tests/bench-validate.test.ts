@@ -25,6 +25,17 @@ describe("validating a shared run before it is merged", () => {
     expect(validateRun("minif2f-test-single-202611240000", files)).toEqual([]);
   });
 
+  it("accepts the official mark only from the Mack repo's own workflow, linking its run", () => {
+    const official = { ...run, official: { runner: "GitHub Actions ubuntu-latest", url: "https://github.com/JorgeOchoaReyes/Mack/actions/runs/123" } };
+    const files = benchShare(official, set, "0.2.42", "").files;
+    expect(JSON.parse(files["run.json"]).official.url).toContain("/actions/runs/123");
+    // From a fork: refused, whatever it links.
+    expect(validateRun("minif2f-test-single-202611240000", files).join()).toContain("official runs come only from the Mack repo");
+    expect(validateRun("minif2f-test-single-202611240000", files, { officialAllowed: true })).toEqual([]);
+    const elsewhere = benchShare({ ...official, official: { runner: "x", url: "javascript:alert(1)" } }, set, "0.2.42", "").files;
+    expect(validateRun("minif2f-test-single-202611240000", elsewhere, { officialAllowed: true }).join()).toContain("must link the Mack workflow run");
+  });
+
   it("refuses unknown files, bad folders, missing proofs, foreign problems and secrets", () => {
     const good = benchShare(run, set, "0.2.22", "me").files;
     expect(validateRun("Bad Folder", good)[0]).toContain("folder name");

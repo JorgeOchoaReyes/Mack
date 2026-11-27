@@ -16,7 +16,7 @@ export const RUN_FILES = ["REPORT.md", "run.json", "attempts.jsonl"] as const;
 export const RUN_LIMITS: Record<(typeof RUN_FILES)[number], number> = { "REPORT.md": 5_000_000, "run.json": 10_000_000, "attempts.jsonl": 60_000_000 };
 
 /** Every problem with a shared run, as a list of reasons; empty when the run may be merged. */
-export function validateRun(folder: string, files: Record<string, string>): string[] {
+export function validateRun(folder: string, files: Record<string, string>, opts: { officialAllowed?: boolean } = {}): string[] {
   const problems: string[] = [];
   if (!/^[a-z0-9][a-z0-9-]{0,99}$/.test(folder)) problems.push(`the folder name "${folder}" is not lower-case letters, digits and dashes`);
   for (const name of Object.keys(files)) {
@@ -36,6 +36,10 @@ export function validateRun(folder: string, files: Record<string, string>): stri
   } catch (e) {
     return [...problems, `run.json is not JSON: ${(e as Error).message}`];
   }
+  // Only the Mack repo's own workflow makes official runs; a pull request from a fork cannot claim one.
+  if (run.official && !opts.officialAllowed) problems.push("run.json is marked official, but official runs come only from the Mack repo's benchmark workflow, not from a fork");
+  if (run.official && !(/^https:\/\/github\.com\/JorgeOchoaReyes\/Mack\/actions\/runs\/\d+$/.test(String(run.official.url)) && typeof run.official.runner === "string" && run.official.runner.length <= 80))
+    problems.push("an official run must link the Mack workflow run that made it (https://github.com/JorgeOchoaReyes/Mack/actions/runs/…)");
   const set = benchSet(run.set);
   if (!set) problems.push(`run.json names an unknown problem set "${run.set}"`);
   if (typeof run.config?.model !== "string" || !run.config.model) problems.push("run.json has no model");
