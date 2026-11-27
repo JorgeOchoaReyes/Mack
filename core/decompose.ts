@@ -144,6 +144,7 @@ async function attemptDirect(ctx: Ctx, frozen: string, path: string, top: boolea
     // The steps of a split are plain lemmas: the statement checks and the plan in words belong to the theorem.
     prepare: top ? o.prepare : undefined,
     lemmas: top ? o.lemmas : undefined,
+    notes: top ? o.notes : undefined,
     onEvent: (e) => {
       if (e.type === "solved") proof = e.proof;
       else if (e.type === "attempt") ctx.emit({ ...e, n: ++ctx.attempts, detail: `${tag}${e.detail}` });
@@ -159,7 +160,7 @@ async function writeSkeleton(ctx: Ctx, frozen: string, statement: string, why: s
   const o = ctx.o;
   const messages: ChatMessage[] = [
     { role: "system", content: SKELETON_SYSTEM },
-    { role: "user", content: `Frozen file:\n\`\`\`lean\n${frozen}\`\`\`${o.examples ? `\n\n${o.examples}` : ""}${why ? `\n\n${why}` : ""}` },
+    { role: "user", content: `Frozen file:\n\`\`\`lean\n${frozen}\`\`\`${o.notes && !path ? `\n\n${o.notes}` : ""}${o.examples ? `\n\n${o.examples}` : ""}${why ? `\n\n${why}` : ""}` },
   ];
   for (let tries = 0; tries < 3 && !o.signal?.aborted; tries++) {
     ctx.emit({ type: "status", message: `${path ? `[step ${path}] ` : ""}The planning model is splitting the statement into steps…` });

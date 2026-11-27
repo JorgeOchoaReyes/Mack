@@ -1,4 +1,4 @@
-import { BookOpen, ChevronDown, FileCode, FolderOpen, GitBranch, MessagesSquare, RefreshCw, Save, Play, Square, Sparkles, CircleCheck, CircleAlert, Cpu, Repeat, Users, Split } from "lucide-react";
+import { BookOpen, ChevronDown, FileCode, FolderOpen, GitBranch, MessagesSquare, RefreshCw, Save, Play, Square, Sparkles, CircleCheck, CircleAlert, Cpu, Repeat, Users, Split, FlaskConical } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api, errorText, theoremName, type Health, type Project, type RunEvent, type Settings } from "../api";
 import type { LeanFile, ProjectFilesState } from "../project";
@@ -23,6 +23,7 @@ export type ProveRequest = ({ path: string } | { text: string }) & { n: number }
 const MODE_HINT: Record<Settings["mode"], string> = {
   single: "One model writes a proof and fixes it from Lean's errors. Start here.",
   decompose: "Attempts first; if they fail, the statement is split into lemmas that are all proved at once, and split again if needed. For harder statements.",
+  research: "Rounds of plans checked by a referee, worked at once by attempts and splits, keeping every verified lemma and re-planning from failures. For the hardest statements.",
   search: "Several workers build on the most promising partial proofs. For harder statements.",
   ultramath: "Several agents attack from different directions and share findings. For very hard or open-ended problems.",
 };
@@ -298,6 +299,9 @@ export function ProvePage({ problem, setProblem, project, files, openRequest, on
             <button className={settings.mode === "decompose" ? "active" : ""} disabled={running} onClick={() => void saveSettings({ mode: "decompose" })}>
               <Split size={13} /> Decompose
             </button>
+            <button className={settings.mode === "research" ? "active" : ""} disabled={running} onClick={() => void saveSettings({ mode: "research" })}>
+              <FlaskConical size={13} /> Research
+            </button>
             <button className={settings.mode === "search" ? "active" : ""} disabled={running} onClick={() => void saveSettings({ mode: "search" })}>
               <GitBranch size={13} /> Search tree
             </button>
@@ -476,6 +480,10 @@ function HowItWorks({ mode }: { mode: Settings["mode"] }) {
     ["Members pick directions", "Each member registers a line of attack; one that repeats a direction already on the board is refused."],
     ["They share a board", "Lemmas, partial results, counterexamples and dead ends go on a shared board; helper lemmas Lean accepts are marked as checked."],
     ["A judge decides", "With a Lean statement the strict verifier judges submissions; for a problem in plain words, a coordinating agent referees them."],
+  ] : mode === "research" ? [
+    ["Plans, then a referee", "Several proof plans from different angles; a referee model looks for the gap in each and keeps the best two."],
+    ["A portfolio at once", "Each plan is worked by a different method in parallel: attempts that learn from Lean, and a split into lemmas. Every helper lemma Lean accepts is kept."],
+    ["Re-plan and escalate", "What failed and the lemmas found go into the next round's plans, with twice the attempts, until the verifier accepts a proof."],
   ] : mode === "decompose" ? [
     ["Attempts first", "The prover tries the statement directly, with Lean's automation on every gap."],
     ["Split into lemmas", "If that fails, the planning model splits the proof into steps; each step Lean's automation cannot close becomes a lemma of its own."],

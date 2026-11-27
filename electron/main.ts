@@ -131,7 +131,7 @@ export type Settings = {
   proveFolder: string;
 };
 
-export type RunMode = "single" | "decompose" | "search" | "ultramath";
+export type RunMode = "single" | "decompose" | "research" | "search" | "ultramath";
 
 /** What a session has spent, after each priced model call. */
 export type SpendEvent = { type: "spend"; usd: number; limit: number; estimated: boolean };
@@ -786,7 +786,7 @@ async function runProof(problem: string, mode: RunMode, forward: (ev: RunEvent) 
         onEvent: send,
       });
     } else {
-      await attemptProof(host, s, s.mode === "decompose" ? "decompose" : "single", problem, {
+      await attemptProof(host, s, s.mode === "decompose" || s.mode === "research" ? s.mode : "single", problem, {
         provider,
         model,
         meter,
@@ -936,7 +936,7 @@ ipcMain.handle("bench:start", async (e, setId: string, n: number, budget: number
         parallel: parallelOf(s),
         automation: s.leanAutomation,
         revisions: s.revisionsPerChain,
-        method: passk ? "single" : ((["decompose", "steps", "search", "ultramath"] as const).find((x) => x === method) ?? "single"),
+        method: passk ? "single" : ((["decompose", "research", "steps", "search", "ultramath"] as const).find((x) => x === method) ?? "single"),
         protocol: passk ? "passk" : "agent",
         easierFirst: s.easierFirst,
         premises: s.premiseSelection,
