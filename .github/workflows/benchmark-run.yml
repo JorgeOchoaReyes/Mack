@@ -125,6 +125,24 @@ jobs:
           [ "$n" -gt 20 ] && n=20
           echo "count=$n" >> "$GITHUB_OUTPUT"
           echo "parts=$(seq -s, 0 $((n - 1)) | sed 's/^/[/;s/$/]/')" >> "$GITHUB_OUTPUT"
+      # The provider's own model list, with the run's key: a model id it does not list stops the run here, before any
+      # machine starts, with the closest ids; the whole list (and prices) goes on the run's summary page.
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npx tsc -p tsconfig.electron.json
+      - name: Check the model is on the provider's list
+        shell: bash
+        env:
+          IN_PROVIDER: ${{ inputs.provider }}
+          IN_MODEL: ${{ (inputs.model == 'custom' && inputs.custom_model || inputs.model) }}
+          IN_PROVER: ${{ inputs.prover }}
+          FIREWORKS_API_KEY: ${{ secrets.FIREWORKS_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          CHEAPER_INFERENCE_API_KEY: ${{ secrets.CHEAPER_INFERENCE_API_KEY }}
+        run: node dist-electron/scripts/check-model.js --provider "$IN_PROVIDER" --model "$IN_MODEL" --prover "$IN_PROVER"
 
   part:
     needs: plan
