@@ -72,7 +72,7 @@ describe("the benchmark site", () => {
     const index = site["index.html"];
     expect(index.indexOf("runs/a-run.html")).toBeLessThan(index.indexOf("runs/b-run.html"));
     // Two runs of the same two problems share one table, ranked against each other.
-    expect(index).toContain(`<h3 class="size-head">Mack agent · 2 problems <span class="muted">· 2 runs</span>`);
+    expect(index).toContain(`<h3 class="size-head" id="minif2f-test-mack-agent-2">Mack agent · 2 problems <span class="muted">· 2 runs</span>`);
     expect(index).toContain("BEST");
     expect(index).toContain('href="models/big-prover-a-prover-b.html"');
     const model = site["models/big-prover-a-prover-b.html"];
@@ -264,5 +264,18 @@ describe("the problem deep dive", () => {
     expect(page).toContain("before any model wrote a proof");
     expect(site["runs/auto.html"]).toContain("Time per problem");
     expect(site["runs/auto.html"]).toContain(`${p.id}: solved by automation, 1m 30s`);
+  });
+});
+
+describe("links to each part of a page", () => {
+  it("gives every heading an id and a link to it, reusing its section's id", async () => {
+    const { linkHeadings, slugOf } = await import("../core/bench/site");
+    expect(slugOf('Time per problem<span class="tip" tabindex="0" data-tip="x">i</span>')).toBe("time-per-problem");
+    const html = linkHeadings('<section id="leaderboard">\n<h2>Leaderboard</h2></section><section><h2>Settings</h2><h3>Settings</h3><h3 id="fixed">Kept</h3></section>');
+    expect(html).toContain('<h2>Leaderboard<a class="anchor" href="#leaderboard"');
+    expect(html).toContain('<h2 id="settings">Settings<a class="anchor" href="#settings"');
+    expect(html).toContain('<h3 id="settings-2">Settings<a class="anchor" href="#settings-2"');
+    expect(html).toContain('<h3 id="fixed">Kept<a class="anchor" href="#fixed"');
+    expect(linkHeadings(html)).toBe(html);
   });
 });

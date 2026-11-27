@@ -156,6 +156,13 @@ th { font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; color:
 tbody tr { transition: background .15s ease; }
 tbody tr:hover { background: var(--surface-2); }
 tr.link-row { cursor: pointer; }
+.anchor { margin-left: 8px; color: var(--muted); text-decoration: none; font-weight: 500; opacity: 0; transition: opacity .15s; }
+h2:hover .anchor, h3:hover .anchor, .attempt .head:hover .anchor, .anchor:focus { opacity: 1; }
+@media (hover: none) { .anchor { opacity: .45; } }
+:target, .is-target { scroll-margin-top: 80px; }
+.attempt:target, tr:target, .is-target { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 8px; }
+.toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(20px); padding: 8px 14px; border-radius: 999px; background: var(--text); color: var(--bg); font: 500 13px/1.4 ui-sans-serif, system-ui, sans-serif; opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; z-index: 50; }
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 tr:last-child td { border-bottom: 0; }
 td.wrap { white-space: normal; min-width: 180px; }
 .rank { font-weight: 750; color: var(--muted); }
@@ -213,6 +220,34 @@ document.querySelectorAll("tr[data-href]").forEach((tr) => {
     else location.href = tr.dataset.href;
   });
 });
+// Links to a part of a page: copy the whole address, and open what the link points into (a tab, a folded section).
+const toast = document.querySelector(".toast");
+const say = (m) => { if (!toast) return; toast.textContent = m; toast.classList.add("show"); clearTimeout(say.t); say.t = setTimeout(() => toast.classList.remove("show"), 1600); };
+document.addEventListener("click", (e) => {
+  const a = e.target.closest("a.anchor");
+  if (!a) return;
+  e.preventDefault();
+  const url = location.href.split("#")[0] + a.getAttribute("href");
+  history.replaceState(null, "", a.getAttribute("href"));
+  reveal();
+  if (navigator.clipboard) navigator.clipboard.writeText(url).then(() => say("Link copied"), () => say("Link ready in the address bar"));
+  else say("Link ready in the address bar");
+});
+function reveal() {
+  const id = decodeURIComponent(location.hash.slice(1));
+  const el = id && document.getElementById(id);
+  if (!el) return;
+  const panel = el.closest("[data-radio]") || (el.matches("[data-radio]") ? el : null);
+  if (panel) { const r = document.getElementById(panel.dataset.radio); if (r) r.checked = true; }
+  for (let d = el.closest("details"); d; d = d.parentElement && d.parentElement.closest("details")) d.open = true;
+  document.querySelectorAll(".is-target").forEach((x) => x.classList.remove("is-target"));
+  if (el.tagName === "TR" || el.classList.contains("attempt")) el.classList.add("is-target");
+  requestAnimationFrame(() => el.scrollIntoView({ block: "start" }));
+}
+// A leaderboard tab puts its set in the address, so a link opens that tab.
+document.querySelectorAll('.tabs input[type="radio"]').forEach((r) => r.addEventListener("change", () => { const p = document.querySelector('[data-radio="' + r.id + '"]'); if (p && p.id) history.replaceState(null, "", "#" + p.id); }));
+addEventListener("hashchange", reveal);
+reveal();
 const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const io = "IntersectionObserver" in window ? new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } }), { threshold: 0.08 }) : null;
 document.querySelectorAll(".reveal").forEach((el) => (io && !still ? io.observe(el) : el.classList.add("in")));
@@ -255,8 +290,9 @@ ${head}
 </nav>
 </div></header>
 <main class="wrap-page">
-${body}
+${linkHeadings(body)}
 </main>
+<div class="toast" role="status" aria-live="polite"></div>
 <footer class="bottom"><div class="wrap-page">
 <span>Runs shared from Mack's Benchmark screen. Solved means Lean accepted the proof.</span>
 <span>Problems from miniF2F (MIT) and PutnamBench (Apache-2.0) · <a href="${esc(repo)}#contributing">Contribute</a></span>
@@ -265,6 +301,37 @@ ${body}
 </body>
 </html>
 `;
+}
+
+/** A heading's text as an id: lowercase words joined by hyphens, tips and tags left out. */
+export const slugOf = (html: string) =>
+  html
+    .replace(/<span class="tip"[^>]*>.*?<\/span>/g, "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&[a-z#0-9]+;/gi, " ")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "section";
+
+/**
+ * Every section heading (h2, h3) gets an id and a link to itself, so any part of a page can be shared:
+ * a heading that opens a section with an id uses that id; others get one from their text, unique on the page.
+ */
+export function linkHeadings(body: string): string {
+  const used = new Set([...body.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]));
+  return body.replace(/(<section[^>]*\sid="([^"]+)"[^>]*>\s*)?<(h[23])((?:\s[^>]*)?)>([\s\S]*?)<\/\3>/g, (all, opener: string | undefined, sectionId: string | undefined, tag: string, attrs: string, inner: string) => {
+    if (inner.includes('class="anchor"')) return all;
+    let id = /\sid="([^"]+)"/.exec(attrs)?.[1] ?? sectionId ?? "";
+    let own = "";
+    if (!id) {
+      const base = slugOf(inner);
+      id = base;
+      for (let n = 2; used.has(id); n++) id = `${base}-${n}`;
+      used.add(id);
+      own = ` id="${id}"`;
+    }
+    return `${opener ?? ""}<${tag}${own}${attrs}>${inner}<a class="anchor" href="#${id}" aria-label="Copy a link to this section" title="Copy a link to this section">#</a></${tag}>`;
+  });
 }
 
 /** An animated bar: `fraction` of the way, `i` its place in a list for a staggered start. */
@@ -368,7 +435,7 @@ function sizeTables(set: (typeof BENCH_SETS)[number], rows: Row[]): string {
     .map((g) => {
       const group = rows.filter((x) => protocolLabel(x.r) === g.label && x.p.of === g.n);
       const size = g.n === set.problems.length ? `Whole set · ${g.n} problems` : `${g.n} problems`;
-      return `<h3 class="size-head">${esc(g.label)} · ${size} <span class="muted">· ${group.length} run${group.length === 1 ? "" : "s"}</span>${tip(g.passk ? TIPS.passk : TIPS.agent)}${tip(g.n === set.problems.length ? TIPS.whole : TIPS.quick)}</h3>
+      return `<h3 class="size-head" id="${esc(`${set.id}-${slugOf(g.label)}-${g.n}`)}">${esc(g.label)} · ${size} <span class="muted">· ${group.length} run${group.length === 1 ? "" : "s"}</span>${tip(g.passk ? TIPS.passk : TIPS.agent)}${tip(g.n === set.problems.length ? TIPS.whole : TIPS.quick)}</h3>
 ${runTable(group, "")}`;
     })
     .join("\n");
@@ -412,7 +479,7 @@ function setTabs(runs: SharedRun[]): string {
   const panels = sets
     .map((set, i) => {
       const rows = rowsOf(runs.filter((r) => r.set === set.id));
-      return `<div class="panel panel-${i}">
+      return `<div class="panel panel-${i}" id="${esc(set.id)}" data-radio="set-${i}">
 ${sizeTables(set, rows)}
 ${rows.some((x) => x.p.full) ? "" : `<p class="note">No run on the whole set (${set.problems.length} problems) yet.</p>`}
 </div>`;
@@ -528,7 +595,7 @@ export function runPage(r: SharedRun, repo: string): string {
         x.lastError || x.lastCandidate
           ? `<details><summary>${esc(why || "details")}</summary>${x.lastError ? `<p class="small">Lean's last feedback</p><pre>${esc(x.lastError)}</pre>` : ""}${x.lastCandidate ? `<p class="small">Last attempt</p><pre>${esc(x.lastCandidate)}</pre>` : ""}</details>`
           : esc(why);
-      return `<tr${hasPage(x) ? ` class="link-row" data-href="${esc(r.folder)}/${esc(x.id)}.html"` : ""}><td>${hasPage(x) ? `<a href="${esc(r.folder)}/${esc(x.id)}.html">${esc(x.id)}</a>` : esc(x.id)}</td><td>${outcome}</td><td>${x.attempts}</td><td>${Math.round(x.ms / 1000)}s</td><td>${usd(x.usd)}</td><td class="wrap">${detail}</td></tr>`;
+      return `<tr id="${esc(x.id)}"${hasPage(x) ? ` class="link-row" data-href="${esc(r.folder)}/${esc(x.id)}.html"` : ""}><td>${hasPage(x) ? `<a href="${esc(r.folder)}/${esc(x.id)}.html">${esc(x.id)}</a>` : esc(x.id)}</td><td>${outcome}</td><td>${x.attempts}</td><td>${Math.round(x.ms / 1000)}s</td><td>${usd(x.usd)}</td><td class="wrap">${detail}</td></tr>`;
     })
     .join("\n");
   const kv = (label: string, value: string) => `<div><span>${label}</span><b>${value}</b></div>`;
@@ -707,8 +774,8 @@ export function problemPage(r: SharedRun, x: BenchResult, source: string | undef
 
   const attempts = rows
     .map(
-      (a) => `<div class="attempt ${a.kind === "verified" ? "ok" : ""}">
-<div class="head"><b>${a.n === 0 ? "Lean's automation" : `Attempt ${a.n}`}</b><span class="${a.kind === "verified" ? "ok" : "bad"}">${esc(a.label)}</span><span class="muted">${esc(short(a.model ?? ""))}</span><span class="muted">${dur(a.ms)}${a.offsetMs !== null ? ` · at ${clock(a.offsetMs)}` : ""}</span><span class="muted">${a.promptTokens ? `${tokens(a.promptTokens)} → ` : ""}${tokens(a.tokens)} tokens${a.truncated ? ' <span class="bad">cut short</span>' : ""}</span></div>
+      (a) => `<div class="attempt ${a.kind === "verified" ? "ok" : ""}" id="${a.n === 0 ? "automation" : `attempt-${a.n}`}">
+<div class="head"><b>${a.n === 0 ? "Lean's automation" : `Attempt ${a.n}`}</b><a class="anchor" href="#${a.n === 0 ? "automation" : `attempt-${a.n}`}" aria-label="Copy a link to this attempt" title="Copy a link to this attempt">#</a><span class="${a.kind === "verified" ? "ok" : "bad"}">${esc(a.label)}</span><span class="muted">${esc(short(a.model ?? ""))}</span><span class="muted">${dur(a.ms)}${a.offsetMs !== null ? ` · at ${clock(a.offsetMs)}` : ""}</span><span class="muted">${a.promptTokens ? `${tokens(a.promptTokens)} → ` : ""}${tokens(a.tokens)} tokens${a.truncated ? ' <span class="bad">cut short</span>' : ""}</span></div>
 ${a.error ? `<div class="err">${esc(a.error)}${a.repeats ? ` <span class="muted">(same as attempt ${a.repeats})</span>` : ""}</div>` : ""}
 <details><summary>Lean's feedback, the model's thinking and the attempt</summary>
 ${a.detail ? `<p class="small">Lean's feedback</p><pre>${esc(a.detail)}</pre>` : ""}

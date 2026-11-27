@@ -136,7 +136,7 @@ Runs published so far:
 
 | Set | Problems | Model | Protocol | Solved |
 |---|---|---|---|---|
-| miniF2F test | 20 | `us/gpt-6.1-sol` | Mack agent, attempts | **20 / 20** |
+| miniF2F test | 20 | `deepseek-v4.1-flash` (Official) | pass@32 | **14 / 20** |
 
 <p align="center"><img src="docs/images/site-leaderboard.png" width="760" alt="The benchmark site: headline numbers and the leaderboard"></p>
 
