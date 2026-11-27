@@ -1,10 +1,16 @@
-# Official benchmark runs: Mack's benchmark on a fixed cloud machine, started
-# by hand from the Actions tab ("Run workflow"). Only the repository owner can
-# start it. A run that gives every problem a result opens a pull request with
-# the run marked official (benchmarks/runs/<folder>/); CI then re-checks every
-# proof as for any shared run, and the site shows it with an Official badge. A
-# run cut short (a cancel, the budget, or Lean or the model never working)
-# opens nothing; its run.json is kept as an artifact either way.
+# Official benchmark runs, run the way the labs run a whole set: started by
+# hand from the Actions tab ("Run workflow"), by the repository owner only.
+# - The fixed sample is split across up to 20 free GitHub machines that run at
+#   once (each gets every n-th problem, so easy and hard alike).
+# - Every problem gets the same budget (attempts, Lean deadline) and is
+#   independent of the others: no lemmas are shared between problems.
+# - A last job joins the parts into one run. Only when every problem has a
+#   result does it open a pull request with the run marked official
+#   (benchmarks/runs/<folder>/); CI then re-checks every proof as for any
+#   shared run, and the site shows it with an Official badge. A part that was
+#   cancelled, hit the 6-hour limit or ran out of budget leaves the run
+#   incomplete, and nothing is opened; the parts and the joined run.json are
+#   kept as artifacts either way.
 #
 # Needs, in Settings → Secrets and variables → Actions:
 # - the API key of each provider used: FIREWORKS_API_KEY, OPENROUTER_API_KEY,
@@ -23,8 +29,8 @@ on:
         options: [minif2f-test, putnambench, putnam-recent]
         default: minif2f-test
       problems:
-        description: Problems (the fixed sample of this size; the whole set for its size)
-        default: "20"
+        description: Problems (the fixed sample of this size; the set's size runs the whole set)
+        default: "244"
       method:
         description: Method
         type: choice
@@ -49,11 +55,11 @@ on:
       attempts:
         description: Attempts per problem
         default: "8"
-      parallel:
-        description: Attempts at once
-        default: "1"
+      machines:
+        description: Machines in parallel (1-20)
+        default: "20"
       budget:
-        description: Budget in USD (0 = none; a run cut short by it opens no PR)
+        description: Budget in USD for the whole run (0 = none; a run cut short by it opens no PR)
         default: "0"
 permissions:
   contents: write
@@ -62,15 +68,37 @@ concurrency:
   group: official-benchmark
   cancel-in-progress: false
 jobs:
-  run:
+  plan:
     # Official runs are the owner's to make.
     if: github.actor == github.repository_owner
     runs-on: ubuntu-latest
+    outputs:
+      parts: ${{ steps.plan.outputs.parts }}
+      count: ${{ steps.plan.outputs.count }}
+    steps:
+      - id: plan
+        shell: bash
+        env:
+          IN_MACHINES: ${{ inputs.machines }}
+        run: |
+          n=$(printf '%s' "$IN_MACHINES" | tr -cd '0-9')
+          n=${n:-1}
+          [ "$n" -lt 1 ] && n=1
+          [ "$n" -gt 20 ] && n=20
+          echo "count=$n" >> "$GITHUB_OUTPUT"
+          echo "parts=$(seq -s, 0 $((n - 1)) | sed 's/^/[/;s/$/]/')" >> "$GITHUB_OUTPUT"
+
+  part:
+    needs: plan
+    runs-on: ubuntu-latest
     timeout-minutes: 355
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        shard: ${{ fromJSON(needs.plan.outputs.parts) }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.MACK_BENCH_TOKEN || github.token }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -96,8 +124,7 @@ jobs:
           (cd community/lean/.mack/repl && lake build)
       - run: npm ci
       - run: npx tsc -p tsconfig.electron.json
-      - name: Run the benchmark
-        id: bench
+      - name: Run this machine's part
         shell: bash
         # Inputs reach the command only as environment variables, never as code.
         env:
@@ -109,8 +136,9 @@ jobs:
           IN_PROVER: ${{ inputs.prover }}
           IN_EFFORT: ${{ inputs.effort }}
           IN_ATTEMPTS: ${{ inputs.attempts }}
-          IN_PARALLEL: ${{ inputs.parallel }}
           IN_BUDGET: ${{ inputs.budget }}
+          SHARD: ${{ matrix.shard }}
+          SHARDS: ${{ needs.plan.outputs.count }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           FIREWORKS_API_KEY: ${{ secrets.FIREWORKS_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
@@ -119,9 +147,44 @@ jobs:
           node dist-electron/scripts/run-bench.js \
             --set "$IN_SET" --problems "$IN_PROBLEMS" --method "$IN_METHOD" \
             --provider "$IN_PROVIDER" --model "$IN_MODEL" --prover "$IN_PROVER" --effort "$IN_EFFORT" \
-            --attempts "$IN_ATTEMPTS" --parallel "$IN_PARALLEL" --budget "$IN_BUDGET" \
+            --attempts "$IN_ATTEMPTS" --parallel 1 --budget "$IN_BUDGET" --lemma-pool false \
+            --shard "$SHARD" --shards "$SHARDS" \
             --workspace "$PWD/community/lean" --lean-processes 2 --scratch "$RUNNER_TEMP/mack-bench" \
             --official "$RUN_URL" --platform "GitHub Actions ubuntu-latest"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: part-${{ matrix.shard }}
+          path: ${{ runner.temp }}/mack-bench/shard-*.json
+          if-no-files-found: ignore
+
+  merge:
+    needs: [plan, part]
+    # Runs even when a part failed, so what did finish is kept; an incomplete run opens nothing.
+    if: always() && needs.plan.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.MACK_BENCH_TOKEN || github.token }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npx tsc -p tsconfig.electron.json
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: part-*
+          path: ${{ runner.temp }}/parts
+          merge-multiple: true
+      - name: Join the parts
+        id: bench
+        shell: bash
+        run: |
+          shopt -s nullglob
+          parts=("$RUNNER_TEMP"/parts/shard-*.json)
+          if [ ${#parts[@]} -eq 0 ]; then echo "No part finished."; exit 1; fi
+          node dist-electron/scripts/merge-bench.js --scratch "$RUNNER_TEMP/mack-bench" "${parts[@]}"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

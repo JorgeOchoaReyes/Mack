@@ -258,6 +258,49 @@ export type BenchRun = {
 
 export type BenchEvent = { type: "started"; run: BenchRun } | { type: "status"; id: string; message: string } | { type: "result"; result: BenchResult } | { type: "finished"; run: BenchRun } | { type: "shared"; run: BenchRun };
 
+/**
+ * One machine's share of a run split across several, as the labs run a whole
+ * set: every `shards`-th problem of the fixed sample, starting at `shard`, so
+ * each machine gets easy and hard problems alike. Each problem is independent
+ * of the others, so the merged run is the same experiment as one machine
+ * running them all.
+ */
+export function shardOf(sample: string[], shard: number, shards: number): string[] {
+  return sample.filter((_, k) => k % shards === shard);
+}
+
+/** One machine's part of a split run, as it hands it to the merge. */
+export type BenchShard = { shard: number; shards: number; sample: string[]; run: BenchRun };
+
+/**
+ * The parts of a split run joined into one run over the whole sample: results
+ * in the sample's order, from the first start to the last finish. It is "done"
+ * only when every part is done and every problem has a result; a missing part
+ * leaves its problems skipped, so the run is not complete and is never shared
+ * as if it were.
+ */
+export function mergeShards(parts: BenchShard[]): BenchRun {
+  if (!parts.length) throw new Error("no parts to merge");
+  const first = parts[0];
+  const sample = first.sample;
+  const key = (r: BenchRun) => JSON.stringify([r.set, r.config]);
+  for (const p of parts) {
+    if (p.shards !== first.shards || JSON.stringify(p.sample) !== JSON.stringify(sample) || key(p.run) !== key(first.run)) throw new Error(`part ${p.shard} is from a different run`);
+  }
+  const byId = new Map(parts.flatMap((p) => p.run.results.map((r) => [r.id, r] as const)));
+  const shards = new Set(parts.map((p) => p.shard));
+  const missing = sample.filter((id) => !byId.has(id));
+  return {
+    ...first.run,
+    sample,
+    results: sample.map((id) => byId.get(id) ?? { id, outcome: "skipped" as const, attempts: 0, ms: 0, usd: 0, message: "its machine's part is missing" }),
+    startedAt: Math.min(...parts.map((p) => p.run.startedAt)),
+    finishedAt: Math.max(...parts.map((p) => p.run.finishedAt)),
+    status: shards.size === first.shards && !missing.length && parts.every((p) => p.run.status === "done") ? "done" : "stopped",
+    budget: parts.reduce((a, p) => a + p.run.budget, 0),
+  };
+}
+
 /** A run that ran to the end: finished, not stopped, and no problem skipped (by a stop or a spent budget). Only these are shared on their own. */
 export const ranToEnd = (run: Pick<BenchRun, "status" | "results" | "sample">): boolean =>
   run.status === "done" && run.results.length === run.sample.length && run.results.every((r) => r.outcome !== "skipped");

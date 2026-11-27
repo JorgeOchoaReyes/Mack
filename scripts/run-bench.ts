@@ -6,12 +6,14 @@
 // result it writes the run as a share would (benchmarks/runs/<folder>/), ready
 // for a pull request; a run cut short by a stop or its budget is never written
 // there. Progress goes to stdout; with $GITHUB_OUTPUT set, it also writes
-// `complete`, `folder` and `title` there.
+// `complete`, `folder` and `title` there. With --shard i --shards n it runs
+// only its share of the sample and writes shard-<i>.json for merge-bench.js.
 
-import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import { join } from "node:path";
-import { BENCH_SHARE_DIR, benchSet, benchShare, benchSlug, harnessOf, pickSample, ranToEnd, runBench, summarize, type BenchMethod, type BenchRun } from "../core/bench/bench";
+import { benchSet, harnessOf, pickSample, runBench, shardOf, type BenchMethod, type BenchRun, type BenchShard } from "../core/bench/bench";
+import { finishRun } from "./bench-finish";
 import { hasRepl, replPool, splitHeader, type ReplPool } from "../core/lean/repl";
 import { analyzeSketch } from "../core/lean/sketch";
 import { setLeanSlots, splitBudget } from "../core/lean/runner";
@@ -36,7 +38,8 @@ function args(argv: string[]): Record<string, string> {
   for (let i = 0; i < argv.length; i++) {
     const m = /^--([a-z-]+)(?:=(.*))?$/.exec(argv[i]);
     if (!m) throw new Error(`unexpected argument ${argv[i]}`);
-    out[m[1]] = m[2] ?? (argv[i + 1] && !argv[i + 1].startsWith("--") ? argv[++i] : "true");
+    // A value may be empty (--prover "" from the workflow): only a following flag means there is none.
+    out[m[1]] = m[2] ?? (i + 1 < argv.length && !argv[i + 1].startsWith("--") ? argv[++i] : "true");
   }
   return out;
 }
@@ -146,7 +149,11 @@ const host: BenchHost = {
 void (async () => {
   mkdirSync(scratchRoot, { recursive: true });
   const appVersion = (JSON.parse(readFileSync(join(__dirname, "..", "..", "package.json"), "utf8")) as { version: string }).version;
-  const sample = pickSample(set, num("problems", 20));
+  const fullSample = pickSample(set, num("problems", 20));
+  // Split across machines (--shard i --shards n): this machine runs its share of the fixed sample, and merge-bench joins the parts.
+  const shards = Math.max(1, Math.floor(num("shards", 1)));
+  const shard = Math.max(0, Math.min(shards - 1, Math.floor(Number(a.shard) || 0)));
+  const sample = shards > 1 ? shardOf(fullSample, shard, shards) : fullSample;
   const run: BenchRun = {
     id: `${Date.now()}`,
     set: set.id,
@@ -169,7 +176,8 @@ void (async () => {
     },
     sample,
     results: [],
-    budget: Math.max(0, num("budget", 0)),
+    // The budget is the whole run's: each machine gets its share.
+    budget: Math.max(0, num("budget", 0)) / shards,
     label: model.split("/").pop(),
     env: {
       app: appVersion,
@@ -202,30 +210,12 @@ void (async () => {
   });
   pool?.stop();
 
-  const sum = summarize(run);
-  console.log(`\n${sum.solved}/${sum.tried} solved (${(sum.rate * 100).toFixed(1)}%), $${sum.usd.toFixed(2)}, ${Math.round(sum.ms / 60000)} min`);
-  mkdirSync(scratchRoot, { recursive: true });
-  writeFileSync(join(scratchRoot, "run.json"), JSON.stringify(run, null, 2));
-  // A run where Lean or the model never worked measured nothing: never shared, and the job fails so it is seen.
-  const broken = run.results.length > 0 && run.results.every((r) => r.outcome !== "solved" && (r.failure === "harness" || r.failure === "model" || r.outcome === "error"));
-  if (broken) {
-    console.error("Every problem failed because Lean or the model could not run: check the workspace and the API key. Nothing written.");
-    process.exit(1);
-  }
-  const complete = ranToEnd(run);
-  let folder = "";
-  let title = "";
-  if (complete) {
-    folder = benchSlug(run);
-    const share = benchShare(run, set, appVersion, "", { logs: true });
-    title = share.title;
-    const dir = join(BENCH_SHARE_DIR, folder);
-    mkdirSync(dir, { recursive: true });
-    for (const [name, content] of Object.entries(share.files)) writeFileSync(join(dir, name), content);
-    writeFileSync(join(scratchRoot, "pr-body.md"), share.body);
-    console.log(`Written to ${dir}`);
-  } else console.log("Not complete (stopped, or a problem was skipped): nothing written for a pull request.");
-  if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `complete=${complete}\nfolder=${folder}\ntitle=${title.replace(/\n/g, " ")}\n`);
+  if (shards > 1) {
+    const part: BenchShard = { shard, shards, sample: fullSample, run };
+    mkdirSync(scratchRoot, { recursive: true });
+    writeFileSync(join(scratchRoot, `shard-${shard}.json`), JSON.stringify(part));
+    console.log(`Part ${shard + 1} of ${shards}: ${run.results.filter((r) => r.outcome === "solved").length}/${sample.length} solved.`);
+  } else finishRun(run, set, appVersion, scratchRoot);
   process.exit(0);
 })().catch((e: Error) => {
   console.error(e.stack ?? e.message);
