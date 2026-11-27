@@ -88,7 +88,7 @@ export function metered(
           meter.estimated = true;
           usage = {
             promptTokens: estimateTokens(request.messages.map((m) => m.content).join("\n")) + (request.messages.flatMap((m) => m.images ?? []).length * 1000),
-            completionTokens: estimateTokens(r.content),
+            completionTokens: estimateTokens(r.content + (r.reasoning ?? "")),
           };
         }
         meter.spent += callCost(price, usage.promptTokens, usage.completionTokens);

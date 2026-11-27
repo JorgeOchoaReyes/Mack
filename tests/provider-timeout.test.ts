@@ -32,7 +32,7 @@ describe("a model call that stalls", () => {
     expect(calls).toBe(1);
   });
 
-  it("gives up on a call that never answers within the limit, and tries again first", async () => {
+  it("gives up on a call that never answers within the limit, and does not make it again", async () => {
     let calls = 0;
     const url = await endpoint(() => {
       calls++; // never answers
@@ -40,7 +40,7 @@ describe("a model call that stalls", () => {
     const p = new OpenAICompatibleProvider("Silent", url, "", { callTimeoutMs: 150, retries: 1, backoffMs: 1 });
     const err = await p.chat({ model: "m", messages: [{ role: "user", content: "hi" }] }).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(TimeoutError);
-    expect(calls).toBe(2);
+    expect(calls).toBe(1);
   });
 
   it("lets a reply that keeps streaming finish, however long it takes overall", async () => {
@@ -58,6 +58,17 @@ describe("a model call that stalls", () => {
     const p = new OpenAICompatibleProvider("Steady", url, "", { idleTimeoutMs: 200 });
     const r = await p.chat({ model: "m", messages: [{ role: "user", content: "hi" }], onDelta: () => undefined });
     expect(r.content).toBe("012345");
+  });
+
+  it("waits for a model that thinks silently before its reply begins, up to the call limit", async () => {
+    const url = await endpoint((res) => {
+      res.writeHead(200, { "content-type": "text/event-stream" });
+      // Hidden thinking: nothing streamed for longer than the stall limit, then the answer.
+      setTimeout(() => res.end(chunk("done") + "data: [DONE]\n\n"), 300);
+    });
+    const p = new OpenAICompatibleProvider("Quiet thinker", url, "", { idleTimeoutMs: 100, callTimeoutMs: 5_000 });
+    const r = await p.chat({ model: "m", messages: [{ role: "user", content: "hi" }], onDelta: () => undefined });
+    expect(r.content).toBe("done");
   });
 
   it("still stops at once when the caller stops it", async () => {

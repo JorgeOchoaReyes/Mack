@@ -194,12 +194,16 @@ jobs:
           IN_ATTEMPTS: ${{ inputs.attempts }}
           IN_BUDGET: ${{ inputs.budget }}
           SHARD: ${{ matrix.shard }}
+          GH_TOKEN: ${{ github.token }}
           SHARDS: ${{ needs.plan.outputs.count }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           FIREWORKS_API_KEY: ${{ secrets.FIREWORKS_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           CHEAPER_INFERENCE_API_KEY: ${{ secrets.CHEAPER_INFERENCE_API_KEY }}
         run: |
+          # The release this code is, for the run's record (package.json is only versioned at release time).
+          MACK_VERSION=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName 2>/dev/null || true)
+          export MACK_VERSION
           node dist-electron/scripts/run-bench.js \
             --set "$IN_SET" --problems "$IN_PROBLEMS" --method "$IN_METHOD" \
             --provider "$IN_PROVIDER" --model "$IN_MODEL" --prover "$IN_PROVER" --effort "$IN_EFFORT" \

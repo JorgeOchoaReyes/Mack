@@ -132,11 +132,7 @@ of its samples at once. The site ranks each protocol and size in its own table.
 ### Results
 
 Live numbers are on the **[leaderboard](https://jorgeochoareyes.github.io/Mack/)**.
-Runs published so far:
-
-| Set | Problems | Model | Protocol | Solved |
-|---|---|---|---|---|
-| miniF2F test | 20 | `deepseek-v4.1-flash` (Official) | pass@32 | **14 / 20** |
+No official runs are published yet: the first ones are being prepared.
 
 <p align="center"><img src="docs/images/site-leaderboard.png" width="760" alt="The benchmark site: headline numbers and the leaderboard"></p>
 

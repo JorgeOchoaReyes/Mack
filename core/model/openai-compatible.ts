@@ -21,13 +21,13 @@ export type ProviderOptions = {
   backoffMs?: number;
   /** Where `listPrices` reads: `pricing` on `/models` (OpenRouter), or LiteLLM's `/model/info`. */
   prices?: "models" | "litellm";
-  /** A streamed reply that sends nothing for this long has stalled: it is given up (3 minutes by default). */
+  /** A streamed reply that has begun (thinking or answer) and then sends nothing new for this long has stalled: it is given up (3 minutes by default). Before it begins, only `callTimeoutMs` holds it, since some models think without streaming their thinking. */
   idleTimeoutMs?: number;
   /** The most one call may take, start to finish (20 minutes by default): a reply slower than that is given up. */
   callTimeoutMs?: number;
 };
 
-/** A call given up for taking too long: before anything arrived it is made again, as a refused connection would be. */
+/** A call given up for taking too long. It is not made again: it has already used its time. */
 export class TimeoutError extends Error {}
 
 class HttpError extends Error {
@@ -39,7 +39,7 @@ class HttpError extends Error {
   }
 }
 
-const transient = (e: unknown) => (e instanceof HttpError ? e.status === 429 || e.status >= 500 : e instanceof TypeError || e instanceof TimeoutError);
+const transient = (e: unknown) => (e instanceof HttpError ? e.status === 429 || e.status >= 500 : e instanceof TypeError);
 
 function wireMessage(m: ChatMessage): Record<string, unknown> {
   if (!m.images?.length) return { role: m.role, content: m.content };
@@ -174,6 +174,7 @@ export class OpenAICompatibleProvider implements ModelProvider {
       }
       if (j.error) throw new Error(`${this.name}: ${j.error.message ?? "error"}`);
       const thought = j.choices?.[0]?.delta?.reasoning ?? j.choices?.[0]?.delta?.reasoning_content;
+      if (thought || j.choices?.[0]?.delta?.content) alive();
       if (thought) {
         reasoning += thought;
         // Thinking already paid for: the call is not made again if it then stalls.
@@ -188,11 +189,9 @@ export class OpenAICompatibleProvider implements ModelProvider {
       if (j.choices?.[0]?.finish_reason === "length") truncated = true;
       if (j.usage) usage = { promptTokens: j.usage.prompt_tokens ?? 0, completionTokens: j.usage.completion_tokens ?? 0 };
     };
-    alive();
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
-      alive();
       buffer += decoder.decode(value, { stream: true });
       let i: number;
       while ((i = buffer.indexOf("\n")) !== -1) {
