@@ -7,7 +7,7 @@
 // CI runs this on every pull request that adds a run
 // (scripts/validate-bench.ts); a run that fails is not merged.
 
-import { benchSet, sampleProblems, type BenchRun } from "./bench";
+import { benchSet, sampleProblems, TRACE_DATASET, type BenchRun } from "./bench";
 import { findings } from "../secrets";
 
 /** The files a shared run holds; REPORT.md and run.json are required. */
@@ -40,6 +40,9 @@ export function validateRun(folder: string, files: Record<string, string>, opts:
   if (run.official && !opts.officialAllowed) problems.push("run.json is marked official, but official runs come only from the Mack repo's benchmark workflow, not from a fork");
   if (run.official && !(/^https:\/\/github\.com\/JorgeOchoaReyes\/Mack\/actions\/runs\/\d+$/.test(String(run.official.url)) && typeof run.official.runner === "string" && run.official.runner.length <= 80))
     problems.push("an official run must link the Mack workflow run that made it (https://github.com/JorgeOchoaReyes/Mack/actions/runs/…)");
+  // Published traces: a Hugging Face dataset id and this run's own folder in it, nothing else (the site links there).
+  if (run.traces !== undefined && !(run.traces && TRACE_DATASET.test(String(run.traces.dataset)) && run.traces.path === `runs/${folder}`))
+    problems.push(`run.json's traces must name a Hugging Face dataset (owner/name) and the path runs/${folder}`);
   const set = benchSet(run.set);
   if (!set) problems.push(`run.json names an unknown problem set "${run.set}"`);
   if (typeof run.config?.model !== "string" || !run.config.model) problems.push("run.json has no model");

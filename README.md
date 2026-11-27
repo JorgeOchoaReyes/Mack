@@ -157,6 +157,12 @@ It needs the provider's API key as a repository secret (`FIREWORKS_API_KEY`,
 `OPENROUTER_API_KEY` or `CHEAPER_INFERENCE_API_KEY`) and, so the PR's checks
 run, `MACK_BENCH_TOKEN`.
 
+Official runs also publish **every attempt's full trace** (the model's whole
+thinking and reply, the Lean it wrote, Lean's verdict) to a Hugging Face dataset,
+one file per problem, and each problem's page links to it. Set the
+`MACK_TRACES_DATASET` variable (`owner/name`) and the `HF_TOKEN` secret (a
+Hugging Face token with write access) to turn it on.
+
 <p align="center">
   <img src="docs/images/app-metrics.png" width="49%" alt="A run's metrics: solved, cost, time, each model and how attempts ended">
   <img src="docs/images/app-compare.png" width="49%" alt="Two runs head to head on the same problems">

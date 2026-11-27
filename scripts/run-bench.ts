@@ -6,10 +6,12 @@
 // listed it writes the run as a share would (benchmarks/runs/<folder>/), ready
 // for a pull request to review (marked incomplete when its budget ran out).
 // Progress goes to stdout; with $GITHUB_OUTPUT set, it also writes
-// `complete`, `listed`, `folder` and `title` there. With --shard i --shards n it runs
+// `complete`, `listed`, `folder`, `title` and `traces` there. Every attempt is also
+// written in full to traces-<shard>.jsonl, for the run's published traces. With --shard i --shards n it runs
 // only its share of the sample and writes shard-<i>.json for merge-bench.js.
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { maskSecrets } from "../core/secrets";
 import os from "node:os";
 import { join } from "node:path";
 import { benchSet, harnessOf, pickSample, runBench, shardOf, type BenchMethod, type BenchRun, type BenchShard } from "../core/bench/bench";
@@ -149,6 +151,8 @@ const host: BenchHost = {
   premisesFor: async (_st, frozen) => (index ? describePremises(premises(await index.load(), extractStatement(frozen) ?? frozen)) : ""),
   examples: () => "",
   scratch: (...parts) => join(scratchRoot, ...parts),
+  // Every attempt in full, uncut, for the run's published traces (anything that looks like a key masked).
+  trace: (line) => appendFileSync(join(scratchRoot, `traces-${Number(a.shard) || 0}.jsonl`), `${maskSecrets(JSON.stringify(line))}\n`),
 };
 
 void (async () => {
@@ -225,13 +229,14 @@ void (async () => {
   });
   pool?.stop();
 
-  if (shards > 1) {
+  // A machine of a split run (the workflow always says which, even when there is only one) leaves its part for merge-bench.
+  if (shards > 1 || a.shard !== undefined) {
     const part: BenchShard = { shard, shards, sample: fullSample, run, prices };
     mkdirSync(scratchRoot, { recursive: true });
     writeFileSync(join(scratchRoot, `shard-${shard}.json`), JSON.stringify(part));
     console.log(`Part ${shard + 1} of ${shards}: ${run.results.filter((r) => r.outcome === "solved").length}/${sample.length} solved.`);
     jobSummary(runSummary(run, `Machine ${shard + 1} of ${shards}`, { prices }));
-  } else finishRun(run, set, appVersion, scratchRoot, prices);
+  } else finishRun(run, set, appVersion, scratchRoot, prices, scratchRoot);
   process.exit(0);
 })().catch((e: Error) => {
   console.error(e.stack ?? e.message);

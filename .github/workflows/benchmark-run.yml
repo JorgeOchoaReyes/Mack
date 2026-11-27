@@ -193,7 +193,9 @@ jobs:
         if: always()
         with:
           name: part-${{ matrix.shard }}
-          path: ${{ runner.temp }}/mack-bench/shard-*.json
+          path: |
+            ${{ runner.temp }}/mack-bench/shard-*.json
+            ${{ runner.temp }}/mack-bench/traces-*.jsonl
           if-no-files-found: ignore
 
   merge:
@@ -218,17 +220,40 @@ jobs:
       - name: Join the parts
         id: bench
         shell: bash
+        env:
+          # owner/name of the Hugging Face dataset for the full traces (Settings → Variables); empty publishes none.
+          MACK_TRACES_DATASET: ${{ vars.MACK_TRACES_DATASET }}
         run: |
           shopt -s nullglob
           parts=("$RUNNER_TEMP"/parts/shard-*.json)
           if [ ${#parts[@]} -eq 0 ]; then echo "No part finished."; exit 1; fi
-          node dist-electron/scripts/merge-bench.js --scratch "$RUNNER_TEMP/mack-bench" "${parts[@]}"
+          node dist-electron/scripts/merge-bench.js --scratch "$RUNNER_TEMP/mack-bench" --traces "$RUNNER_TEMP/parts" "${parts[@]}"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: benchmark-run
           path: ${{ runner.temp }}/mack-bench/run.json
           if-no-files-found: ignore
+      # Every attempt's full thinking and reply, one file per problem, to the Hugging Face dataset; the site links there.
+      # A failed upload never blocks the results: the run is then published without the link.
+      - name: Publish the full traces to Hugging Face
+        id: traces
+        if: steps.bench.outputs.traces == 'true'
+        continue-on-error: true
+        shell: bash
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          MACK_TRACES_DATASET: ${{ vars.MACK_TRACES_DATASET }}
+          FOLDER: ${{ steps.bench.outputs.folder }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "$HF_TOKEN" ]; then
+            echo "### Traces not published: add the HF_TOKEN secret (a Hugging Face token with write access)" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          pip install --quiet "huggingface_hub>=0.30"
+          url=$(python3 scripts/publish-traces.py "$RUNNER_TEMP/mack-bench/traces" "$FOLDER")
+          echo "### Full traces: $url" >> "$GITHUB_STEP_SUMMARY"
       # Opened for review, never merged here: the owner reads the results and merges to publish. A run cut short
       # (a spent budget) opens as a draft that says why; one missing a machine's part opens nothing.
       - name: Open the pull request for review
@@ -239,11 +264,17 @@ jobs:
           FOLDER: ${{ steps.bench.outputs.folder }}
           TITLE: ${{ steps.bench.outputs.title }}
           COMPLETE: ${{ steps.bench.outputs.complete }}
+          TRACES: ${{ steps.bench.outputs.traces }}
+          TRACES_UPLOADED: ${{ steps.traces.outcome }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           branch="official/$FOLDER-${{ github.run_id }}"
           git checkout -b "$branch"
+          # Traces that did not reach Hugging Face are not linked.
+          if [ "$TRACES" = true ] && [ "$TRACES_UPLOADED" != success ]; then
+            jq 'del(.traces)' "benchmarks/runs/$FOLDER/run.json" > run.tmp && mv run.tmp "benchmarks/runs/$FOLDER/run.json"
+          fi
           git add "benchmarks/runs/$FOLDER"
           git commit -m "Official $TITLE"
           git push origin "$branch"
