@@ -1,0 +1,2502 @@
+{
+  "id": "1795845212316",
+  "set": "minif2f-test",
+  "startedAt": 1795845183008,
+  "finishedAt": 1795846554980,
+  "status": "done",
+  "config": {
+    "provider": "cheaperinference",
+    "model": "deepseek-v4.1-flash",
+    "maxAttempts": 32,
+    "parallel": 8,
+    "automation": false,
+    "revisions": 1,
+    "method": "single",
+    "protocol": "passk",
+    "easierFirst": false,
+    "premises": false,
+    "effort": "high",
+    "maxTokens": 65536,
+    "temperature": 0.6
+  },
+  "sample": [
+    "mathd_algebra_598",
+    "imo_1992_p1",
+    "imo_2001_p6",
+    "amc12a_2019_p12",
+    "aime_1997_p9",
+    "mathd_algebra_513",
+    "mathd_numbertheory_618",
+    "amc12_2001_p5",
+    "amc12b_2020_p22",
+    "amc12b_2020_p21",
+    "imo_1969_p2",
+    "numbertheory_notEquiv2i2jasqbsqdiv8",
+    "amc12b_2020_p13",
+    "induction_sumkexp3eqsumksq",
+    "imo_1963_p5",
+    "aime_1988_p8",
+    "imo_1983_p6",
+    "induction_pord1p1on2powklt5on2",
+    "mathd_numbertheory_728",
+    "aime_1989_p8"
+  ],
+  "results": [
+    {
+      "id": "mathd_algebra_598",
+      "outcome": "solved",
+      "attempts": 1,
+      "ms": 66485,
+      "usd": 0.0036375005319999997,
+      "proof": "import Mathlib\n\nset_option maxHeartbeats 400000\n\nopen BigOperators Real Nat Topology Rat\n\ntheorem mathd_algebra_598\n  (a b c d : ℝ)\n  (h₁ : ((4:ℝ)^a) = 5)\n  (h₂ : ((5:ℝ)^b) = 6)\n  (h₃ : ((6:ℝ)^c) = 7)\n  (h₄ : ((7:ℝ)^d) = 8) :\n  a * b * c * d = 3 / 2 := by\n  have h1log : a * Real.log 4 = Real.log 5 := by\n    have := congrArg Real.log h₁\n    rw [Real.log_rpow (by norm_num : (0:ℝ) < 4)] at this\n    simpa using this\n  have h2log : b * Real.log 5 = Real.log 6 := by\n    have := congrArg Real.log h₂\n    rw [Real.log_rpow (by norm_num : (0:ℝ) < 5)] at this\n    simpa using this\n  have h3log : c * Real.log 6 = Real.log 7 := by\n    have := congrArg Real.log h₃\n    rw [Real.log_rpow (by norm_num : (0:ℝ) < 6)] at this\n    simpa using this\n  have h4log : d * Real.log 7 = Real.log 8 := by\n    have := congrArg Real.log h₄\n    rw [Real.log_rpow (by norm_num : (0:ℝ) < 7)] at this\n    simpa using this\n  have hlog4 : Real.log 4 ≠ 0 := ne_of_gt (Real.log_pos (by norm_num : (1:ℝ) < 4))\n  have hlog5 : Real.log 5 ≠ 0 := ne_of_gt (Real.log_pos (by norm_num : (1:ℝ) < 5))\n  have hlog6 : Real.log 6 ≠ 0 := ne_of_gt (Real.log_pos (by norm_num : (1:ℝ) < 6))\n  have hlog7 : Real.log 7 ≠ 0 := ne_of_gt (Real.log_pos (by norm_num : (1:ℝ) < 7))\n  have ha : a = Real.log 5 / Real.log 4 := by\n    rw [eq_div_iff hlog4]\n    simpa using h1log\n  have hb : b = Real.log 6 / Real.log 5 := by\n    rw [eq_div_iff hlog5]\n    simpa using h2log\n  have hc : c = Real.log 7 / Real.log 6 := by\n    rw [eq_div_iff hlog6]\n    simpa using h3log\n  have hd : d = Real.log 8 / Real.log 7 := by\n    rw [eq_div_iff hlog7]\n    simpa using h4log\n  calc\n    a * b * c * d = (Real.log 5 / Real.log 4) * (Real.log 6 / Real.log 5) *\n        (Real.log 7 / Real.log 6) * (Real.log 8 / Real.log 7) := by\n      rw [ha, hb, hc, hd]\n    _ = Real.log 8 / Real.log 4 := by\n      field_simp [hlog4, hlog5, hlog6, hlog7] <;> ring\n    _ = 3 / 2 := by\n      have hlog8 : Real.log 8 = 3 * Real.log 2 := by\n        rw [show (8:ℝ) = (2:ℝ) ^ (3:ℕ) by norm_num, Real.log_pow]\n        norm_num\n      have hlog4' : Real.log 4 = 2 * Real.log 2 := by\n        rw [show (4:ℝ) = (2:ℝ) ^ (2:ℕ) by norm_num, Real.log_pow]\n        norm_num\n      rw [hlog8, hlog4']\n      have hlog2 : Real.log 2 ≠ 0 := ne_of_gt (Real.log_pos (by norm_num : (1:ℝ) < 2))\n      field_simp [hlog2] <;> ring\n",
+      "timeline": [
+        {
+          "t": 2,
+          "message": "Elaborating the frozen statement with Lean (first run loads Mathlib)…"
+        },
+        {
+          "t": 3156,
+          "message": "Attempt 1 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3158,
+          "message": "Attempt 2 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3159,
+          "message": "Attempt 3 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3159,
+          "message": "Attempt 4 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3159,
+          "message": "Attempt 5 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3160,
+          "message": "Attempt 6 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3160,
+          "message": "Attempt 7 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3160,
+          "message": "Attempt 8 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 60266,
+          "message": "Attempt 5 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 63459,
+          "message": "Attempt 5 of 32 (8 at once): Lean accepts it; running the strict verifier…"
+        }
+      ]
+    },
+    {
+      "id": "imo_1992_p1",
+      "outcome": "solved",
+      "attempts": 13,
+      "ms": 728644,
+      "usd": 0.23187792583400002,
+      "proof": "import Mathlib\n\nset_option maxHeartbeats 400000\n\nopen BigOperators Real Nat Topology Rat\n\nlemma ineq_bc (b c : ℤ) (hb : 2 ≤ b) (hc : 3 ≤ c) :\n    2*b + 2*c + 1 < 2*b*c := by\n  have hx : 0 ≤ b - 2 := by omega\n  have hy : 0 ≤ c - 3 := by omega\n  have hxy : 0 ≤ (b - 2) * (c - 3) := mul_nonneg hx hy\n  have hdecomp : 2*b*c - (2*b + 2*c + 1) =\n      1 + 4*(b-2) + 2*(c-3) + 2*(b-2)*(c-3) := by ring\n  have hpos : 0 < 1 + 4*(b-2) + 2*(c-3) + 2*(b-2)*(c-3) := by\n    nlinarith [hx, hy, hxy]\n  linarith [hdecomp, hpos]\n\nlemma ineq_2abc (a b c : ℤ) (ha : 2 ≤ a) (hb : 3 ≤ b) (hc : 4 ≤ c) :\n    a*b + a*c + b*c + a + b + c < 2*a*b*c := by\n  have hx : 0 ≤ a - 2 := by omega\n  have hy : 0 ≤ b - 3 := by omega\n  have hz : 0 ≤ c - 4 := by omega\n  have hxy : 0 ≤ (a-2)*(b-3) := mul_nonneg hx hy\n  have hxz : 0 ≤ (a-2)*(c-4) := mul_nonneg hx hz\n  have hyz : 0 ≤ (b-3)*(c-4) := mul_nonneg hy hz\n  have hxyz : 0 ≤ (a-2)*(b-3)*(c-4) := mul_nonneg (mul_nonneg hx hy) hz\n  have hdecomp : 2*a*b*c - (a*b + a*c + b*c + a + b + c) =\n      13 + 16*(a-2) + 9*(b-3) + 6*(c-4) + 7*(a-2)*(b-3) +\n      5*(a-2)*(c-4) + 3*(b-3)*(c-4) + 2*(a-2)*(b-3)*(c-4) := by ring\n  have hpos : 0 < 13 + 16*(a-2) + 9*(b-3) + 6*(c-4) + 7*(a-2)*(b-3) +\n      5*(a-2)*(c-4) + 3*(b-3)*(c-4) + 2*(a-2)*(b-3)*(c-4) := by\n    nlinarith [hx, hy, hz, hxy, hxz, hyz, hxyz]\n  linarith [hdecomp, hpos]\n\nlemma ineq_abc (a b c : ℤ) (ha : 3 ≤ a) (hb : 4 ≤ b) (hc : 5 ≤ c) :\n    a*b + a*c + b*c + a + b + c < a*b*c := by\n  have hx : 0 ≤ a - 3 := by omega\n  have hy : 0 ≤ b - 4 := by omega\n  have hz : 0 ≤ c - 5 := by omega\n  have hxy : 0 ≤ (a-3)*(b-4) := mul_nonneg hx hy\n  have hxz : 0 ≤ (a-3)*(c-5) := mul_nonneg hx hz\n  have hyz : 0 ≤ (b-4)*(c-5) := mul_nonneg hy hz\n  have hxyz : 0 ≤ (a-3)*(b-4)*(c-5) := mul_nonneg (mul_nonneg hx hy) hz\n  have hdecomp : a*b*c - (a*b + a*c + b*c + a + b + c) =\n      1 + 10*(a-3) + 6*(b-4) + 4*(c-5) + 4*(a-3)*(b-4) +\n      3*(a-3)*(c-5) + 2*(b-4)*(c-5) + (a-3)*(b-4)*(c-5) := by ring\n  have hpos : 0 < 1 + 10*(a-3) + 6*(b-4) + 4*(c-5) + 4*(a-3)*(b-4) +\n      3*(a-3)*(c-5) + 2*(b-4)*(c-5) + (a-3)*(b-4)*(c-5) := by\n    nlinarith [hx, hy, hz, hxy, hxz, hyz, hxyz]\n  linarith [hdecomp, hpos]\n\ntheorem imo_1992_p1\n  (p q r : ℤ)\n  (h₀ : 1 < p ∧ p < q ∧ q < r)\n  (h₁ : (p - 1) * (q - 1) * (r - 1)∣(p * q * r - 1)) :\n  (p, q, r) = (2, 4, 8) ∨ (p, q, r) = (3, 5, 15) := by\n  have hp2 : 2 ≤ p := by omega\n  have hq3 : 3 ≤ q := by omega\n  have hr4 : 4 ≤ r := by omega\n  set a : ℤ := p - 1 with ha_def\n  set b : ℤ := q - 1 with hb_def\n  set c : ℤ := r - 1 with hc_def\n  have hp_eq : p = a + 1 := by omega\n  have hq_eq : q = b + 1 := by omega\n  have hr_eq : r = c + 1 := by omega\n  have ha : 1 ≤ a := by omega\n  have hb : 2 ≤ b := by omega\n  have hc : 3 ≤ c := by omega\n  have hab : a < b := by omega\n  have hbc : b < c := by omega\n  rcases h₁ with ⟨k, hk⟩\n  have hk' : (a+1)*(b+1)*(c+1) - 1 = a*b*c*k := by\n    calc\n      (a+1)*(b+1)*(c+1) - 1 = p*q*r - 1 := by rw [← hp_eq, ← hq_eq, ← hr_eq]\n      _ = (p-1)*(q-1)*(r-1)*k := hk\n      _ = a*b*c*k := by rw [← ha_def, ← hb_def, ← hc_def]\n  have hk_eq : a*b*c*k = a*b*c + a*b + a*c + b*c + a + b + c := by\n    have := hk'\n    ring_nf at this ⊢\n    linarith\n  have ha_pos : 0 < a := by omega\n  have hb_pos : 0 < b := by omega\n  have hc_pos : 0 < c := by omega\n  have hab_pos : 0 < a*b := mul_pos ha_pos hb_pos\n  have hac_pos : 0 < a*c := mul_pos ha_pos hc_pos\n  have hbc_pos : 0 < b*c := mul_pos hb_pos hc_pos\n  have habc_pos : 0 < a*b*c := mul_pos hab_pos hc_pos\n  have hsum_pos : 0 < a*b + a*c + b*c + a + b + c := by\n    linarith\n  have hk_ge2 : 2 ≤ k := by\n    by_contra h\n    have hk_le1 : k ≤ 1 := by omega\n    have hle : a*b*c*k ≤ a*b*c := by\n      have := mul_le_mul_of_nonneg_left hk_le1 (le_of_lt habc_pos)\n      simpa using this\n    have hgt : a*b*c < a*b*c + (a*b + a*c + b*c + a + b + c) := by\n      linarith [hsum_pos]\n    linarith [hk_eq, hle, hgt]\n  by_cases ha1 : a = 1\n  · have hk_eq1 : b*c*k = 2*b*c + 2*b + 2*c + 1 := by\n      rw [ha1] at hk_eq\n      ring_nf at hk_eq ⊢\n      linarith\n    have hk_sub : b*c*(k-2) = 2*b + 2*c + 1 := by\n      have := hk_eq1\n      ring_nf at this ⊢\n      linarith\n    have hk_ge3 : 3 ≤ k := by\n      have hpos : 0 < 2*b + 2*c + 1 := by nlinarith [hb_pos, hc_pos]\n      have : 0 < k - 2 := by\n        by_contra h\n        have hle : k - 2 ≤ 0 := by omega\n        have hnonpos : b*c*(k-2) ≤ 0 :=\n          mul_nonpos_of_nonneg_of_nonpos (le_of_lt hbc_pos) hle\n        linarith [hk_sub, hpos, hnonpos]\n      omega\n    have hk_le3 : k ≤ 3 := by\n      by_contra h\n      have hk_ge4 : 4 ≤ k := by omega\n      have h2 : 2 ≤ k - 2 := by omega\n      have hle : 2*b*c ≤ b*c*(k-2) := by\n        have := mul_le_mul_of_nonneg_left h2 (le_of_lt hbc_pos)\n        nlinarith [this]\n      have hineq : 2*b + 2*c + 1 < 2*b*c := ineq_bc b c hb hc\n      linarith [hk_sub, hle, hineq]\n    have hk3 : k = 3 := by omega\n    have hbc_eq : b*c = 2*b + 2*c + 1 := by\n      rw [hk3] at hk_eq1\n      ring_nf at hk_eq1 ⊢\n      linarith\n    have hc_eq : c*(b-2) = 2*b + 1 := by\n      have := hbc_eq\n      ring_nf at this ⊢\n      linarith\n    have hb_ne2 : b ≠ 2 := by\n      intro hb2\n      rw [hb2] at hc_eq\n      norm_num at hc_eq\n    have hb_ge3 : 3 ≤ b := by\n      by_contra h\n      have hb_le2 : b ≤ 2 := by omega\n      have hb_eq2 : b = 2 := by omega\n      exact hb_ne2 hb_eq2\n    have hc_ge : b + 1 ≤ c := by omega\n    have hb2_nonneg : 0 ≤ b - 2 := by omega\n    have hmul : (b-2)*(b+1) ≤ (b-2)*c :=\n      mul_le_mul_of_nonneg_left hc_ge hb2_nonneg\n    have hb_le3 : b ≤ 3 := by\n      by_contra h\n      have hb4 : 4 ≤ b := by omega\n      have hb4nonneg : 0 ≤ b - 4 := by omega\n      have hb1nonneg : 0 ≤ b + 1 := by omega\n      have hprod : 0 ≤ (b - 4)*(b + 1) := mul_nonneg hb4nonneg hb1nonneg\n      nlinarith [hmul, hc_eq, hprod]\n    have hb3 : b = 3 := by omega\n    have hc7 : c = 7 := by\n      rw [hb3] at hc_eq\n      norm_num at hc_eq\n      exact hc_eq\n    have hp2' : p = 2 := by omega\n    have hq4 : q = 4 := by omega\n    have hr8 : r = 8 := by omega\n    left\n    rw [hp2', hq4, hr8]\n  · have ha2 : 2 ≤ a := by omega\n    have hb3 : 3 ≤ b := by omega\n    have hc4 : 4 ≤ c := by omega\n    have hk_le2 : k ≤ 2 := by\n      by_contra h\n      have hk_ge3 : 3 ≤ k := by omega\n      have hk_sub : a*b*c*(k-1) = a*b + a*c + b*c + a + b + c := by\n        have := hk_eq\n        ring_nf at this ⊢\n        linarith\n      have h2 : 2 ≤ k - 1 := by omega\n      have hle : 2*a*b*c ≤ a*b*c*(k-1) := by\n        have := mul_le_mul_of_nonneg_left h2 (le_of_lt habc_pos)\n        nlinarith [this]\n      have hineq : a*b + a*c + b*c + a + b + c < 2*a*b*c :=\n        ineq_2abc a b c ha2 hb3 hc4\n      linarith [hk_sub, hle, hineq]\n    have hk2 : k = 2 := by omega\n    have hsum_eq : a*b + a*c + b*c + a + b + c = a*b*c := by\n      have := hk_eq\n      rw [hk2] at this\n      ring_nf at this ⊢\n      linarith\n    have ha_eq2 : a = 2 := by\n      by_contra h\n      have ha3 : 3 ≤ a := by omega\n      have hb4 : 4 ≤ b := by omega\n      have hc5 : 5 ≤ c := by omega\n      have hineq : a*b + a*c + b*c + a + b + c < a*b*c :=\n        ineq_abc a b c ha3 hb4 hc5\n      linarith [hsum_eq, hineq]\n    have hbc_eq2 : b*c = 3*b + 3*c + 2 := by\n      have := hsum_eq\n      rw [ha_eq2] at this\n      ring_nf at this ⊢\n      linarith\n    have hc_eq2 : c*(b-3) = 3*b + 2 := by\n      have := hbc_eq2\n      ring_nf at this ⊢\n      linarith\n    have hb_ne3 : b ≠ 3 := by\n      intro hb3eq\n      rw [hb3eq] at hc_eq2\n      norm_num at hc_eq2\n    have hb_ge3' : 3 ≤ b := by omega\n    have hb_ge4 : 4 ≤ b := by\n      by_contra h\n      have hb_le3 : b ≤ 3 := by omega\n      have hb_eq3 : b = 3 := by omega\n      exact hb_ne3 hb_eq3\n    have hc_ge : b + 1 ≤ c := by omega\n    have hb3_nonneg : 0 ≤ b - 3 := by omega\n    have hmul : (b-3)*(b+1) ≤ (b-3)*c :=\n      mul_le_mul_of_nonneg_left hc_ge hb3_nonneg\n    have hb_le5 : b ≤ 5 := by\n      by_contra h\n      have hb6 : 6 ≤ b := by omega\n      have hb6nonneg : 0 ≤ b - 6 := by omega\n      have hb1nonneg : 0 ≤ b + 1 := by omega\n      have hprod : 0 ≤ (b - 6)*(b + 1) := mul_nonneg hb6nonneg hb1nonneg\n      nlinarith [hmul, hc_eq2, hprod]\n    have hb_cases : b = 4 ∨ b = 5 := by omega\n    rcases hb_cases with hb4 | hb5\n    · have hc14 : c = 14 := by\n        rw [hb4] at hc_eq2\n        norm_num at hc_eq2\n        exact hc_eq2\n      have hp3 : p = 3 := by omega\n      have hq5 : q = 5 := by omega\n      have hr15 : r = 15 := by omega\n      right\n      rw [hp3, hq5, hr15]\n    · rw [hb5] at hc_eq2\n      norm_num at hc_eq2\n      omega\n",
+      "timeline": [
+        {
+          "t": 4,
+          "message": "Elaborating the frozen statement with Lean (first run loads Mathlib)…"
+        },
+        {
+          "t": 4273,
+          "message": "Attempt 1 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 4275,
+          "message": "Attempt 2 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 4276,
+          "message": "Attempt 3 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 4277,
+          "message": "Attempt 4 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 4277,
+          "message": "Attempt 5 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 4278,
+          "message": "Attempt 6 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 4278,
+          "message": "Attempt 7 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 4279,
+          "message": "Attempt 8 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 187556,
+          "message": "Attempt 6 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 207496,
+          "message": "Attempt 2 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 219891,
+          "message": "Attempt 5 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 227646,
+          "message": "Attempt 7 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 233439,
+          "message": "Attempt 8 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 238790,
+          "message": "Attempt 1 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 252777,
+          "message": "Attempt 9 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 276449,
+          "message": "Attempt 3 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 282887,
+          "message": "Attempt 4 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 314788,
+          "message": "Attempt 10 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 370869,
+          "message": "Attempt 11 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 398814,
+          "message": "Attempt 12 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 463715,
+          "message": "Attempt 13 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 505699,
+          "message": "Attempt 14 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 506317,
+          "message": "Attempt 10 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 526487,
+          "message": "Attempt 15 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 581093,
+          "message": "Attempt 16 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 596518,
+          "message": "Attempt 17 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 617943,
+          "message": "Attempt 12 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 620129,
+          "message": "Attempt 11 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 637645,
+          "message": "Attempt 15 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 655057,
+          "message": "Attempt 18 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 684897,
+          "message": "Attempt 12 of 32 (8 at once): Lean accepts it; running the strict verifier…"
+        },
+        {
+          "t": 704290,
+          "message": "Attempt 19 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 716283,
+          "message": "Attempt 20 of 32 (8 at once): the model is writing a proof…"
+        }
+      ]
+    },
+    {
+      "id": "imo_2001_p6",
+      "outcome": "solved",
+      "attempts": 25,
+      "ms": 1239185,
+      "usd": 0.4812078407129999,
+      "proof": "import Mathlib\n\nset_option maxHeartbeats 400000\n\nopen BigOperators Real Nat Topology Rat\n\ntheorem imo_2001_p6\n  (a b c d : ℕ)\n  (h₀ : 0 < a ∧ 0 < b ∧ 0 < c ∧ 0 < d)\n  (h₁ : d < c)\n  (h₂ : c < b)\n  (h₃ : b < a)\n  (h₄ : a * c + b * d = (b + d + a - c) * (b + d + c - a)) :\n  ¬ Nat.Prime (a * b + c * d) := by\n  obtain ⟨ha0, hb0, hc0, hd0⟩ := h₀\n  have hc_le_a : c ≤ a := by omega\n  have hc_le_bda : c ≤ b + d + a := by omega\n  have hYpos : 0 < b + d + c - a := by\n    by_contra h\n    have hzero : b + d + c - a = 0 := Nat.eq_zero_of_not_pos h\n    have hpos : 0 < (b + d + a - c) * (b + d + c - a) := by\n      rw [← h₄]\n      positivity\n    rw [hzero, mul_zero] at hpos\n    exact lt_irrefl _ hpos\n  have h_a_lt : a < b + d + c := Nat.sub_pos_iff_lt.mp hYpos\n  have h_a_le : a ≤ b + d + c := le_of_lt h_a_lt\n  have h1cast : ((b + d + a - c : ℕ) : ℤ) = (b:ℤ) + (d:ℤ) + (a:ℤ) - (c:ℤ) := by\n    rw [Nat.cast_sub hc_le_bda]\n    push_cast\n    ring\n  have h2cast : ((b + d + c - a : ℕ) : ℤ) = (b:ℤ) + (d:ℤ) + (c:ℤ) - (a:ℤ) := by\n    rw [Nat.cast_sub h_a_le]\n    push_cast\n    ring\n  have h4int : (a:ℤ) * (c:ℤ) + (b:ℤ) * (d:ℤ) =\n      ((b:ℤ) + (d:ℤ) + (a:ℤ) - (c:ℤ)) * ((b:ℤ) + (d:ℤ) + (c:ℤ) - (a:ℤ)) := by\n    have hcast := congrArg (fun x : ℕ => (x : ℤ)) h₄\n    rw [Nat.cast_mul] at hcast\n    rw [h1cast, h2cast] at hcast\n    push_cast at hcast\n    exact hcast\n  have hrel_int : (a:ℤ)^2 + (c:ℤ)^2 =\n      ((b:ℤ)^2 + (b:ℤ)*(d:ℤ) + (d:ℤ)^2) + (a:ℤ)*(c:ℤ) := by\n    nlinarith [h4int]\n  have hrel_nat : a^2 + c^2 = (b^2 + b*d + d^2) + a*c := by\n    have hcast : ((a^2 + c^2 : ℕ) : ℤ) = ((((b^2 + b*d + d^2) + a*c) : ℕ) : ℤ) := by\n      push_cast\n      nlinarith [hrel_int]\n    exact_mod_cast hcast\n  have hident_int : ((a*b + c*d : ℕ) : ℤ) * ((a*d + b*c : ℕ) : ℤ) =\n      ((b^2 + b*d + d^2 : ℕ) : ℤ) * ((a*c + b*d : ℕ) : ℤ) := by\n    push_cast\n    have hrel2 : (a:ℤ)^2 + (c:ℤ)^2 =\n        ((b:ℤ)^2 + (b:ℤ)*(d:ℤ) + (d:ℤ)^2) + (a:ℤ)*(c:ℤ) := hrel_int\n    calc\n      ((a:ℤ)*(b:ℤ) + (c:ℤ)*(d:ℤ)) * ((a:ℤ)*(d:ℤ) + (b:ℤ)*(c:ℤ))\n          = (b:ℤ)*(d:ℤ)*((a:ℤ)^2 + (c:ℤ)^2) + (a:ℤ)*(c:ℤ)*((b:ℤ)^2 + (d:ℤ)^2) := by ring\n      _ = (b:ℤ)*(d:ℤ)*(((b:ℤ)^2 + (b:ℤ)*(d:ℤ) + (d:ℤ)^2) + (a:ℤ)*(c:ℤ)) +\n            (a:ℤ)*(c:ℤ)*((b:ℤ)^2 + (d:ℤ)^2) := by rw [hrel2]\n      _ = ((b:ℤ)^2 + (b:ℤ)*(d:ℤ) + (d:ℤ)^2) * ((a:ℤ)*(c:ℤ) + (b:ℤ)*(d:ℤ)) := by ring\n  have hident : (a*b + c*d) * (a*d + b*c) =\n      (b^2 + b*d + d^2) * (a*c + b*d) := by\n    exact_mod_cast hident_int\n  have hqr : a*d + b*c < a*c + b*d := by\n    set x : ℕ := a - b with hx\n    set y : ℕ := c - d with hy\n    have ha : a = b + x := by\n      rw [hx]\n      exact (Nat.add_sub_of_le (le_of_lt h₃)).symm\n    have hc : c = d + y := by\n      rw [hy]\n      exact (Nat.add_sub_of_le (le_of_lt h₁)).symm\n    have hxpos : 0 < x := by\n      rw [hx]\n      exact Nat.sub_pos_of_lt h₃\n    have hypos : 0 < y := by\n      rw [hy]\n      exact Nat.sub_pos_of_lt h₁\n    have hxy : 0 < x * y := Nat.mul_pos hxpos hypos\n    rw [ha, hc]\n    have hdecomp : (b + x) * (d + y) + b * d =\n        ((b + x) * d + b * (d + y)) + x * y := by ring\n    rw [hdecomp]\n    exact Nat.lt_add_of_pos_right hxy\n  have hrp : a*c + b*d < a*b + c*d := by\n    set x : ℕ := b - c with hx\n    set y : ℕ := a - d with hy\n    have hb : b = c + x := by\n      rw [hx]\n      exact (Nat.add_sub_of_le (le_of_lt h₂)).symm\n    have hda : d < a := lt_trans h₁ (lt_trans h₂ h₃)\n    have ha : a = d + y := by\n      rw [hy]\n      exact (Nat.add_sub_of_le (le_of_lt hda)).symm\n    have hxpos : 0 < x := by\n      rw [hx]\n      exact Nat.sub_pos_of_lt h₂\n    have hypos : 0 < y := by\n      rw [hy]\n      exact Nat.sub_pos_of_lt hda\n    have hxy : 0 < x * y := Nat.mul_pos hxpos hypos\n    rw [ha, hb]\n    have hdecomp : (d + y) * (c + x) + c * d =\n        ((d + y) * c + (c + x) * d) + x * y := by ring\n    rw [hdecomp]\n    exact Nat.lt_add_of_pos_right hxy\n  have hp_pos : 0 < a * b + c * d := by positivity\n  have hr_pos : 0 < a * c + b * d := by positivity\n  have hN_pos : 0 < b^2 + b*d + d^2 := by positivity\n  let p := a*b + c*d\n  let q := a*d + b*c\n  let r := a*c + b*d\n  let N := b^2 + b*d + d^2\n  have hident' : p * q = N * r := by simpa [p, q, r, N] using hident\n  have hqr' : q < r := by simpa [p, q, r, N] using hqr\n  have hrp' : r < p := by simpa [p, q, r, N] using hrp\n  have hp_pos' : 0 < p := by simpa [p] using hp_pos\n  have hr_pos' : 0 < r := by simpa [r] using hr_pos\n  have hN_pos' : 0 < N := by simpa [N] using hN_pos\n  intro hp\n  have hp' : Nat.Prime p := by simpa [p] using hp\n  have hp_dvd_r : ¬ p ∣ r := by\n    intro hd\n    have hle : p ≤ r := Nat.le_of_dvd hr_pos' hd\n    omega\n  have hp_dvd_Nr : p ∣ N * r := by\n    exact ⟨q, hident'.symm⟩\n  have hcases := (Nat.Prime.dvd_mul hp').mp hp_dvd_Nr\n  have hp_dvd_N : p ∣ N := by\n    rcases hcases with h | h\n    · exact h\n    · exfalso\n      exact hp_dvd_r h\n  have hp_le_N : p ≤ N := Nat.le_of_dvd hN_pos' hp_dvd_N\n  have hlt : p * q < p * r := mul_lt_mul_of_pos_left hqr' hp_pos'\n  have hle : p * r ≤ N * r := mul_le_mul_right r hp_le_N\n  have hle' : p * r ≤ p * q := by\n    rw [hident']\n    exact hle\n  exact (not_lt_of_ge hle') hlt\n",
+      "timeline": [
+        {
+          "t": 2,
+          "message": "Elaborating the frozen statement with Lean (first run loads Mathlib)…"
+        },
+        {
+          "t": 3546,
+          "message": "Attempt 1 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3548,
+          "message": "Attempt 2 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3549,
+          "message": "Attempt 3 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3550,
+          "message": "Attempt 4 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3550,
+          "message": "Attempt 5 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3551,
+          "message": "Attempt 6 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3551,
+          "message": "Attempt 7 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3551,
+          "message": "Attempt 8 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 231434,
+          "message": "Attempt 3 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 257673,
+          "message": "Attempt 9 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 264388,
+          "message": "Attempt 6 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 283219,
+          "message": "Attempt 10 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 305450,
+          "message": "Attempt 7 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 306341,
+          "message": "Attempt 5 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 311359,
+          "message": "Attempt 4 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 326284,
+          "message": "Attempt 11 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 338890,
+          "message": "Attempt 12 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 341179,
+          "message": "Attempt 13 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 347482,
+          "message": "Attempt 14 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 367876,
+          "message": "Attempt 15 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 370963,
+          "message": "Attempt 16 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 496079,
+          "message": "Attempt 9 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 507166,
+          "message": "Attempt 17 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 569279,
+          "message": "Attempt 14 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 576970,
+          "message": "Attempt 18 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 616302,
+          "message": "Attempt 12 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 631524,
+          "message": "Attempt 19 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 644336,
+          "message": "Attempt 11 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 656520,
+          "message": "Attempt 20 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 663698,
+          "message": "Attempt 21 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 668194,
+          "message": "Attempt 22 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 670552,
+          "message": "Attempt 15 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 695626,
+          "message": "Attempt 23 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 715741,
+          "message": "Attempt 13 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 716213,
+          "message": "Attempt 24 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 814604,
+          "message": "Attempt 25 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 880792,
+          "message": "Attempt 18 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 888779,
+          "message": "Attempt 26 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 927205,
+          "message": "Attempt 23 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 950066,
+          "message": "Attempt 27 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 1044670,
+          "message": "Attempt 28 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 1071127,
+          "message": "Attempt 29 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 1071781,
+          "message": "Attempt 30 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 1120237,
+          "message": "Attempt 31 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 1141243,
+          "message": "Attempt 25 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 1158262,
+          "message": "Attempt 32 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 1228747,
+          "message": "Attempt 21 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 1232398,
+          "message": "Attempt 21 of 32 (8 at once): Lean accepts it; running the strict verifier…"
+        }
+      ]
+    },
+    {
+      "id": "amc12a_2019_p12",
+      "outcome": "solved",
+      "attempts": 1,
+      "ms": 59860,
+      "usd": 0.0031869931859999996,
+      "proof": "import Mathlib\n\nset_option maxHeartbeats 400000\n\nopen BigOperators Real Nat Topology Rat\n\ntheorem amc12a_2019_p12 (x y : ℝ) (h : x > 0 ∧ y > 0) (h₀ : x ≠ 1 ∧ y ≠ 1)\n    (h₁ : Real.log x / Real.log 2 = Real.log 16 / Real.log y) (h₂ : x * y = 64) :\n    (Real.log (x / y) / Real.log 2) ^ 2 = 20 := by\n  have hL : Real.log 2 ≠ 0 := by\n    exact ne_of_gt (Real.log_pos (by norm_num))\n  have hy_ne : Real.log y ≠ 0 := by\n    rcases lt_or_gt_of_ne h₀.2 with hylt | hygt\n    · have : Real.log y < 0 := Real.log_neg h.2 hylt\n      linarith\n    · have : 0 < Real.log y := Real.log_pos hygt\n      linarith\n  have h16 : Real.log (16 : ℝ) = 4 * Real.log 2 := by\n    rw [show (16 : ℝ) = 2 ^ 4 by norm_num, Real.log_pow]\n    norm_num\n  have h64 : Real.log (64 : ℝ) = 6 * Real.log 2 := by\n    rw [show (64 : ℝ) = 2 ^ 6 by norm_num, Real.log_pow]\n    norm_num\n  have hprod : Real.log x * Real.log y = 4 * (Real.log 2) ^ 2 := by\n    have h1' := h₁\n    rw [h16] at h1'\n    have h := (div_eq_div_iff hL hy_ne).1 h1'\n    calc\n      Real.log x * Real.log y = (4 * Real.log 2) * Real.log 2 := h\n      _ = 4 * (Real.log 2) ^ 2 := by ring\n  have hsum : Real.log x + Real.log y = 6 * Real.log 2 := by\n    have hlog := congrArg Real.log h₂\n    rw [Real.log_mul (ne_of_gt h.1) (ne_of_gt h.2), h64] at hlog\n    linarith\n  have hmain : (Real.log x - Real.log y) ^ 2 = 20 * (Real.log 2) ^ 2 := by\n    calc\n      (Real.log x - Real.log y) ^ 2\n          = (Real.log x + Real.log y) ^ 2 - 4 * (Real.log x * Real.log y) := by ring\n      _ = (6 * Real.log 2) ^ 2 - 4 * (4 * (Real.log 2) ^ 2) := by rw [hsum, hprod]\n      _ = 20 * (Real.log 2) ^ 2 := by ring\n  rw [Real.log_div (ne_of_gt h.1) (ne_of_gt h.2), div_pow, hmain]\n  field_simp [hL]\n",
+      "timeline": [
+        {
+          "t": 4,
+          "message": "Elaborating the frozen statement with Lean (first run loads Mathlib)…"
+        },
+        {
+          "t": 3398,
+          "message": "Attempt 1 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3401,
+          "message": "Attempt 2 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3402,
+          "message": "Attempt 3 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3403,
+          "message": "Attempt 4 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3403,
+          "message": "Attempt 5 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3404,
+          "message": "Attempt 6 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3404,
+          "message": "Attempt 7 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3405,
+          "message": "Attempt 8 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 53192,
+          "message": "Attempt 2 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 56573,
+          "message": "Attempt 2 of 32 (8 at once): Lean accepts it; running the strict verifier…"
+        }
+      ]
+    },
+    {
+      "id": "aime_1997_p9",
+      "outcome": "failed",
+      "attempts": 32,
+      "ms": 596758,
+      "usd": 0.250116769845,
+      "message": "No verified proof after 32 attempts.",
+      "failure": "types",
+      "outcomes": {
+        "errors": 31,
+        "refused": 1
+      },
+      "lastError": "Probe.lean:38:6: error: linarith failed to find a contradiction\ncase right\na : ℝ\nh₀ : 0 < a\nh₁ : 1 / a - ↑⌊1 / a⌋ = a ^ 2 - ↑⌊a ^ 2⌋\nh₂ : 2 < a ^ 2\nh₃ : a ^ 2 < 3\nh_a_gt_one : 1 < a\nh_inv_pos : 0 < 1 / a\nh_inv_lt_one : 1 / a < 1\na✝ : 1 ≤ a⁻¹\n⊢ False\nfailed\nProbe.lean:47:4: error: Type mismatch: After simplification, term\n  h₁\n has type\n  Int.fract a⁻¹ = a ^ 2 - 2\nbut is expected to have type\n  a⁻¹ = a ^ 2 - 2",
+      "lastCandidate": "import Mathlib\n\nset_option maxHeartbeats 400000\n\nopen BigOperators Real Nat Topology Rat\n\ntheorem aime_1997_p9\n  (a : ℝ)\n  (h₀ : 0 < a)\n  (h₁ : 1 / a - Int.floor (1 / a) = a^2 - Int.floor (a^2))\n  (h₂ : 2 < a^2)\n  (h₃ : a^2 < 3) :\n  a^12 - 144 * (1 / a) = 233 := by\n  have h_a_gt_one : 1 < a := by\n    by_contra h\n    have ha_le : a ≤ 1 := le_of_not_gt h\n    have h_sq_le : a^2 ≤ 1 := by\n      calc\n        a^2 = a * a := by ring\n        _ ≤ 1 * a := mul_le_mul_of_nonneg_right ha_le h₀.le\n        _ = a := by ring\n        _ ≤ 1 := ha_le\n    linarith [h₂, h_sq_le]\n  have h_inv_pos : 0 < 1 / a := div_pos zero_lt_one h₀\n  have h_inv_lt_one : 1 / a < 1 := by\n    by_contra h\n    have hge : 1 ≤ 1 / a := le_of_not_gt h\n    have hmul := mul_le_mul_of_nonneg_right hge h₀.le\n    rw [one_div, inv_mul_cancel₀ (ne_of_gt h₀)] at hmul\n    have ha_le_one : a ≤ 1 := by simpa using hmul\n    linarith [h_a_gt_one, ha_le_one]\n  have hfloor1 : Int.floor (1 / a) = 0 := by\n    rw [Int.floor_eq_iff]\n    constructor\n    · norm_num\n      linarith [h_inv_pos]\n    · norm_num\n      linarith [h_inv_lt_one]\n  have hfloor2 : Int.floor (a^2) = 2 := by\n    rw [Int.floor_eq_iff]\n    constructor\n    · norm_num\n      linarith [h₂]\n    · norm_num\n      linarith [h₃]\n  have h1' : 1 / a = a^2 - 2 := by\n    simpa [hfloor1, hfloor2] using h₁\n  have hcubic : a^3 - 2 * a - 1 = 0 := by\n    have hmul : (1 / a) * a = (a^2 - 2) * a := by rw [h1']\n    rw [one_div, inv_mul_cancel₀ (ne_of_gt h₀)] at hmul\n    have hmul' : (a^2 - 2) * a = 1 := by linarith [hmul]\n    calc\n      a^3 - 2 * a - 1 = (a^2 - 2) * a - 1 := by ring\n      _ = 1 - 1 := by rw [hmul']\n      _ = 0 := by ring\n  have hfac : (a^2 - a - 1) * (a + 1) = 0 := by\n    calc\n      (a^2 - a - 1) * (a + 1) = a^3 - 2 * a - 1 := by ring\n      _ = 0 := hcubic\n  have ha2 : a^2 = a + 1 := by\n    have hzero : a^2 - a - 1 = 0 := by\n      rcases mul_eq_zero.mp hfac with h | h\n      · exact h\n      · exfalso\n        linarith [h, h₀]\n    linarith\n  have ha4 : a^4 = 3 * a + 2 := by\n    calc\n      a^4 = (a^2)^2 := by ring\n      _ = (a + 1)^2 := by rw [ha2]\n      _ = a^2 + 2 * a + 1 := by ring\n      _ = (a + 1) + 2 * a + 1 := by rw [ha2]\n      _ = 3 * a + 2 := by ring\n  have ha8 : a^8 = 21 * a + 13 := by\n    calc\n      a^8 = (a^4)^2 := by ring\n      _ = (3 * a + 2)^2 := by rw [ha4]\n      _ = 9 * a^2 + 12 * a + 4 := by ring\n      _ = 9 * (a + 1) + 12 * a + 4 := by rw [ha2]\n      _ = 21 * a + 13 := by ring\n  have ha12 : a^12 = 144 * a + 89 := by\n    calc\n      a^12 = a^8 * a^4 := by ring\n      _ = (21 * a + 13) * (3 * a + 2) := by rw [ha8, ha4]\n      _ = 63 * a^2 + 81 * a + 26 := by ring\n      _ = 63 * (a + 1) + 81 * a + 26 := by rw [ha2]\n      _ = 144 * a + 89 := by ring\n  have h_inv : 1 / a = a - 1 := by\n    rw [h1']\n    linarith [ha2]\n  calc\n    a^12 - 144 * (1 / a) = (144 * a + 89) - 144 * (a - 1) := by rw [ha12, h_inv]\n    _ = 233 := by ring\n",
+      "timeline": [
+        {
+          "t": 2,
+          "message": "Elaborating the frozen statement with Lean (first run loads Mathlib)…"
+        },
+        {
+          "t": 2775,
+          "message": "Attempt 1 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 2777,
+          "message": "Attempt 2 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 2778,
+          "message": "Attempt 3 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 2778,
+          "message": "Attempt 4 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 2778,
+          "message": "Attempt 5 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 2779,
+          "message": "Attempt 6 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 2779,
+          "message": "Attempt 7 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 2779,
+          "message": "Attempt 8 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 94802,
+          "message": "Attempt 5 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 100817,
+          "message": "Attempt 9 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 104053,
+          "message": "Attempt 7 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 104204,
+          "message": "Attempt 1 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 105305,
+          "message": "Attempt 10 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 107572,
+          "message": "Attempt 11 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 113460,
+          "message": "Attempt 3 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 113660,
+          "message": "Attempt 6 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 114835,
+          "message": "Attempt 12 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 118020,
+          "message": "Attempt 13 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 118749,
+          "message": "Attempt 2 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 120318,
+          "message": "Attempt 14 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 121599,
+          "message": "Attempt 4 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 124913,
+          "message": "Attempt 15 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 143013,
+          "message": "Attempt 8 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 144068,
+          "message": "Attempt 16 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 194737,
+          "message": "Attempt 9 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 196014,
+          "message": "Attempt 17 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 206221,
+          "message": "Attempt 10 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 206255,
+          "message": "Attempt 12 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 207441,
+          "message": "Attempt 18 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 209136,
+          "message": "Attempt 19 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 221188,
+          "message": "Attempt 15 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 221351,
+          "message": "Attempt 13 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 222271,
+          "message": "Attempt 20 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 225377,
+          "message": "Attempt 14 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 226024,
+          "message": "Attempt 21 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 230659,
+          "message": "Attempt 22 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 246885,
+          "message": "Attempt 16 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 248563,
+          "message": "Attempt 23 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 251475,
+          "message": "Attempt 11 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 253821,
+          "message": "Attempt 24 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 293831,
+          "message": "Attempt 18 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 298075,
+          "message": "Attempt 25 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 304775,
+          "message": "Attempt 19 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 308125,
+          "message": "Attempt 26 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 310166,
+          "message": "Attempt 17 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 312961,
+          "message": "Attempt 27 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 332981,
+          "message": "Attempt 24 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 336276,
+          "message": "Attempt 28 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 336404,
+          "message": "Attempt 21 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 339045,
+          "message": "Attempt 29 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 346141,
+          "message": "Attempt 20 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 346467,
+          "message": "Attempt 23 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 347664,
+          "message": "Attempt 30 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 350394,
+          "message": "Attempt 31 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 408728,
+          "message": "Attempt 26 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 409338,
+          "message": "Attempt 25 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 410864,
+          "message": "Attempt 32 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 415442,
+          "message": "Attempt 27 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 448211,
+          "message": "Attempt 28 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 458602,
+          "message": "Attempt 29 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 479549,
+          "message": "Attempt 31 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 480665,
+          "message": "Attempt 30 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 595341,
+          "message": "Attempt 32 of 32 (8 at once): Lean is checking the proof…"
+        }
+      ]
+    },
+    {
+      "id": "mathd_algebra_513",
+      "outcome": "solved",
+      "attempts": 1,
+      "ms": 43579,
+      "usd": 0.0015792335919999998,
+      "proof": "import Mathlib\n\nset_option maxHeartbeats 400000\n\nopen BigOperators Real Nat Topology Rat\n\ntheorem mathd_algebra_513\n  (a b : ℝ)\n  (h₀ : 3 * a + 2 * b = 5)\n  (h₁ : a + b = 2) :\n  a = 1 ∧ b = 1 := by\n  constructor <;> linarith\n",
+      "timeline": [
+        {
+          "t": 3,
+          "message": "Elaborating the frozen statement with Lean (first run loads Mathlib)…"
+        },
+        {
+          "t": 4106,
+          "message": "Attempt 1 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 4109,
+          "message": "Attempt 2 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 4109,
+          "message": "Attempt 3 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 4110,
+          "message": "Attempt 4 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 4111,
+          "message": "Attempt 5 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 4111,
+          "message": "Attempt 6 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 4112,
+          "message": "Attempt 7 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 4112,
+          "message": "Attempt 8 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 7464,
+          "message": "Attempt 2 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 7696,
+          "message": "Attempt 3 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 8347,
+          "message": "Attempt 5 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 8774,
+          "message": "Attempt 7 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 9670,
+          "message": "Attempt 6 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 9930,
+          "message": "Attempt 4 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 10108,
+          "message": "Attempt 8 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 11518,
+          "message": "Attempt 2 of 32 (8 at once): Lean accepts it; running the strict verifier…"
+        },
+        {
+          "t": 11665,
+          "message": "Attempt 3 of 32 (8 at once): Lean accepts it; running the strict verifier…"
+        },
+        {
+          "t": 11801,
+          "message": "Attempt 5 of 32 (8 at once): Lean accepts it; running the strict verifier…"
+        },
+        {
+          "t": 11934,
+          "message": "Attempt 7 of 32 (8 at once): Lean accepts it; running the strict verifier…"
+        },
+        {
+          "t": 12056,
+          "message": "Attempt 1 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 12076,
+          "message": "Attempt 6 of 32 (8 at once): Lean accepts it; running the strict verifier…"
+        },
+        {
+          "t": 12216,
+          "message": "Attempt 4 of 32 (8 at once): Lean accepts it; running the strict verifier…"
+        },
+        {
+          "t": 12358,
+          "message": "Attempt 8 of 32 (8 at once): Lean accepts it; running the strict verifier…"
+        },
+        {
+          "t": 12478,
+          "message": "Attempt 1 of 32 (8 at once): Lean accepts it; running the strict verifier…"
+        }
+      ]
+    },
+    {
+      "id": "mathd_numbertheory_618",
+      "outcome": "solved",
+      "attempts": 1,
+      "ms": 54922,
+      "usd": 0.0023937066719999997,
+      "proof": "import Mathlib\n\nset_option maxHeartbeats 400000\n\nopen BigOperators Real Nat Topology Rat\n\ntheorem mathd_numbertheory_618\n  (n : ℕ)\n  (hn : n > 0)\n  (p : ℕ → ℕ)\n  (h₀ : ∀ x, p x = x^2 - x + 41)\n  (h₁ : 1 < Nat.gcd (p n) (p (n+1))) :\n  41 ≤ n := by\n  by_contra h\n  have hnlt : n < 41 := not_le.mp h\n  have hn1 : 1 ≤ n := by omega\n  have hn40 : n ≤ 40 := by omega\n  interval_cases n <;> norm_num [h₀] at h₁\n",
+      "timeline": [
+        {
+          "t": 6,
+          "message": "Elaborating the frozen statement with Lean (first run loads Mathlib)…"
+        },
+        {
+          "t": 4049,
+          "message": "Attempt 1 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 4052,
+          "message": "Attempt 2 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 4053,
+          "message": "Attempt 3 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 4053,
+          "message": "Attempt 4 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 4054,
+          "message": "Attempt 5 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 4054,
+          "message": "Attempt 6 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 4055,
+          "message": "Attempt 7 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 4055,
+          "message": "Attempt 8 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 46974,
+          "message": "Attempt 1 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 50826,
+          "message": "Attempt 1 of 32 (8 at once): Lean accepts it; running the strict verifier…"
+        }
+      ]
+    },
+    {
+      "id": "amc12_2001_p5",
+      "outcome": "solved",
+      "attempts": 32,
+      "ms": 1249657,
+      "usd": 0.4279276545729999,
+      "proof": "import Mathlib\n\nset_option maxHeartbeats 400000\n\nopen BigOperators Real Nat Topology Rat\n\nlemma amc12_2001_p5_prod_odd_range_eq (n : ℕ) :\n    Finset.prod (Finset.filter (fun x => ¬ Even x) (Finset.range (2 * n))) (id : ℕ → ℕ)\n      = Finset.prod (Finset.range n) (fun i => 2 * i + 1) := by\n  have hset : Finset.filter (fun x => ¬ Even x) (Finset.range (2 * n))\n      = (Finset.range n).image (fun i => 2 * i + 1) := by\n    ext x\n    simp only [Finset.mem_filter, Finset.mem_range, Finset.mem_image]\n    constructor\n    · rintro ⟨hxlt, hxne⟩\n      rcases Nat.even_or_odd x with hxeven | hxodd\n      · exact False.elim (hxne hxeven)\n      · rcases hxodd with ⟨k, hk⟩\n        refine ⟨k, ?_, ?_⟩\n        · omega\n        · omega\n    · rintro ⟨i, hi, hx⟩\n      have hx' : x = 2 * i + 1 := by omega\n      rw [hx']\n      constructor\n      · omega\n      · intro he\n        rcases he with ⟨j, hj⟩\n        omega\n  rw [hset]\n  simpa using\n    (Finset.prod_image (s := Finset.range n)\n      (f := fun i => 2 * i + 1) (g := id) (by\n        intro i hi j hj hij\n        omega))\n\nlemma amc12_2001_p5_prod_odd_mul_pow_factorial (n : ℕ) :\n    (Finset.prod (Finset.range n) (fun i => 2 * i + 1)) *\n        (2 ^ n * Nat.factorial n) = Nat.factorial (2 * n) := by\n  induction n with\n  | zero =>\n      simp\n  | succ n ih =>\n      calc\n        (Finset.prod (Finset.range (n + 1)) (fun i => 2 * i + 1)) *\n            (2 ^ (n + 1) * Nat.factorial (n + 1))\n            = ((Finset.prod (Finset.range n) (fun i => 2 * i + 1)) *\n                (2 ^ n * Nat.factorial n)) * ((2 * n + 1) * (2 * n + 2)) := by\n                rw [Finset.prod_range_succ, pow_succ, Nat.factorial_succ]\n                ring\n        _ = Nat.factorial (2 * n) * ((2 * n + 1) * (2 * n + 2)) := by\n                rw [ih]\n        _ = Nat.factorial (2 * (n + 1)) := by\n                have hfac : Nat.factorial (2 * (n + 1)) =\n                    Nat.factorial (2 * n) * (2 * n + 1) * (2 * n + 2) := by\n                  have h1 : 2 * (n + 1) = (2 * n + 1) + 1 := by ring\n                  rw [h1, Nat.factorial_succ, Nat.factorial_succ]\n                  ring\n                rw [hfac]\n                ring\n\ntheorem amc12_2001_p5 :\n  Finset.prod (Finset.filter (λ x => ¬ Even x) (Finset.range 10000)) (id : ℕ → ℕ) = (10000!) / ((2^5000) * (5000!)) := by\n  have h2 : 2 * 5000 = 10000 := by norm_num\n  have hP :\n      Finset.prod (Finset.filter (fun x => ¬ Even x) (Finset.range 10000)) (id : ℕ → ℕ)\n        = Finset.prod (Finset.range 5000) (fun i => 2 * i + 1) := by\n    simpa [h2] using amc12_2001_p5_prod_odd_range_eq 5000\n  rw [hP]\n  have h := amc12_2001_p5_prod_odd_mul_pow_factorial 5000\n  have h' :\n      (Finset.prod (Finset.range 5000) (fun i => 2 * i + 1)) *\n          (2 ^ 5000 * Nat.factorial 5000) = Nat.factorial 10000 := by\n    simpa [h2] using h\n  have hD : 0 < 2 ^ 5000 * Nat.factorial 5000 := by positivity\n  rw [← h']\n  rw [Nat.mul_div_cancel _ hD]\n",
+      "timeline": [
+        {
+          "t": 4,
+          "message": "Elaborating the frozen statement with Lean (first run loads Mathlib)…"
+        },
+        {
+          "t": 4406,
+          "message": "Attempt 1 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 4408,
+          "message": "Attempt 2 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 4409,
+          "message": "Attempt 3 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 4410,
+          "message": "Attempt 4 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 4410,
+          "message": "Attempt 5 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 4411,
+          "message": "Attempt 6 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 4411,
+          "message": "Attempt 7 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 4412,
+          "message": "Attempt 8 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 129257,
+          "message": "Attempt 4 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 137826,
+          "message": "Attempt 9 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 142779,
+          "message": "Attempt 1 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 143076,
+          "message": "Attempt 10 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 176719,
+          "message": "Attempt 5 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 177098,
+          "message": "Attempt 11 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 180398,
+          "message": "Attempt 3 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 181894,
+          "message": "Attempt 12 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 184207,
+          "message": "Attempt 8 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 184980,
+          "message": "Attempt 13 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 191984,
+          "message": "Attempt 7 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 192028,
+          "message": "Attempt 14 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 230798,
+          "message": "Attempt 6 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 231384,
+          "message": "Attempt 15 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 261605,
+          "message": "Attempt 2 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 262510,
+          "message": "Attempt 16 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 289537,
+          "message": "Attempt 9 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 290138,
+          "message": "Attempt 17 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 327122,
+          "message": "Attempt 13 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 327540,
+          "message": "Attempt 18 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 331528,
+          "message": "Attempt 12 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 331600,
+          "message": "Attempt 19 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 338908,
+          "message": "Attempt 11 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 339356,
+          "message": "Attempt 20 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 362017,
+          "message": "Attempt 15 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 362894,
+          "message": "Attempt 21 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 390504,
+          "message": "Attempt 22 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 410732,
+          "message": "Attempt 14 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 411166,
+          "message": "Attempt 23 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 455637,
+          "message": "Attempt 19 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 455669,
+          "message": "Attempt 24 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 480784,
+          "message": "Attempt 20 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 481139,
+          "message": "Attempt 25 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 523713,
+          "message": "Attempt 26 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 529038,
+          "message": "Attempt 18 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 529104,
+          "message": "Attempt 27 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 530794,
+          "message": "Attempt 21 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 531232,
+          "message": "Attempt 28 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 544199,
+          "message": "Attempt 22 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 544247,
+          "message": "Attempt 29 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 554947,
+          "message": "Attempt 17 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 554989,
+          "message": "Attempt 30 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 610324,
+          "message": "Attempt 27 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 610925,
+          "message": "Attempt 31 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 614851,
+          "message": "Attempt 23 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 614910,
+          "message": "Attempt 32 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 645363,
+          "message": "Attempt 28 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 669087,
+          "message": "Attempt 30 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 693697,
+          "message": "Attempt 24 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 833958,
+          "message": "Attempt 31 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 1241219,
+          "message": "Attempt 32 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 1245590,
+          "message": "Attempt 32 of 32 (8 at once): Lean accepts it; running the strict verifier…"
+        }
+      ]
+    },
+    {
+      "id": "amc12b_2020_p22",
+      "outcome": "solved",
+      "attempts": 13,
+      "ms": 192026,
+      "usd": 0.072569541385,
+      "proof": "import Mathlib\n\nset_option maxHeartbeats 400000\n\nopen BigOperators Real Nat Topology Rat\n\ntheorem amc12b_2020_p22\n  (t : ℝ) :\n  ((2^t - 3 * t) * t) / (4^t) ≤ 1 / 12 := by\n  have h4pos : (0 : ℝ) < (4 : ℝ) ^ t := by\n    exact Real.rpow_pos_of_pos (by norm_num : (0 : ℝ) < 4) t\n  have hsq : (0 : ℝ) ≤ ((2 : ℝ) ^ t - 6 * t) ^ 2 := sq_nonneg _\n  have h4 : (4 : ℝ) ^ t = ((2 : ℝ) ^ t) ^ 2 := by\n    have hbase : (2 : ℝ) ^ (2 : ℝ) = 4 := by\n      norm_num [Real.rpow_natCast]\n    calc\n      (4 : ℝ) ^ t = ((2 : ℝ) ^ (2 : ℝ)) ^ t := by rw [← hbase]\n      _ = (2 : ℝ) ^ ((2 : ℝ) * t) := by\n        exact (Real.rpow_mul (by norm_num : (0 : ℝ) ≤ 2) (2 : ℝ) t).symm\n      _ = (2 : ℝ) ^ (t * (2 : ℝ)) := by\n        congr 1\n        ring\n      _ = ((2 : ℝ) ^ t) ^ (2 : ℝ) := by\n        exact Real.rpow_mul (by norm_num : (0 : ℝ) ≤ 2) t (2 : ℝ)\n      _ = ((2 : ℝ) ^ t) ^ 2 := by\n        norm_num [Real.rpow_natCast]\n  have hkey : 12 * (((2 : ℝ) ^ t - 3 * t) * t) ≤ (4 : ℝ) ^ t := by\n    nlinarith [hsq, h4]\n  rw [div_le_iff₀ h4pos]\n  nlinarith [hkey]\n",
+      "timeline": [
+        {
+          "t": 3,
+          "message": "Elaborating the frozen statement with Lean (first run loads Mathlib)…"
+        },
+        {
+          "t": 3922,
+          "message": "Attempt 1 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3924,
+          "message": "Attempt 2 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3925,
+          "message": "Attempt 3 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3925,
+          "message": "Attempt 4 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3926,
+          "message": "Attempt 5 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3926,
+          "message": "Attempt 6 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3926,
+          "message": "Attempt 7 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3927,
+          "message": "Attempt 8 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 61044,
+          "message": "Attempt 4 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 64594,
+          "message": "Attempt 9 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 69741,
+          "message": "Attempt 8 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 69993,
+          "message": "Attempt 10 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 72721,
+          "message": "Attempt 5 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 73043,
+          "message": "Attempt 11 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 81391,
+          "message": "Attempt 3 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 81764,
+          "message": "Attempt 12 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 93706,
+          "message": "Attempt 2 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 93992,
+          "message": "Attempt 13 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 102103,
+          "message": "Attempt 7 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 102343,
+          "message": "Attempt 14 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 103916,
+          "message": "Attempt 1 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 104231,
+          "message": "Attempt 15 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 124821,
+          "message": "Attempt 6 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 125068,
+          "message": "Attempt 16 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 162264,
+          "message": "Attempt 9 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 162462,
+          "message": "Attempt 17 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 171523,
+          "message": "Attempt 10 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 171938,
+          "message": "Attempt 18 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 180973,
+          "message": "Attempt 15 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 181014,
+          "message": "Attempt 19 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 188249,
+          "message": "Attempt 13 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 188536,
+          "message": "Attempt 13 of 32 (8 at once): Lean accepts it; running the strict verifier…"
+        },
+        {
+          "t": 191002,
+          "message": "Attempt 12 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 191278,
+          "message": "Attempt 20 of 32 (8 at once): the model is writing a proof…"
+        }
+      ]
+    },
+    {
+      "id": "amc12b_2020_p21",
+      "outcome": "solved",
+      "attempts": 7,
+      "ms": 253120,
+      "usd": 0.096218093287,
+      "proof": "import Mathlib\n\nset_option maxHeartbeats 400000\n\nopen BigOperators Real Nat Topology Rat\n\nlemma floor_sqrt_nat_eq (n m : ℕ) (h₁ : m ^ 2 ≤ n) (h₂ : n < (m + 1) ^ 2) :\n    Int.floor (Real.sqrt (n : ℝ)) = (m : ℤ) := by\n  rw [Int.floor_eq_iff]\n  push_cast\n  constructor\n  · have hs_sq : (Real.sqrt (n : ℝ)) ^ 2 = (n : ℝ) :=\n      Real.sq_sqrt (by positivity)\n    have hs_nonneg : 0 ≤ Real.sqrt (n : ℝ) := Real.sqrt_nonneg _\n    have hm_sq_le : ((m : ℝ) ^ 2) ≤ (n : ℝ) := by exact_mod_cast h₁\n    by_contra hnot\n    have hlt : Real.sqrt (n : ℝ) < (m : ℝ) := lt_of_not_ge hnot\n    have hdiff : 0 < (m : ℝ) - Real.sqrt (n : ℝ) := sub_pos.mpr hlt\n    have hsum : 0 < (m : ℝ) + Real.sqrt (n : ℝ) := by\n      have hmpos : 0 < (m : ℝ) := lt_of_le_of_lt hs_nonneg hlt\n      exact add_pos_of_pos_of_nonneg hmpos hs_nonneg\n    have hprod : 0 < ((m : ℝ) - Real.sqrt (n : ℝ)) *\n        ((m : ℝ) + Real.sqrt (n : ℝ)) := mul_pos hdiff hsum\n    nlinarith [hprod, hs_sq, hm_sq_le]\n  · have hs_sq : (Real.sqrt (n : ℝ)) ^ 2 = (n : ℝ) :=\n      Real.sq_sqrt (by positivity)\n    have hs_nonneg : 0 ≤ Real.sqrt (n : ℝ) := Real.sqrt_nonneg _\n    have hb_nonneg : (0 : ℝ) ≤ (m : ℝ) + 1 := by positivity\n    have hlt_sq : (n : ℝ) < ((m : ℝ) + 1) ^ 2 := by\n      have h₂' : (n : ℝ) < ((m + 1 : ℕ) : ℝ) ^ 2 := by exact_mod_cast h₂\n      simpa [Nat.cast_add, Nat.cast_one] using h₂'\n    by_contra hnot\n    have hle : (m : ℝ) + 1 ≤ Real.sqrt (n : ℝ) := le_of_not_gt hnot\n    have hdiff : 0 ≤ Real.sqrt (n : ℝ) - ((m : ℝ) + 1) := sub_nonneg.mpr hle\n    have hsum : 0 ≤ Real.sqrt (n : ℝ) + ((m : ℝ) + 1) :=\n      add_nonneg hs_nonneg hb_nonneg\n    have hprod : 0 ≤ (Real.sqrt (n : ℝ) - ((m : ℝ) + 1)) *\n        (Real.sqrt (n : ℝ) + ((m : ℝ) + 1)) := mul_nonneg hdiff hsum\n    nlinarith [hprod, hs_sq, hlt_sq]\n\ntheorem amc12b_2020_p21\n  (S : Finset ℕ)\n  (h₀ : ∀ (n : ℕ), n ∈ S ↔ 0 < n ∧ (↑n + (1000 : ℝ)) / 70 = Int.floor (Real.sqrt n)) :\n  S.card = 6 := by\n  let T : Finset ℕ := {400, 470, 2290, 2360, 2430, 2500}\n  have hS : S = T := by\n    ext n\n    rw [h₀ n]\n    simp only [T, Finset.mem_insert, Finset.mem_singleton]\n    constructor\n    · rintro ⟨hnpos, hn_eq⟩\n      have hnposR : (0 : ℝ) < (n : ℝ) := by exact_mod_cast hnpos\n      set k : ℤ := Int.floor (Real.sqrt (n : ℝ)) with hk_def\n      have hk_eq : ((n : ℝ) + 1000) / 70 = (k : ℝ) := by\n        simpa [hk_def] using hn_eq\n      have hn_eq_real : (n : ℝ) = 70 * (k : ℝ) - 1000 := by linarith\n      have hk_pos_real : (1000 : ℝ) / 70 < (k : ℝ) := by\n        have h : (0 : ℝ) < 70 * (k : ℝ) - 1000 := by\n          linarith [hn_eq_real, hnposR]\n        nlinarith\n      have hk_nonneg_real : (0 : ℝ) ≤ (k : ℝ) := by nlinarith [hk_pos_real]\n      have hk_floor_le : (k : ℝ) ≤ Real.sqrt (n : ℝ) := by\n        simpa [hk_def] using (Int.floor_le (Real.sqrt (n : ℝ)))\n      have hk_floor_lt : Real.sqrt (n : ℝ) < (k : ℝ) + 1 := by\n        simpa [hk_def] using (Int.lt_floor_add_one (Real.sqrt (n : ℝ)))\n      have hsqrt_sq : (Real.sqrt (n : ℝ)) ^ 2 = (n : ℝ) :=\n        Real.sq_sqrt (by positivity)\n      have hsqrt_nonneg : 0 ≤ Real.sqrt (n : ℝ) := Real.sqrt_nonneg _\n      have hk_sq_le_n : (k : ℝ) ^ 2 ≤ (n : ℝ) := by\n        have hdiff : 0 ≤ Real.sqrt (n : ℝ) - (k : ℝ) := sub_nonneg.mpr hk_floor_le\n        have hsum : 0 ≤ Real.sqrt (n : ℝ) + (k : ℝ) :=\n          add_nonneg hsqrt_nonneg hk_nonneg_real\n        have hprod : 0 ≤ (Real.sqrt (n : ℝ) - (k : ℝ)) *\n            (Real.sqrt (n : ℝ) + (k : ℝ)) := mul_nonneg hdiff hsum\n        nlinarith [hprod, hsqrt_sq]\n      have hk_poly_le : (k : ℝ) ^ 2 - 70 * (k : ℝ) + 1000 ≤ 0 := by\n        nlinarith [hk_sq_le_n, hn_eq_real]\n      have hfactor_le : ((k : ℝ) - 20) * ((k : ℝ) - 50) ≤ 0 := by\n        nlinarith [hk_poly_le]\n      have hk_ge20_real : (20 : ℝ) ≤ (k : ℝ) := by\n        by_contra h\n        have hlt : (k : ℝ) < 20 := lt_of_not_ge h\n        have hlt50 : (k : ℝ) < 50 := by linarith\n        have hpos1 : 0 < (20 : ℝ) - (k : ℝ) := by linarith\n        have hpos2 : 0 < (50 : ℝ) - (k : ℝ) := by linarith\n        have hpos : 0 < ((20 : ℝ) - (k : ℝ)) * ((50 : ℝ) - (k : ℝ)) :=\n          mul_pos hpos1 hpos2\n        have hsame : ((k : ℝ) - 20) * ((k : ℝ) - 50) =\n            ((20 : ℝ) - (k : ℝ)) * ((50 : ℝ) - (k : ℝ)) := by ring\n        nlinarith [hfactor_le, hpos, hsame]\n      have hk_le50_real : (k : ℝ) ≤ 50 := by\n        by_contra h\n        have hgt : 50 < (k : ℝ) := lt_of_not_ge h\n        have hgt20 : 20 < (k : ℝ) := by linarith\n        have hpos1 : 0 < (k : ℝ) - 20 := by linarith\n        have hpos2 : 0 < (k : ℝ) - 50 := by linarith\n        have hpos : 0 < ((k : ℝ) - 20) * ((k : ℝ) - 50) :=\n          mul_pos hpos1 hpos2\n        nlinarith [hfactor_le, hpos]\n      have hk_upper_sq : (n : ℝ) < ((k : ℝ) + 1) ^ 2 := by\n        have hbpos : 0 < (k : ℝ) + 1 := by linarith [hk_ge20_real]\n        have hdiff : 0 < ((k : ℝ) + 1) - Real.sqrt (n : ℝ) :=\n          sub_pos.mpr hk_floor_lt\n        have hsum : 0 < ((k : ℝ) + 1) + Real.sqrt (n : ℝ) :=\n          add_pos_of_pos_of_nonneg hbpos hsqrt_nonneg\n        have hprod : 0 < (((k : ℝ) + 1) - Real.sqrt (n : ℝ)) *\n            (((k : ℝ) + 1) + Real.sqrt (n : ℝ)) := mul_pos hdiff hsum\n        nlinarith [hprod, hsqrt_sq]\n      have hk_ub_poly : 70 * (k : ℝ) - 1000 < ((k : ℝ) + 1) ^ 2 := by\n        nlinarith [hn_eq_real, hk_upper_sq]\n      have hk_not_mid : ¬ ((22 : ℤ) ≤ k ∧ k ≤ 46) := by\n        rintro ⟨h22, h46⟩\n        have h22r : (22 : ℝ) ≤ (k : ℝ) := by exact_mod_cast h22\n        have h46r : (k : ℝ) ≤ (46 : ℝ) := by exact_mod_cast h46\n        have hprod_nonpos : ((k : ℝ) - 22) * ((k : ℝ) - 46) ≤ 0 := by\n          apply mul_nonpos_of_nonneg_of_nonpos\n          · linarith\n          · linarith\n        have hpoly_le : (k : ℝ) ^ 2 - 68 * (k : ℝ) + 1001 ≤ -11 := by\n          nlinarith [hprod_nonpos]\n        have hpoly_pos : 0 < (k : ℝ) ^ 2 - 68 * (k : ℝ) + 1001 := by\n          nlinarith [hk_ub_poly]\n        linarith\n      have hk_ge20_int : (20 : ℤ) ≤ k := by exact_mod_cast hk_ge20_real\n      have hk_le50_int : k ≤ 50 := by exact_mod_cast hk_le50_real\n      have hk_cases : k = 20 ∨ k = 21 ∨ k = 47 ∨ k = 48 ∨ k = 49 ∨ k = 50 := by\n        have hle_or : k ≤ 21 ∨ 47 ≤ k := by\n          by_cases h : k ≤ 21\n          · exact Or.inl h\n          · right\n            have h22 : (22 : ℤ) ≤ k := by omega\n            by_contra h47\n            have h46 : k ≤ 46 := by omega\n            exact hk_not_mid ⟨h22, h46⟩\n        rcases hle_or with hle | hge\n        · interval_cases k <;> simp\n        · interval_cases k <;> simp\n      rcases hk_cases with hk | hk | hk | hk | hk | hk\n      · rw [hk] at hn_eq_real\n        norm_num at hn_eq_real\n        left\n        exact_mod_cast hn_eq_real\n      · rw [hk] at hn_eq_real\n        norm_num at hn_eq_real\n        right; left\n        exact_mod_cast hn_eq_real\n      · rw [hk] at hn_eq_real\n        norm_num at hn_eq_real\n        right; right; left\n        exact_mod_cast hn_eq_real\n      · rw [hk] at hn_eq_real\n        norm_num at hn_eq_real\n        right; right; right; left\n        exact_mod_cast hn_eq_real\n      · rw [hk] at hn_eq_real\n        norm_num at hn_eq_real\n        right; right; right; right; left\n        exact_mod_cast hn_eq_real\n      · rw [hk] at hn_eq_real\n        norm_num at hn_eq_real\n        right; right; right; right; right\n        exact_mod_cast hn_eq_real\n    · intro hmem\n      rcases hmem with rfl | rfl | rfl | rfl | rfl | rfl\n      · constructor\n        · norm_num\n        · have hfloor : Int.floor (Real.sqrt ((400 : ℕ) : ℝ)) = (20 : ℤ) :=\n            floor_sqrt_nat_eq 400 20 (by norm_num) (by norm_num)\n          rw [hfloor]\n          norm_num\n      · constructor\n        · norm_num\n        · have hfloor : Int.floor (Real.sqrt ((470 : ℕ) : ℝ)) = (21 : ℤ) :=\n            floor_sqrt_nat_eq 470 21 (by norm_num) (by norm_num)\n          rw [hfloor]\n          norm_num\n      · constructor\n        · norm_num\n        · have hfloor : Int.floor (Real.sqrt ((2290 : ℕ) : ℝ)) = (47 : ℤ) :=\n            floor_sqrt_nat_eq 2290 47 (by norm_num) (by norm_num)\n          rw [hfloor]\n          norm_num\n      · constructor\n        · norm_num\n        · have hfloor : Int.floor (Real.sqrt ((2360 : ℕ) : ℝ)) = (48 : ℤ) :=\n            floor_sqrt_nat_eq 2360 48 (by norm_num) (by norm_num)\n          rw [hfloor]\n          norm_num\n      · constructor\n        · norm_num\n        · have hfloor : Int.floor (Real.sqrt ((2430 : ℕ) : ℝ)) = (49 : ℤ) :=\n            floor_sqrt_nat_eq 2430 49 (by norm_num) (by norm_num)\n          rw [hfloor]\n          norm_num\n      · constructor\n        · norm_num\n        · have hfloor : Int.floor (Real.sqrt ((2500 : ℕ) : ℝ)) = (50 : ℤ) :=\n            floor_sqrt_nat_eq 2500 50 (by norm_num) (by norm_num)\n          rw [hfloor]\n          norm_num\n  rw [hS]\n  decide\n",
+      "timeline": [
+        {
+          "t": 2,
+          "message": "Elaborating the frozen statement with Lean (first run loads Mathlib)…"
+        },
+        {
+          "t": 2939,
+          "message": "Attempt 1 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 2941,
+          "message": "Attempt 2 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 2942,
+          "message": "Attempt 3 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 2942,
+          "message": "Attempt 4 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 2942,
+          "message": "Attempt 5 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 2943,
+          "message": "Attempt 6 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 2943,
+          "message": "Attempt 7 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 2943,
+          "message": "Attempt 8 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 191446,
+          "message": "Attempt 1 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 200870,
+          "message": "Attempt 9 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 211848,
+          "message": "Attempt 5 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 213929,
+          "message": "Attempt 3 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 215896,
+          "message": "Attempt 10 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 216682,
+          "message": "Attempt 4 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 220284,
+          "message": "Attempt 11 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 224604,
+          "message": "Attempt 12 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 236154,
+          "message": "Attempt 6 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 236932,
+          "message": "Attempt 7 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 239913,
+          "message": "Attempt 13 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 242331,
+          "message": "Attempt 2 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 245674,
+          "message": "Attempt 7 of 32 (8 at once): Lean accepts it; running the strict verifier…"
+        },
+        {
+          "t": 249756,
+          "message": "Attempt 14 of 32 (8 at once): the model is writing a proof…"
+        }
+      ]
+    },
+    {
+      "id": "imo_1969_p2",
+      "outcome": "failed",
+      "attempts": 32,
+      "ms": 1336507,
+      "usd": 0.4554634460459999,
+      "message": "No verified proof after 32 attempts.",
+      "failure": "other",
+      "outcomes": {
+        "errors": 29,
+        "refused": 3
+      },
+      "lastError": "the frozen theorem statement must appear verbatim; it is, byte for byte:\ntheorem imo_1969_p2\n  (m n : ℝ)\n  (k : ℕ)\n  (a : ℕ → ℝ)\n  (y : ℝ → ℝ)\n  (h₀ : 0 < k)\n  (h₁ : ∀ x, y x = ∑ i ∈ Finset.range k, ((Real.cos (a i + x)) / (2^i)))\n  (h₂ : y m = 0)\n  (h₃ : y n = 0) :\n  ∃ t : ℤ, m - n = t * π :=",
+      "lastCandidate": "\n",
+      "timeline": [
+        {
+          "t": 3,
+          "message": "Elaborating the frozen statement with Lean (first run loads Mathlib)…"
+        },
+        {
+          "t": 2717,
+          "message": "Attempt 1 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 2719,
+          "message": "Attempt 2 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 2719,
+          "message": "Attempt 3 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 2720,
+          "message": "Attempt 4 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 2720,
+          "message": "Attempt 5 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 2720,
+          "message": "Attempt 6 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 2721,
+          "message": "Attempt 7 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 2721,
+          "message": "Attempt 8 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 157582,
+          "message": "Attempt 2 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 160130,
+          "message": "Attempt 9 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 162891,
+          "message": "Attempt 3 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 162915,
+          "message": "Attempt 10 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 178509,
+          "message": "Attempt 4 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 178533,
+          "message": "Attempt 11 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 206784,
+          "message": "Attempt 5 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 206822,
+          "message": "Attempt 12 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 210892,
+          "message": "Attempt 1 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 210916,
+          "message": "Attempt 13 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 226240,
+          "message": "Attempt 8 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 226515,
+          "message": "Attempt 14 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 277680,
+          "message": "Attempt 6 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 277717,
+          "message": "Attempt 15 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 288682,
+          "message": "Attempt 16 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 361688,
+          "message": "Attempt 11 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 361724,
+          "message": "Attempt 17 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 371148,
+          "message": "Attempt 9 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 371197,
+          "message": "Attempt 18 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 375258,
+          "message": "Attempt 13 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 375294,
+          "message": "Attempt 19 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 380455,
+          "message": "Attempt 10 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 380481,
+          "message": "Attempt 20 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 389099,
+          "message": "Attempt 12 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 389766,
+          "message": "Attempt 21 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 429223,
+          "message": "Attempt 14 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 432554,
+          "message": "Attempt 22 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 476766,
+          "message": "Attempt 15 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 476801,
+          "message": "Attempt 23 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 490873,
+          "message": "Attempt 16 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 490903,
+          "message": "Attempt 24 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 531502,
+          "message": "Attempt 20 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 532071,
+          "message": "Attempt 25 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 585262,
+          "message": "Attempt 17 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 585309,
+          "message": "Attempt 26 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 617962,
+          "message": "Attempt 21 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 618559,
+          "message": "Attempt 27 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 633895,
+          "message": "Attempt 18 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 634011,
+          "message": "Attempt 28 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 642187,
+          "message": "Attempt 19 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 642250,
+          "message": "Attempt 29 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 667797,
+          "message": "Attempt 30 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 671948,
+          "message": "Attempt 22 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 672049,
+          "message": "Attempt 31 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 725748,
+          "message": "Attempt 24 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 725779,
+          "message": "Attempt 32 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 786473,
+          "message": "Attempt 26 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 803072,
+          "message": "Attempt 23 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 810428,
+          "message": "Attempt 27 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 888755,
+          "message": "Attempt 31 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 905875,
+          "message": "Attempt 28 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 914859,
+          "message": "Attempt 30 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 1098496,
+          "message": "Attempt 32 of 32 (8 at once): Lean is checking the proof…"
+        }
+      ]
+    },
+    {
+      "id": "numbertheory_notEquiv2i2jasqbsqdiv8",
+      "outcome": "solved",
+      "attempts": 1,
+      "ms": 28044,
+      "usd": 0.0023768638890000002,
+      "proof": "import Mathlib\n\nset_option maxHeartbeats 400000\n\nopen BigOperators Real Nat Topology Rat\n\ntheorem numbertheory_notEquiv2i2jasqbsqdiv8 :\n  ¬ (∀ a b : ℤ, (∃ i j, a = 2*i ∧ b=2*j) ↔ (∃ k, a^2 + b^2 = 8*k)) := by\n  intro h\n  have hiff : (∃ i j : ℤ, (2 : ℤ) = 2 * i ∧ (0 : ℤ) = 2 * j) ↔\n      (∃ k : ℤ, (2 : ℤ)^2 + (0 : ℤ)^2 = 8 * k) := h 2 0\n  have hp : ∃ i j : ℤ, (2 : ℤ) = 2 * i ∧ (0 : ℤ) = 2 * j := by\n    exact ⟨1, 0, by norm_num, by norm_num⟩\n  rcases hiff.mp hp with ⟨k, hk⟩\n  norm_num at hk\n  omega\n",
+      "timeline": [
+        {
+          "t": 2,
+          "message": "Elaborating the frozen statement with Lean (first run loads Mathlib)…"
+        },
+        {
+          "t": 3895,
+          "message": "Attempt 1 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3897,
+          "message": "Attempt 2 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3897,
+          "message": "Attempt 3 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3898,
+          "message": "Attempt 4 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3898,
+          "message": "Attempt 5 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3899,
+          "message": "Attempt 6 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3899,
+          "message": "Attempt 7 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3899,
+          "message": "Attempt 8 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 14794,
+          "message": "Attempt 4 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 18138,
+          "message": "Attempt 4 of 32 (8 at once): Lean accepts it; running the strict verifier…"
+        },
+        {
+          "t": 19662,
+          "message": "Attempt 1 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 19725,
+          "message": "Attempt 1 of 32 (8 at once): Lean accepts it; running the strict verifier…"
+        },
+        {
+          "t": 21389,
+          "message": "Attempt 6 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 21452,
+          "message": "Attempt 6 of 32 (8 at once): Lean accepts it; running the strict verifier…"
+        }
+      ]
+    },
+    {
+      "id": "amc12b_2020_p13",
+      "outcome": "solved",
+      "attempts": 2,
+      "ms": 81588,
+      "usd": 0.008132927152000001,
+      "proof": "import Mathlib\n\nset_option maxHeartbeats 400000\n\nopen BigOperators Real Nat Topology Rat\n\ntheorem amc12b_2020_p13 :\n  Real.sqrt (Real.log 6 / Real.log 2 + Real.log 6 / Real.log 3) = Real.sqrt (Real.log 3 / Real.log 2) + Real.sqrt (Real.log 2 / Real.log 3) := by\n  have h2 : 0 < Real.log 2 := Real.log_pos (by norm_num)\n  have h3 : 0 < Real.log 3 := Real.log_pos (by norm_num)\n  have h6 : Real.log 6 = Real.log 2 + Real.log 3 := by\n    rw [show (6 : ℝ) = 2 * 3 by norm_num, Real.log_mul (by norm_num) (by norm_num)]\n  have hA :\n      Real.log 6 / Real.log 2 + Real.log 6 / Real.log 3\n        = Real.log 3 / Real.log 2 + Real.log 2 / Real.log 3 + 2 := by\n    rw [h6]\n    field_simp [ne_of_gt h2, ne_of_gt h3] <;> ring\n  have hX : 0 ≤ Real.log 3 / Real.log 2 := by\n    exact div_nonneg (le_of_lt h3) (le_of_lt h2)\n  have hY : 0 ≤ Real.log 2 / Real.log 3 := by\n    exact div_nonneg (le_of_lt h2) (le_of_lt h3)\n  have hxy :\n      Real.sqrt (Real.log 3 / Real.log 2) * Real.sqrt (Real.log 2 / Real.log 3) = 1 := by\n    have hratio : (Real.log 3 / Real.log 2) * (Real.log 2 / Real.log 3) = 1 := by\n      field_simp [ne_of_gt h2, ne_of_gt h3] <;> ring\n    rw [← Real.sqrt_mul hX, hratio, Real.sqrt_one]\n  have hsq :\n      (Real.sqrt (Real.log 3 / Real.log 2) + Real.sqrt (Real.log 2 / Real.log 3)) ^ 2\n        = Real.log 6 / Real.log 2 + Real.log 6 / Real.log 3 := by\n    rw [hA]\n    calc\n      (Real.sqrt (Real.log 3 / Real.log 2) + Real.sqrt (Real.log 2 / Real.log 3)) ^ 2\n          = (Real.sqrt (Real.log 3 / Real.log 2)) ^ 2\n              + (Real.sqrt (Real.log 2 / Real.log 3)) ^ 2\n              + 2 * (Real.sqrt (Real.log 3 / Real.log 2) * Real.sqrt (Real.log 2 / Real.log 3)) := by\n            ring\n      _ = Real.log 3 / Real.log 2 + Real.log 2 / Real.log 3\n              + 2 * (Real.sqrt (Real.log 3 / Real.log 2) * Real.sqrt (Real.log 2 / Real.log 3)) := by\n            rw [Real.sq_sqrt hX, Real.sq_sqrt hY]\n      _ = Real.log 3 / Real.log 2 + Real.log 2 / Real.log 3 + 2 := by\n            rw [hxy]\n            ring\n  have hBnonneg :\n      0 ≤ Real.sqrt (Real.log 3 / Real.log 2) + Real.sqrt (Real.log 2 / Real.log 3) := by\n    exact add_nonneg (Real.sqrt_nonneg _) (Real.sqrt_nonneg _)\n  rw [← hsq, Real.sqrt_sq hBnonneg]\n",
+      "timeline": [
+        {
+          "t": 2,
+          "message": "Elaborating the frozen statement with Lean (first run loads Mathlib)…"
+        },
+        {
+          "t": 4089,
+          "message": "Attempt 1 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 4091,
+          "message": "Attempt 2 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 4092,
+          "message": "Attempt 3 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 4092,
+          "message": "Attempt 4 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 4092,
+          "message": "Attempt 5 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 4093,
+          "message": "Attempt 6 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 4093,
+          "message": "Attempt 7 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 4094,
+          "message": "Attempt 8 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 56159,
+          "message": "Attempt 7 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 59799,
+          "message": "Attempt 9 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 77823,
+          "message": "Attempt 2 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 78029,
+          "message": "Attempt 2 of 32 (8 at once): Lean accepts it; running the strict verifier…"
+        }
+      ]
+    },
+    {
+      "id": "induction_sumkexp3eqsumksq",
+      "outcome": "solved",
+      "attempts": 3,
+      "ms": 73406,
+      "usd": 0.011640834246,
+      "proof": "import Mathlib\n\nset_option maxHeartbeats 400000\n\nopen BigOperators Real Nat Topology Rat\n\nlemma sum_range_cast_id_rat (n : ℕ) :\n    (∑ k ∈ Finset.range n, (k : ℚ)) = (n : ℚ) * ((n : ℚ) - 1) / 2 := by\n  induction n with\n  | zero => simp\n  | succ n ih =>\n      rw [Finset.sum_range_succ, ih]\n      push_cast\n      ring\n\nlemma sum_range_cube_cast_rat (n : ℕ) :\n    (∑ k ∈ Finset.range n, ((k : ℚ)^3)) =\n      (∑ k ∈ Finset.range n, (k : ℚ))^2 := by\n  induction n with\n  | zero => simp\n  | succ n ih =>\n      simp only [Finset.sum_range_succ]\n      have hS : (∑ k ∈ Finset.range n, (k : ℚ)) = (n : ℚ) * ((n : ℚ) - 1) / 2 :=\n        sum_range_cast_id_rat n\n      simp only [ih, hS]\n      ring\n\ntheorem induction_sumkexp3eqsumksq\n  (n : ℕ) :\n  ∑ k ∈ Finset.range n, k^3 = (∑ k ∈ Finset.range n, k)^2 := by\n  have h : ((Finset.sum (Finset.range n) (fun k => k^3) : ℕ) : ℚ) =\n      (((Finset.sum (Finset.range n) (fun k => k) : ℕ)^2) : ℚ) := by\n    push_cast\n    exact sum_range_cube_cast_rat n\n  exact Nat.cast_injective h\n",
+      "timeline": [
+        {
+          "t": 4,
+          "message": "Elaborating the frozen statement with Lean (first run loads Mathlib)…"
+        },
+        {
+          "t": 3578,
+          "message": "Attempt 1 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3580,
+          "message": "Attempt 2 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3581,
+          "message": "Attempt 3 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3581,
+          "message": "Attempt 4 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3582,
+          "message": "Attempt 5 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3582,
+          "message": "Attempt 6 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3583,
+          "message": "Attempt 7 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3583,
+          "message": "Attempt 8 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 63513,
+          "message": "Attempt 3 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 65160,
+          "message": "Attempt 4 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 66695,
+          "message": "Attempt 9 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 66848,
+          "message": "Attempt 10 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 69726,
+          "message": "Attempt 6 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 69904,
+          "message": "Attempt 6 of 32 (8 at once): Lean accepts it; running the strict verifier…"
+        }
+      ]
+    },
+    {
+      "id": "imo_1963_p5",
+      "outcome": "solved",
+      "attempts": 4,
+      "ms": 110983,
+      "usd": 0.026731853729999998,
+      "proof": "import Mathlib\n\nset_option maxHeartbeats 400000\n\nopen BigOperators Real Nat Topology Rat\n\ntheorem imo_1963_p5 :\n  Real.cos (π / 7) - Real.cos (2 * π / 7) + Real.cos (3 * π / 7) = 1 / 2 := by\n  set x : ℝ := π / 7 with hxdef\n  have hxval : x = π / 7 := by\n    rw [hxdef]\n  have hx2 : 2 * π / 7 = 2 * x := by\n    rw [hxval]\n    ring\n  have hx3 : 3 * π / 7 = 3 * x := by\n    rw [hxval]\n    ring\n  have h4arg : 4 * x = π - 3 * x := by\n    rw [hxval]\n    ring\n  have hsinpos : 0 < Real.sin x := by\n    rw [hxval]\n    apply Real.sin_pos_of_pos_of_lt_pi\n    · positivity\n    · nlinarith [Real.pi_pos]\n  have hsin : Real.sin x ≠ 0 := ne_of_gt hsinpos\n  have h2sin : 2 * Real.sin x ≠ 0 := by\n    exact mul_ne_zero (by norm_num) hsin\n  have hprod (a b : ℝ) :\n      2 * Real.sin a * Real.cos b = Real.sin (a + b) + Real.sin (a - b) := by\n    rw [Real.sin_add, Real.sin_sub]\n    ring\n  have h1 : 2 * Real.sin x * Real.cos x = Real.sin (2 * x) := by\n    rw [hprod x x]\n    have hxx : x + x = 2 * x := by ring\n    have hx0 : x - x = 0 := by ring\n    rw [hxx, hx0, Real.sin_zero]\n    ring\n  have h2 : 2 * Real.sin x * Real.cos (2 * x) =\n      Real.sin (3 * x) - Real.sin x := by\n    rw [hprod x (2 * x)]\n    have harg1 : x + 2 * x = 3 * x := by ring\n    have harg2 : x - 2 * x = -x := by ring\n    rw [harg1, harg2, Real.sin_neg]\n    ring\n  have h3 : 2 * Real.sin x * Real.cos (3 * x) =\n      Real.sin (4 * x) - Real.sin (2 * x) := by\n    rw [hprod x (3 * x)]\n    have harg1 : x + 3 * x = 4 * x := by ring\n    have harg2 : x - 3 * x = -(2 * x) := by ring\n    rw [harg1, harg2, Real.sin_neg]\n    ring\n  have hmul :\n      2 * Real.sin x * (Real.cos x - Real.cos (2 * x) + Real.cos (3 * x)) =\n        Real.sin x := by\n    calc\n      2 * Real.sin x * (Real.cos x - Real.cos (2 * x) + Real.cos (3 * x))\n          = 2 * Real.sin x * Real.cos x\n            - 2 * Real.sin x * Real.cos (2 * x)\n            + 2 * Real.sin x * Real.cos (3 * x) := by ring\n      _ = Real.sin (2 * x) - (Real.sin (3 * x) - Real.sin x)\n            + (Real.sin (4 * x) - Real.sin (2 * x)) := by\n            rw [h1, h2, h3]\n      _ = Real.sin (4 * x) - Real.sin (3 * x) + Real.sin x := by ring\n      _ = Real.sin x := by\n            have h4 : Real.sin (4 * x) = Real.sin (3 * x) := by\n              rw [h4arg, Real.sin_pi_sub]\n            rw [h4]\n            ring\n  have hA :\n      Real.cos x - Real.cos (2 * x) + Real.cos (3 * x) = 1 / 2 := by\n    have hcancel :\n        2 * Real.sin x * (Real.cos x - Real.cos (2 * x) + Real.cos (3 * x)) =\n          2 * Real.sin x * (1 / 2) := by\n      rw [hmul]\n      ring\n    calc\n      Real.cos x - Real.cos (2 * x) + Real.cos (3 * x)\n          = ((2 * Real.sin x)⁻¹ * (2 * Real.sin x)) *\n              (Real.cos x - Real.cos (2 * x) + Real.cos (3 * x)) := by\n              rw [inv_mul_cancel₀ h2sin]\n              ring\n      _ = (2 * Real.sin x)⁻¹ *\n            (2 * Real.sin x *\n              (Real.cos x - Real.cos (2 * x) + Real.cos (3 * x))) := by ring\n      _ = (2 * Real.sin x)⁻¹ *\n            (2 * Real.sin x * (1 / 2)) := by rw [hcancel]\n      _ = 1 / 2 := by\n            rw [← mul_assoc, inv_mul_cancel₀ h2sin]\n            ring\n  rw [hx2, hx3]\n  exact hA\n",
+      "timeline": [
+        {
+          "t": 2,
+          "message": "Elaborating the frozen statement with Lean (first run loads Mathlib)…"
+        },
+        {
+          "t": 3930,
+          "message": "Attempt 1 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3931,
+          "message": "Attempt 2 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3932,
+          "message": "Attempt 3 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3932,
+          "message": "Attempt 4 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3933,
+          "message": "Attempt 5 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3933,
+          "message": "Attempt 6 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3933,
+          "message": "Attempt 7 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3934,
+          "message": "Attempt 8 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 103002,
+          "message": "Attempt 5 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 103830,
+          "message": "Attempt 8 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 106658,
+          "message": "Attempt 9 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 107086,
+          "message": "Attempt 8 of 32 (8 at once): Lean accepts it; running the strict verifier…"
+        },
+        {
+          "t": 107434,
+          "message": "Attempt 4 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 108167,
+          "message": "Attempt 10 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 108234,
+          "message": "Attempt 1 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 108633,
+          "message": "Attempt 11 of 32 (8 at once): the model is writing a proof…"
+        }
+      ]
+    },
+    {
+      "id": "aime_1988_p8",
+      "outcome": "solved",
+      "attempts": 1,
+      "ms": 49083,
+      "usd": 0.0023528201100000003,
+      "proof": "import Mathlib\n\nset_option maxHeartbeats 400000\n\nopen BigOperators Real Nat Topology Rat\n\ntheorem aime_1988_p8\n  (f : ℕ → ℕ → ℝ)\n  (h₀ : ∀ x, 0 < x → f x x = x)\n  (h₁ : ∀ x y, (0 < x ∧ 0 < y) → f x y = f y x)\n  (h₂ : ∀ x y, (0 < x ∧ 0 < y) → (↑x + ↑y) * f x y = y * (f x (x + y))) :\n  f 14 52 = 364 := by\n  have e1 : (52 : ℝ) * f 14 38 = 38 * f 14 52 := by\n    have h := h₂ 14 38 (by norm_num)\n    norm_num at h\n    exact h\n  have e2 : (38 : ℝ) * f 14 24 = 24 * f 14 38 := by\n    have h := h₂ 14 24 (by norm_num)\n    norm_num at h\n    exact h\n  have e3 : (24 : ℝ) * f 14 10 = 10 * f 14 24 := by\n    have h := h₂ 14 10 (by norm_num)\n    norm_num at h\n    exact h\n  have e4 : (14 : ℝ) * f 10 4 = 4 * f 10 14 := by\n    have h := h₂ 10 4 (by norm_num)\n    norm_num at h\n    exact h\n  have e5 : (10 : ℝ) * f 4 6 = 6 * f 4 10 := by\n    have h := h₂ 4 6 (by norm_num)\n    norm_num at h\n    exact h\n  have e6 : (6 : ℝ) * f 4 2 = 2 * f 4 6 := by\n    have h := h₂ 4 2 (by norm_num)\n    norm_num at h\n    exact h\n  have e7 : (4 : ℝ) * f 2 2 = 2 * f 2 4 := by\n    have h := h₂ 2 2 (by norm_num)\n    norm_num at h\n    exact h\n  have s1 : f 14 10 = f 10 14 := h₁ 14 10 (by norm_num)\n  have s2 : f 10 4 = f 4 10 := h₁ 10 4 (by norm_num)\n  have s3 : f 4 2 = f 2 4 := h₁ 4 2 (by norm_num)\n  have d : f 2 2 = (2 : ℝ) := by\n    have h := h₀ 2 (by norm_num)\n    norm_num at h\n    exact h\n  nlinarith [e1, e2, e3, e4, e5, e6, e7, s1, s2, s3, d]\n",
+      "timeline": [
+        {
+          "t": 2,
+          "message": "Elaborating the frozen statement with Lean (first run loads Mathlib)…"
+        },
+        {
+          "t": 3429,
+          "message": "Attempt 1 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3430,
+          "message": "Attempt 2 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3431,
+          "message": "Attempt 3 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3431,
+          "message": "Attempt 4 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3431,
+          "message": "Attempt 5 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3432,
+          "message": "Attempt 6 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3432,
+          "message": "Attempt 7 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3432,
+          "message": "Attempt 8 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 41855,
+          "message": "Attempt 6 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 45464,
+          "message": "Attempt 6 of 32 (8 at once): Lean accepts it; running the strict verifier…"
+        }
+      ]
+    },
+    {
+      "id": "imo_1983_p6",
+      "outcome": "solved",
+      "attempts": 1,
+      "ms": 73973,
+      "usd": 0.010082327001,
+      "proof": "import Mathlib\n\nset_option maxHeartbeats 400000\n\nopen BigOperators Real Nat Topology Rat\n\ntheorem imo_1983_p6\n  (a b c : ℝ)\n  (h₀ : 0 < a ∧ 0 < b ∧ 0 < c)\n  (h₁ : c < a + b)\n  (h₂ : b < a + c)\n  (h₃ : a < b + c) :\n  0 ≤ a^2 * b * (a - b) + b^2 * c * (b - c) + c^2 * a * (c - a) := by\n  let x : ℝ := (b + c - a) / 2\n  let y : ℝ := (c + a - b) / 2\n  let z : ℝ := (a + b - c) / 2\n  have hx : 0 < x := by\n    dsimp [x]\n    linarith [h₃]\n  have hy : 0 < y := by\n    dsimp [y]\n    linarith [h₂]\n  have hz : 0 < z := by\n    dsimp [z]\n    linarith [h₁]\n  have hkey :\n      a^2 * b * (a - b) + b^2 * c * (b - c) + c^2 * a * (c - a)\n        = 2 * (x * z * (x - y)^2 + x * y * (y - z)^2 + y * z * (z - x)^2) := by\n    dsimp [x, y, z]\n    ring\n  have hA : 0 ≤ x * z * (x - y)^2 := by\n    exact mul_nonneg (mul_nonneg (le_of_lt hx) (le_of_lt hz)) (sq_nonneg (x - y))\n  have hB : 0 ≤ x * y * (y - z)^2 := by\n    exact mul_nonneg (mul_nonneg (le_of_lt hx) (le_of_lt hy)) (sq_nonneg (y - z))\n  have hC : 0 ≤ y * z * (z - x)^2 := by\n    exact mul_nonneg (mul_nonneg (le_of_lt hy) (le_of_lt hz)) (sq_nonneg (z - x))\n  have hsum :\n      0 ≤ x * z * (x - y)^2 + x * y * (y - z)^2 + y * z * (z - x)^2 := by\n    exact add_nonneg (add_nonneg hA hB) hC\n  rw [hkey]\n  nlinarith [hsum]\n",
+      "timeline": [
+        {
+          "t": 3,
+          "message": "Elaborating the frozen statement with Lean (first run loads Mathlib)…"
+        },
+        {
+          "t": 3632,
+          "message": "Attempt 1 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3634,
+          "message": "Attempt 2 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3635,
+          "message": "Attempt 3 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3635,
+          "message": "Attempt 4 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3636,
+          "message": "Attempt 5 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3636,
+          "message": "Attempt 6 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3636,
+          "message": "Attempt 7 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3637,
+          "message": "Attempt 8 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 55198,
+          "message": "Attempt 7 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 56692,
+          "message": "Attempt 1 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 59572,
+          "message": "Attempt 7 of 32 (8 at once): Lean accepts it; running the strict verifier…"
+        },
+        {
+          "t": 60788,
+          "message": "Attempt 8 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 61110,
+          "message": "Attempt 1 of 32 (8 at once): Lean accepts it; running the strict verifier…"
+        },
+        {
+          "t": 63891,
+          "message": "Attempt 8 of 32 (8 at once): Lean accepts it; running the strict verifier…"
+        }
+      ]
+    },
+    {
+      "id": "induction_pord1p1on2powklt5on2",
+      "outcome": "solved",
+      "attempts": 21,
+      "ms": 571107,
+      "usd": 0.266247167766,
+      "proof": "import Mathlib\n\nset_option maxHeartbeats 400000\n\nopen BigOperators Real Nat Topology Rat\n\nlemma prod_Icc_succ_top_real (a n : ℕ) (f : ℕ → ℝ) (h : a ≤ n + 1) :\n    (∏ k ∈ Finset.Icc a (n + 1), f k) = (∏ k ∈ Finset.Icc a n, f k) * f (n + 1) := by\n  have hnot : n + 1 ∉ Finset.Icc a n := by\n    simp only [Finset.mem_Icc]\n    omega\n  have hIcc : Finset.Icc a (n + 1) = insert (n + 1) (Finset.Icc a n) := by\n    ext k\n    simp only [Finset.mem_Icc, Finset.mem_insert]\n    constructor\n    · intro hk\n      rcases hk with ⟨h1, h2⟩\n      by_cases hk' : k = n + 1\n      · exact Or.inl hk'\n      · right\n        constructor\n        · exact h1\n        · omega\n    · intro hk\n      rcases hk with hk | hk\n      · subst hk\n        exact ⟨h, by omega⟩\n      · rcases hk with ⟨h1, h2⟩\n        exact ⟨h1, by omega⟩\n  rw [hIcc, Finset.prod_insert hnot]\n  ring\n\nlemma prod_bound_ge3 (n : ℕ) (hn : 3 ≤ n) :\n    ∏ k ∈ Finset.Icc 1 n, (1 + (1:ℝ) / 2^k) ≤ 5 / 2 - 3 / 2^n := by\n  refine Nat.le_induction ?base ?step n hn\n  · have h3 : (∏ k ∈ Finset.Icc 1 3, (1 + (1:ℝ) / 2^k)) = 135 / 64 := by\n      rw [prod_Icc_succ_top_real 1 2 _ (by omega)]\n      rw [prod_Icc_succ_top_real 1 1 _ (by omega)]\n      rw [prod_Icc_succ_top_real 1 0 _ (by omega)]\n      have h0 : (∏ k ∈ Finset.Icc 1 0, (1 + (1:ℝ) / 2^k)) = 1 := by simp\n      rw [h0]\n      norm_num\n    rw [h3]\n    norm_num\n  · intro m hm ih\n    have hprod : (∏ k ∈ Finset.Icc 1 (m + 1), (1 + (1:ℝ) / 2^k)) =\n        (∏ k ∈ Finset.Icc 1 m, (1 + (1:ℝ) / 2^k)) * (1 + (1:ℝ) / 2^(m+1)) := by\n      rw [prod_Icc_succ_top_real 1 m _ (by omega)]\n    have hstep : (5 / 2 - 3 / 2^m) * (1 + (1:ℝ) / 2^(m+1)) ≤ 5 / 2 - 3 / 2^(m+1) := by\n      have h2m : (0:ℝ) < 2^m := by positivity\n      have hrel : (2:ℝ)^(m+1) = 2^m * 2 := by rw [pow_succ]\n      rw [hrel]\n      field_simp [h2m.ne']\n      nlinarith [h2m]\n    calc\n      (∏ k ∈ Finset.Icc 1 (m + 1), (1 + (1:ℝ) / 2^k))\n          = (∏ k ∈ Finset.Icc 1 m, (1 + (1:ℝ) / 2^k)) * (1 + (1:ℝ) / 2^(m+1)) := hprod\n      _ ≤ (5 / 2 - 3 / 2^m) * (1 + (1:ℝ) / 2^(m+1)) := by\n            apply mul_le_mul_of_nonneg_right ih\n            positivity\n      _ ≤ 5 / 2 - 3 / 2^(m+1) := hstep\n\ntheorem induction_pord1p1on2powklt5on2\n  (n : ℕ)\n  (h₀ : 0 < n) :\n  ∏ k ∈ Finset.Icc 1 n, (1 + (1:ℝ) / 2^k) < 5 / 2 := by\n  by_cases hn3 : n < 3\n  · interval_cases n\n    · have h1 : (∏ k ∈ Finset.Icc 1 1, (1 + (1:ℝ) / 2^k)) = 3 / 2 := by\n        rw [prod_Icc_succ_top_real 1 0 _ (by omega)]\n        have h0 : (∏ k ∈ Finset.Icc 1 0, (1 + (1:ℝ) / 2^k)) = 1 := by simp\n        rw [h0]\n        norm_num\n      rw [h1]\n      norm_num\n    · have h2 : (∏ k ∈ Finset.Icc 1 2, (1 + (1:ℝ) / 2^k)) = 15 / 8 := by\n        rw [prod_Icc_succ_top_real 1 1 _ (by omega)]\n        rw [prod_Icc_succ_top_real 1 0 _ (by omega)]\n        have h0 : (∏ k ∈ Finset.Icc 1 0, (1 + (1:ℝ) / 2^k)) = 1 := by simp\n        rw [h0]\n        norm_num\n      rw [h2]\n      norm_num\n  · have hn3' : 3 ≤ n := by omega\n    have hb := prod_bound_ge3 n hn3'\n    have hpos : (0:ℝ) < 3 / 2^n := by positivity\n    linarith\n",
+      "timeline": [
+        {
+          "t": 3,
+          "message": "Elaborating the frozen statement with Lean (first run loads Mathlib)…"
+        },
+        {
+          "t": 2955,
+          "message": "Attempt 1 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 2957,
+          "message": "Attempt 2 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 2957,
+          "message": "Attempt 3 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 2958,
+          "message": "Attempt 4 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 2958,
+          "message": "Attempt 5 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 2959,
+          "message": "Attempt 6 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 2959,
+          "message": "Attempt 7 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 2959,
+          "message": "Attempt 8 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 105368,
+          "message": "Attempt 3 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 108443,
+          "message": "Attempt 9 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 116274,
+          "message": "Attempt 6 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 116989,
+          "message": "Attempt 10 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 128810,
+          "message": "Attempt 4 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 129365,
+          "message": "Attempt 11 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 145687,
+          "message": "Attempt 1 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 147219,
+          "message": "Attempt 12 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 163083,
+          "message": "Attempt 7 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 164098,
+          "message": "Attempt 13 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 176776,
+          "message": "Attempt 2 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 180752,
+          "message": "Attempt 14 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 252266,
+          "message": "Attempt 8 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 253287,
+          "message": "Attempt 15 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 260071,
+          "message": "Attempt 5 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 261495,
+          "message": "Attempt 16 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 309363,
+          "message": "Attempt 11 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 309819,
+          "message": "Attempt 12 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 310360,
+          "message": "Attempt 17 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 311328,
+          "message": "Attempt 18 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 312976,
+          "message": "Attempt 9 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 313476,
+          "message": "Attempt 19 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 352338,
+          "message": "Attempt 13 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 353289,
+          "message": "Attempt 20 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 372060,
+          "message": "Attempt 14 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 372931,
+          "message": "Attempt 21 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 406670,
+          "message": "Attempt 15 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 406959,
+          "message": "Attempt 22 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 412866,
+          "message": "Attempt 23 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 451534,
+          "message": "Attempt 18 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 452177,
+          "message": "Attempt 24 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 504613,
+          "message": "Attempt 19 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 504836,
+          "message": "Attempt 25 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 522459,
+          "message": "Attempt 17 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 523351,
+          "message": "Attempt 26 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 549641,
+          "message": "Attempt 16 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 551092,
+          "message": "Attempt 27 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 567516,
+          "message": "Attempt 21 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 568163,
+          "message": "Attempt 21 of 32 (8 at once): Lean accepts it; running the strict verifier…"
+        },
+        {
+          "t": 568876,
+          "message": "Attempt 20 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 569460,
+          "message": "Attempt 28 of 32 (8 at once): the model is writing a proof…"
+        }
+      ]
+    },
+    {
+      "id": "mathd_numbertheory_728",
+      "outcome": "solved",
+      "attempts": 1,
+      "ms": 29621,
+      "usd": 0.002838618552,
+      "proof": "import Mathlib\n\nset_option maxHeartbeats 400000\n\nopen BigOperators Real Nat Topology Rat\n\ntheorem mathd_numbertheory_728 :\n  (29^13 - 5^13) % 7 = 3 := by\n  norm_num\n",
+      "timeline": [
+        {
+          "t": 2,
+          "message": "Elaborating the frozen statement with Lean (first run loads Mathlib)…"
+        },
+        {
+          "t": 3552,
+          "message": "Attempt 1 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3554,
+          "message": "Attempt 2 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3555,
+          "message": "Attempt 3 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3555,
+          "message": "Attempt 4 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3555,
+          "message": "Attempt 5 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3556,
+          "message": "Attempt 6 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3556,
+          "message": "Attempt 7 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3556,
+          "message": "Attempt 8 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 15278,
+          "message": "Attempt 8 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 18094,
+          "message": "Attempt 8 of 32 (8 at once): Lean accepts it; running the strict verifier…"
+        },
+        {
+          "t": 19910,
+          "message": "Attempt 2 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 19927,
+          "message": "Attempt 2 of 32 (8 at once): Lean accepts it; running the strict verifier…"
+        },
+        {
+          "t": 20150,
+          "message": "Attempt 1 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 20166,
+          "message": "Attempt 1 of 32 (8 at once): Lean accepts it; running the strict verifier…"
+        },
+        {
+          "t": 20566,
+          "message": "Attempt 4 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 20582,
+          "message": "Attempt 4 of 32 (8 at once): Lean accepts it; running the strict verifier…"
+        }
+      ]
+    },
+    {
+      "id": "aime_1989_p8",
+      "outcome": "solved",
+      "attempts": 1,
+      "ms": 19284,
+      "usd": 0.000932329639,
+      "proof": "import Mathlib\n\nset_option maxHeartbeats 400000\n\nopen BigOperators Real Nat Topology Rat\n\ntheorem aime_1989_p8\n  (a b c d e f g : ℝ)\n  (h₀ : a + 4 * b + 9 * c + 16 * d + 25 * e + 36 * f + 49 * g = 1)\n  (h₁ : 4 * a + 9 * b + 16 * c + 25 * d + 36 * e + 49 * f + 64 * g = 12)\n  (h₂ : 9 * a + 16 * b + 25 * c + 36 * d + 49 * e + 64 * f + 81 * g = 123) :\n  16 * a + 25 * b + 36 * c + 49 * d + 64 * e + 81 * f + 100 * g = 334 := by\n  linarith [h₀, h₁, h₂]\n",
+      "timeline": [
+        {
+          "t": 5,
+          "message": "Elaborating the frozen statement with Lean (first run loads Mathlib)…"
+        },
+        {
+          "t": 3194,
+          "message": "Attempt 1 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3196,
+          "message": "Attempt 2 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3197,
+          "message": "Attempt 3 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3197,
+          "message": "Attempt 4 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3198,
+          "message": "Attempt 5 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3198,
+          "message": "Attempt 6 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3198,
+          "message": "Attempt 7 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 3199,
+          "message": "Attempt 8 of 32 (8 at once): the model is writing a proof…"
+        },
+        {
+          "t": 11091,
+          "message": "Attempt 2 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 13206,
+          "message": "Attempt 3 of 32 (8 at once): Lean is checking the proof…"
+        },
+        {
+          "t": 13781,
+          "message": "Attempt 2 of 32 (8 at once): Lean accepts it; running the strict verifier…"
+        },
+        {
+          "t": 13934,
+          "message": "Attempt 3 of 32 (8 at once): Lean accepts it; running the strict verifier…"
+        }
+      ]
+    }
+  ],
+  "budget": 10,
+  "label": "deepseek-v4.1-flash",
+  "env": {
+    "app": "0.2.58",
+    "platform": "20 machines in parallel, each GitHub Actions ubuntu-latest, 16 GB, 4 CPUs",
+    "lean": "Lake version 5.0.0-src+c9afcdd (Lean version 4.36.0-rc1)",
+    "mathlib": "625d8914199bc567cca9b91f90e8e5afafa5ae51",
+    "leanDeadlineMs": 600000,
+    "leanProcesses": 2,
+    "repl": true,
+    "remoteLean": false,
+    "proofIdea": false
+  },
+  "official": {
+    "runner": "GitHub Actions ubuntu-latest",
+    "url": "https://github.com/JorgeOchoaReyes/Mack/actions/runs/46113979203"
+  },
+  "harness": {
+    "mack": "0.2.58",
+    "openMathHarness": "687f2a2",
+    "procedures": [
+      "strict verifier",
+      "linters off",
+      "pass@32: independent samples, checked as written",
+      "replies up to 64k tokens",
+      "thinking high"
+    ]
+  },
+  "traces": {
+    "dataset": "jorgeochoareyes/mack-benchmark-traces",
+    "path": "runs/minif2f-test-pass32-202611280553"
+  },
+  "appVersion": "0.2.58",
+  "attemptsLogged": true
+}
