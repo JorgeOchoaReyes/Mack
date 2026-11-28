@@ -150,14 +150,16 @@ describe("a problem's attempt timeline", () => {
 
 import { BENCH_BASICS } from "../core/bench/bench";
 
-describe("official runs on the site", () => {
-  it("carry an Official badge linking the workflow run, on the leaderboard and the run's page", () => {
+describe("runs on the site", () => {
+  it("carry no Official badge or self-reported marks: every run is made by Mack's own workflow", () => {
     const url = "https://github.com/JorgeOchoaReyes/Mack/actions/runs/7";
-    const site = buildSite([{ ...run, folder: "o", official: { runner: "GitHub Actions", url } }, { ...run, id: "2", folder: "c" }], "https://github.com/o/r");
-    expect(site["index.html"]).toContain(`<a class="pill official" href="${url}">Official</a>`);
-    expect(site["index.html"].match(/pill official/g)).toHaveLength(1);
-    expect(site["runs/o.html"]).toContain("pill official");
-    expect(site["runs/c.html"]).not.toContain("pill official");
+    const site = buildSite([{ ...run, folder: "o", official: { runner: "GitHub Actions", url } }], "https://github.com/o/r");
+    for (const page of [site["index.html"], site["runs/o.html"]]) {
+      expect(page).not.toContain("pill official");
+      expect(page).not.toContain("self-reported");
+      expect(page).not.toContain("cost*");
+    }
+    expect(site["methodology.html"]).toContain("Each run names one thinking level");
   });
 });
 
@@ -238,7 +240,7 @@ describe("Open Math Harness's own methods in the benchmark", () => {
     const page = site["runs/half.html"];
     expect(page).toContain("Solved within k attempts");
     expect(page).toContain("within 64 attempts");
-    expect(page).toContain("Self-reported by the run");
+    expect(page).not.toContain("Self-reported");
   });
 });
 

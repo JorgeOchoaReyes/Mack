@@ -63,6 +63,9 @@ const provider = isProvider(a.provider ?? "") ? (a.provider as ProviderId) : fai
 const model = (a.model ?? "").trim() || fail("--model is required");
 const proverProvider = a["prover-provider"] && isProvider(a["prover-provider"]) ? (a["prover-provider"] as ProviderId) : provider;
 const effort = (a.effort && (PROOF_EFFORTS as string[]).includes(a.effort) ? a.effort : "default") as ProofEffort;
+// An official run names a level the provider actually receives: "default" and "off" send none (the provider
+// picks, and may change it), and "xhigh" is sent as "high", so none of them is a fixed, comparable setting.
+if (a.official && !["low", "medium", "high"].includes(effort)) fail(`--effort must be low, medium or high for an official run, not "${a.effort ?? ""}"`);
 const workspace = a.workspace || fail("--workspace (a Lean project with Mathlib) is required");
 const scratchRoot = a.scratch || join(os.tmpdir(), "mack-bench");
 
