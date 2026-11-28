@@ -175,9 +175,10 @@ two runs for a **head to head**.
 | ✅ Solves are re-checked | CI re-verifies every solved proof with Lean and the strict verifier, against Mack's own copy of each problem and the recorded Mathlib. Editing `run.json` cannot add a solve |
 | ✅ Nothing left out | A run must list every problem of its fixed sample; a skipped problem counts as unsolved |
 | ✅ Ranges, not just rates | Each rate has its 95% range (13 of 20 is 43–82%) |
-| ✅ Official runs are marked | Only the owner's cloud workflow, on a same-repo PR, can carry the Official badge |
+| ✅ One machine, one workflow | Every run on the site is made by the owner's cloud workflow (GitHub Actions, 4 CPUs, 16 GB); CI refuses the official mark on a fork's PR |
 | ✅ Contamination check | Recent Putnam is its own set, and PutnamBench runs are split by year |
-| ⚠️ Self-reported | Cost, time, tokens and the served model come from the machine that ran it |
+| ✅ Fixed thinking level | Each run names low, medium or high, sent with every request; never the provider's default |
+| ⚠️ Provider-reported | Tokens and the served model are as the provider reported them; cost uses its published prices |
 
 The [methodology page](https://jorgeochoareyes.github.io/Mack/methodology.html)
 explains every set, protocol, method, limit and failure label.

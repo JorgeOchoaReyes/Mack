@@ -179,8 +179,6 @@ tr.first .rank { color: var(--accent-text); }
 .pill { display: inline-block; padding: 2px 9px; border-radius: 99px; font-size: 11.5px; font-weight: 650; background: var(--bar); color: var(--muted); }
 .pill.best { background: var(--accent-soft); color: var(--accent-text); }
 .pill.omh { background: var(--ok-soft); color: var(--ok); }
-.pill.official { background: var(--accent); color: #17150a; text-decoration: none; vertical-align: middle; }
-h1 .pill.official { font-size: 13px; }
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 16px 0; }
 .stat b { display: block; font-size: 24px; font-variant-numeric: tabular-nums; }
 .why { display: grid; grid-template-columns: minmax(120px, 200px) 1fr minmax(36px, auto); gap: 12px; align-items: center; margin: 7px 0; font-size: 13.5px; }
@@ -274,7 +272,7 @@ function page(title: string, body: string, root: string, repo = "https://github.
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(title)}</title>
-<meta name="description" content="How many competition problems Mack proves in Lean: runs shared by its users, every attempt and Lean's verdict.">
+<meta name="description" content="How many competition problems Mack proves in Lean: runs made by Mack's own workflow, every attempt and Lean's verdict.">
 <link rel="icon" href="data:image/svg+xml,${encodeURIComponent(LOGO)}">
 <style>${CSS}</style>
 ${head}
@@ -354,15 +352,13 @@ const TIPS = {
   quick: "Runs of the same size face the same problems, so they are ranked against each other. A sample can be easier or harder than the whole set.",
   whole: "Every problem of the set: the number to compare with published results.",
   within: "Problems solved within k model attempts: pass@k for a pass@k run; for an agent run, attempts learn from Lean's errors.",
-  reported: "Self-reported by the run; cannot be checked. Solves can: CI re-checks every proof with Lean.",
-  thinking: "How deeply the model was asked to reason (reasoning effort). auto = the model's default.",
+  thinking: "How deeply the model was asked to reason (reasoning effort). not set = no level was sent, so the provider chose (older runs only).",
   perSolve: "The run's whole cost divided by problems solved.",
   time: "Wall-clock per problem: model calls, Lean checks and automation together.",
   verified: "Accepted by Mack's strict verifier and re-checked with Lean in CI.",
   contamination: "Recent Putnam problems are least likely to be in training data. Much weaker there suggests memorization helped elsewhere.",
   passk: "The labs' protocol: k independent samples per problem, each checked exactly as written. Compares with published pass@k.",
   agent: "Mack's own system (Lean's feedback, automation, repairs). Compares only with other Mack agent runs, not with pass@k.",
-  official: "Run by Mack's own workflow on a fixed cloud machine (GitHub Actions, 4 CPUs, 16 GB), so its time and cost compare across official runs.",
   harness: "Under each method: the Mack version and Open Math Harness commit it ran. Hover for the procedures used.",
 } as const;
 
@@ -378,17 +374,14 @@ const dur = (ms: number) => {
 const closingTactic = (proof?: string) => (proof ? (/:=\s*by\s*\n\s*(.+)\s*$/.exec(proof.trim())?.[1] ?? "").trim() : "");
 
 /** What cannot be checked in a shared run, said once under each table that shows it. */
-const SELF_REPORTED = `<p class="note">* self-reported ${tip(TIPS.reported)}</p>`;
 
 type Row = { r: SharedRun; p: ReturnType<typeof publishedScore>; usd: number };
 
-/** The Official badge, linking the workflow run that made it. */
-const officialPill = (r: BenchRun) => (r.official ? ` <a class="pill official" href="${esc(r.official.url)}">Official</a>${tip(TIPS.official)}` : "");
 
 /** A model setup as a file name: `deepseek-v4-deepseek-prover-v2`. */
 export const modelSlug = (r: BenchRun) => models(r).toLowerCase().replace(/[^a-z0-9.]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "model";
 
-const thinking = (r: BenchRun) => (r.config.effort ? esc(r.config.effort) : '<span class="muted">auto</span>');
+const thinking = (r: BenchRun) => (r.config.effort ? esc(r.config.effort) : '<span class="muted">not set</span>');
 
 const rowsOf = (runs: SharedRun[]): Row[] =>
   runs
@@ -407,7 +400,7 @@ function runTable(rows: Row[], root: string, withModel = true, ranked = true): s
       const best = ranked && i === 0 && rows.length > 1;
       return `<tr class="link-row${ranked && i === 0 ? " first" : ""}" data-href="${root}runs/${esc(r.folder)}.html">
 ${ranked ? `<td class="rank">${i + 1}</td>` : ""}
-${withModel ? `<td class="wrap"><a href="${root}models/${esc(modelSlug(r))}.html">${esc(models(r))}</a>*${officialPill(r)}</td>` : `<td>${esc(setLabel(r.set))}${officialPill(r)}</td>`}
+${withModel ? `<td class="wrap"><a href="${root}models/${esc(modelSlug(r))}.html">${esc(models(r))}</a></td>` : `<td>${esc(setLabel(r.set))}</td>`}
 <td class="opt" title="${esc(r.harness?.procedures.join(", ") ?? "")}">${protocolOf(r) === "passk" ? esc(protocolLabel(r)) : esc(METHOD_LABELS[r.config.method ?? "single"].replace(/ \(.*\)$/, ""))}${r.config.method === "search" || r.config.method === "ultramath" ? ' <span class="pill omh">OMH</span>' : ""}<span class="cell-sub">${esc(harnessLabel(r.harness, r.appVersion ?? r.env?.app))}</span></td>
 <td class="opt">${thinking(r)}</td>
 <td><a href="${root}runs/${esc(r.folder)}.html"><b>${p.solved}/${p.of}</b></a></td>
@@ -418,7 +411,7 @@ ${withModel ? `<td class="wrap"><a href="${root}models/${esc(modelSlug(r))}.html
     })
     .join("\n");
   return `<div class="scroll"><table>
-<thead><tr>${ranked ? "<th>#</th>" : ""}${withModel ? "<th>Model*</th>" : "<th>Set</th>"}<th class="opt">Method${tip(TIPS.harness)}</th><th class="opt">Thinking${tip(TIPS.thinking)}</th><th>Solved</th><th>Rate · 95% range${tip(TIPS.range)}</th><th class="opt">$ / solve*${tip(TIPS.perSolve)}</th><th class="opt">Date</th></tr></thead>
+<thead><tr>${ranked ? "<th>#</th>" : ""}${withModel ? "<th>Model</th>" : "<th>Set</th>"}<th class="opt">Method${tip(TIPS.harness)}</th><th class="opt">Thinking${tip(TIPS.thinking)}</th><th>Solved</th><th>Rate · 95% range${tip(TIPS.range)}</th><th class="opt">$ / solve${tip(TIPS.perSolve)}</th><th class="opt">Date</th></tr></thead>
 <tbody>
 ${body}
 </tbody></table></div>`;
@@ -514,14 +507,14 @@ ${bar(g.best.p.rate, i)}
 <section id="leaderboard">
 <h2>Leaderboard</h2>
 ${setTabs(runs) || `<div class="card empty"><b>No runs shared yet</b>Run the Benchmark in Mack and press <b>Share as a PR</b>.</div>`}
-<p class="note">${runs.length ? `* self-reported ${tip(TIPS.reported)} · ` : ""}<a href="methodology.html">How runs are made and scored</a></p>
+<p class="note"><a href="methodology.html">How runs are made and scored</a></p>
 </section>
 ${groups.length > 1 ? `<section id="models" class="reveal"><h2>Models</h2><div class="cards">${cards}</div></section>` : ""}
 ${
   contamination
     ? `<section id="recent" class="reveal">
 <h2>Recent problems ${tip(TIPS.contamination)}</h2>
-<div class="scroll"><table><thead><tr><th>Model*</th><th>Older Putnam</th><th>Recent</th></tr></thead><tbody>
+<div class="scroll"><table><thead><tr><th>Model</th><th>Older Putnam</th><th>Recent</th></tr></thead><tbody>
 ${contamination}
 </tbody></table></div>
 </section>`
@@ -553,7 +546,7 @@ export function modelPage(slug: string, runs: SharedRun[], repo: string): string
 <div class="kpis">
 ${bestBySet.map((x) => kpi(pct(x.p.rate), `best on ${esc(setLabel(x.r.set))}`, `${x.p.solved}/${x.p.of} · ${range(x.p.low, x.p.high)}`)).join("\n")}
 ${kpi(`${solved.length}/${all.filter((x) => x.outcome !== "skipped").length}`, "solved, all runs")}
-${kpi(solved.length ? usd(spent / solved.length) : "–", "per solve*")}
+${kpi(solved.length ? usd(spent / solved.length) : "–", "per solve")}
 ${kpi(solved.length ? (attempts / solved.length).toFixed(1) : "–", "attempts per solve")}
 </div>
 <section class="reveal"><h2>Runs</h2>${runTable(rows, "../", false, false)}</section>
@@ -564,7 +557,7 @@ ${
         .join("\n")}</div></section>`
     : ""
 }
-${SELF_REPORTED}`,
+`,
     "../",
     repo,
   );
@@ -604,16 +597,16 @@ export function runPage(r: SharedRun, repo: string): string {
     `${models(r)} on ${setLabel(r.set)} ${p.solved}/${p.of}: Mack benchmark`,
     `<p class="crumbs"><a href="../index.html#leaderboard">Leaderboard</a> / <a href="../models/${esc(modelSlug(r))}.html">${esc(models(r))}</a></p>
 <section class="hero compact" style="padding:14px 0 4px">
-<h1 style="font-size:30px">${esc(models(r))} · ${esc(setLabel(r.set))}${officialPill(r)}</h1>
-<p class="muted">${esc(METHOD_LABELS[c.method ?? "single"])} · thinking ${c.effort ? esc(c.effort) : "auto"} · ${day(r.startedAt)}${r.sharedBy ? ` · by ${esc(r.sharedBy)}` : ""}${r.appVersion ? ` · Mack ${esc(r.appVersion)}` : ""}</p>
+<h1 style="font-size:30px">${esc(models(r))} · ${esc(setLabel(r.set))}</h1>
+<p class="muted">${esc(METHOD_LABELS[c.method ?? "single"])} · thinking ${c.effort ? esc(c.effort) : "not set"} · ${day(r.startedAt)}${r.sharedBy ? ` · by ${esc(r.sharedBy)}` : ""}${r.appVersion ? ` · Mack ${esc(r.appVersion)}` : ""}</p>
 </section>
 <div class="kpis">
 ${kpi(`${p.solved}/${p.of}`, `solved${p.full ? ", whole set" : `, ${p.of} of the set`}`)}
 ${kpi(`<span data-count="${(p.rate * 100).toFixed(1)}" data-dec="1" data-suffix="%">${pct(p.rate)}</span>`, `solve rate${tip(TIPS.range)}`, `95% range ${range(p.low, p.high)}`)}
-${kpi(usd(s.usd), "cost*", p.solved ? `${usd(s.usd / p.solved)} per solve` : "")}
-${kpi(`${Math.round(s.ms / 60000)} min`, "time*")}
+${kpi(usd(s.usd), "cost", p.solved ? `${usd(s.usd / p.solved)} per solve` : "")}
+${kpi(`${Math.round(s.ms / 60000)} min`, "time")}
 ${m.attempts ? kpi(m.attemptsPerSolve !== null ? m.attemptsPerSolve.toFixed(1) : "–", "attempts per solve", `${s.byAutomation} by automation alone`) : ""}
-${m.attempts ? kpi(`${tokens(m.promptTokens)} / ${tokens(m.completionTokens)}`, "tokens in / out*") : ""}
+${m.attempts ? kpi(`${tokens(m.promptTokens)} / ${tokens(m.completionTokens)}`, "tokens in / out") : ""}
 </div>
 <section class="reveal"><h2>Problems</h2>
 <div class="card"><div class="tiles">${tiles}</div>
@@ -662,7 +655,7 @@ ${kv("Lemma pool", c.lemmaPool ? "on" : "off")}
 ${r.harness ? kv("Harness", `Mack ${esc(r.harness.mack)} · OMH ${esc(r.harness.openMathHarness)}`) : ""}
 ${r.env?.mathlib ? kv("Mathlib", `<code>${esc(r.env.mathlib.slice(0, 12))}</code>`) : ""}
 ${r.env?.lean ? kv("Lean", esc(r.env.lean)) : ""}
-${r.env?.platform ? kv("Machine*", esc(r.env.platform)) : ""}
+${r.env?.platform ? kv("Machine", esc(r.env.platform)) : ""}
 </div>
 ${r.harness ? `<p class="note">Open Math Harness <b>${esc(r.harness.openMathHarness)}</b> · ${esc(r.harness.procedures.join(", "))}</p>` : ""}
 </div></section>
@@ -673,7 +666,6 @@ ${r.harness ? `<p class="note">Open Math Harness <b>${esc(r.harness.openMathHarn
 ${rows}
 </tbody></table></div></details>
 </section>
-${SELF_REPORTED}
 <p class="small"><a href="${esc(repo)}/blob/main/benchmarks/runs/${esc(r.folder)}/REPORT.md">Full report</a> · <a href="${esc(repo)}/blob/main/benchmarks/runs/${esc(r.folder)}/run.json">run.json</a>${r.attemptsLogged ? ` · <a href="${esc(repo)}/blob/main/benchmarks/runs/${esc(r.folder)}/attempts.jsonl">attempts.jsonl</a> (every attempt)` : ""}</p>`,
     "../",
     repo,
@@ -795,10 +787,10 @@ ${a.prose ? `<p class="small">What it wrote around the proof</p><pre>${esc(a.pro
 ${origin ? `<p class="muted" style="margin:0 0 8px">${origin.url ? `<a href="${esc(origin.url)}">${esc(origin.label)}</a>` : esc(origin.label)}</p>` : ""}
 ${words || source ? `<section style="padding-top:10px"><h2>The problem</h2>${words ? `<div class="card statement">${esc(words)}</div>` : ""}${source ? `<details${words ? "" : " open"} style="margin-top:10px"><summary>As given to the model, in Lean</summary><pre class="code">${esc(source.trim())}</pre></details>` : ""}</section>` : ""}
 <div class="kpis">
-${kpi(dur(x.ms), "time*")}
+${kpi(dur(x.ms), "time")}
 ${kpi(String(x.attempts), "model attempts", auto ? "none needed" : verified ? `verified on #${verified.n}` : "")}
-${kpi(usd(x.usd), "cost*")}
-${rows.length ? kpi(`${tokens(tokIn)} / ${tokens(tokOut)}`, "tokens in / out*") : ""}
+${kpi(usd(x.usd), "cost")}
+${rows.length ? kpi(`${tokens(tokIn)} / ${tokens(tokOut)}`, "tokens in / out") : ""}
 ${modelMs ? kpi(dur(modelMs), "in model attempts", `${dur(x.ms - modelMs)} other`) : autoMs ? kpi(dur(autoMs), "in automation", `${dur(otherMs)} set-up and planning`) : ""}
 </div>
 <section><h2>How it went</h2>
@@ -819,7 +811,6 @@ ${
     : ""
 }
 ${x.proof ? `<section><h2>The verified proof${tip(TIPS.verified)}</h2><pre class="code">${esc(x.proof)}</pre></section>` : ""}
-${SELF_REPORTED}
 <p class="small"><a href="${esc(repo)}/blob/main/benchmarks/runs/${esc(r.folder)}/attempts.jsonl">attempts.jsonl</a></p>`,
     "../../",
     repo,
@@ -976,19 +967,16 @@ ${failures}
 <section id="checks">
 <h2>What is checked</h2>
 <div class="grid2">
-<div class="card"><h3>Checked by CI on every shared run</h3><ul class="bullets">
+<div class="card"><h3>Checked by CI on every run</h3><ul class="bullets">
 <li>Every solved proof is re-verified with Lean and the strict verifier, against the same Mathlib.</li>
 <li>The sample is exactly the fixed problems for its size, each with one result.</li>
 <li>A run that fails either is not merged.</li>
 </ul></div>
-<div class="card"><h3>Official runs</h3><ul class="bullets">
-<li>Made by the Mack repo's own workflow on one fixed cloud machine (GitHub Actions, 4 CPUs, 16 GB), linked from their badge.</li>
-<li>Only those time and cost figures compare across models; community runs ran on their sharers' computers.</li>
-<li>CI refuses the official mark on a pull request from a fork.</li>
+<div class="card"><h3>How runs are made</h3><ul class="bullets">
+<li>Every run is made by the Mack repo's own workflow on one fixed cloud machine (GitHub Actions, 4 CPUs, 16 GB), so time and cost compare across models.</li>
+<li>Time is measured on that machine, tokens as the provider reported them, cost from the provider's published prices.</li>
+<li>Each run names one thinking level, the same for every request, so runs compare like for like.</li>
 <li>Every attempt's full trace (the whole thinking and reply, the Lean and Lean's verdict) is published to a Hugging Face dataset, linked from each problem's page; this site shows the first ${LOG_LIMITS.thinking.toLocaleString("en-US")} characters of each attempt's thinking.</li>
-</ul></div>
-<div class="card"><h3>Self-reported</h3><ul class="bullets">
-<li>Model names, thinking level, cost, time and tokens.</li>
 <li>Failed problems: a failure cannot be re-run for free, so its attempts are shown as logged.</li>
 </ul></div>
 </div>

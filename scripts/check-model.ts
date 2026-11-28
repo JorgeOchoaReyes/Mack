@@ -93,7 +93,9 @@ async function main(): Promise<void> {
     "",
   ];
   summary(lines.join("\n"));
+  // The list in the log as well, one model a line with its prices, for anyone (or any tool) reading the run's logs.
   console.log(`${ids.length} models on ${info.label}; ${missing.length ? `missing: ${missing.join(", ")}` : "all found"}.`);
+  for (const m of ids) console.log(`  ${m}\t${money(prices[m]?.input) || "-"}\t${money(prices[m]?.output) || "-"}`);
   if (missing.length) {
     console.error(`::error title=Unknown model::${missing.join(", ")} not on ${info.label}'s model list. Closest: ${closest(missing[0], ids, 3).join(", ")}. The full list is on the run's summary page.`);
     process.exit(1);

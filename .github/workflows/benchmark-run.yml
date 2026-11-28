@@ -60,10 +60,10 @@ on:
         description: Prover models, comma-separated (optional)
         default: ""
       effort:
-        description: Thinking level
+        description: Thinking level, sent with every request (no "model default", so runs compare like for like)
         type: choice
-        options: [default, off, low, medium, high, xhigh]
-        default: default
+        options: [low, medium, high]
+        default: high
       attempts:
         description: Attempts per problem (k for pass@k)
         default: "32"
