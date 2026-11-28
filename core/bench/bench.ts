@@ -871,7 +871,7 @@ export function harnessOf(config: BenchConfig, mack: string, openMathHarness: st
     return {
       mack,
       openMathHarness: openMathHarness.slice(0, 7),
-      procedures: ["strict verifier", "linters off", `pass@${config.maxAttempts}: independent samples, checked as written`, "replies up to 32k tokens", ...(config.effort ? [`thinking ${config.effort}`] : []), ...(config.prover ? [config.prover.includes(",") ? "prover ensemble" : "prover model"] : [])],
+      procedures: ["strict verifier", "linters off", `pass@${config.maxAttempts}: independent samples, checked as written`, `replies up to ${Math.round((config.maxTokens ?? 32768) / 1024)}k tokens`, ...(config.effort ? [`thinking ${config.effort}`] : []), ...(config.prover ? [config.prover.includes(",") ? "prover ensemble" : "prover model"] : [])],
     };
   // Open Math Harness's own searches use none of Mack's additions: only its verifier and Lean rules, as ported.
   if (config.method === "search") return { mack, openMathHarness: openMathHarness.slice(0, 7), procedures: ["strict verifier", "linters off", "OMH search tree"] };

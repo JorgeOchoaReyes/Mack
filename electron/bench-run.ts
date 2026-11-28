@@ -174,7 +174,7 @@ export async function attemptProof(
  * the model wrote it. No automation, premise hints, easier versions, plan in
  * words or earlier proofs.
  */
-/** The longest reply in a pass@k run: what the labs give reasoning models (a provider that allows less is asked again with the usual limit). */
+/** The longest reply in a pass@k run unless the run sets its own (`config.maxTokens`): what the labs give reasoning models. */
 export const PASSK_MAX_TOKENS = 32768;
 
 /** How many of a problem's samples run at once in a pass@k run by default: they are independent, so this changes only the time. */
@@ -349,7 +349,7 @@ export async function benchOne(host: BenchHost, s: Settings, p: { id: string; so
       lemmas: passk ? [] : offered,
       repair: !passk,
       // As the labs run pass@k: room for a reasoning model to think, so no reply is cut short.
-      ...(passk ? { maxTokens: PASSK_MAX_TOKENS, strictMaxTokens: true } : {}),
+      ...(passk ? { maxTokens: bench.config.maxTokens ?? PASSK_MAX_TOKENS, strictMaxTokens: true } : {}),
       provider,
       model,
       meter,
