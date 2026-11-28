@@ -136,6 +136,11 @@ describe("a run's page and pull request", () => {
     const page = buildSite([{ ...r, folder: "f" }], "https://github.com/o/r")["runs/f.html"];
     expect(page).toContain('id="fairness"');
     expect(page).toContain("the model may ignore the level");
+    // 1 of 2 calls failed: past the limit, so the leaderboard flags the score and names the reply limit.
+    const site = buildSite([{ ...r, folder: "f" }], "https://github.com/o/r");
+    expect(site["index.html"]).toContain("⚠ 50.0% calls failed");
+    expect(site["index.html"]).toContain("32k reply");
+    expect(site["methodology.html"]).toContain("What the score counts as a failure");
   });
 
   it("list another model the provider served", () => {

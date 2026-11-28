@@ -5,7 +5,7 @@
 // with its settings, its failures by reason and every problem's result.
 // Pure functions of the runs, so the page is the same wherever it is built.
 
-import { attemptKinds, BENCH_BASICS, BENCH_SETS, problemInWords, problemOrigin, protocolLabel, protocolOf, LOG_LIMITS, WITHIN, harnessLabel, METHOD_LABELS, MODEL_ERROR_LIMIT, modelCalls, servedOthers, thinkingReturned, FAILURES, failureBreakdown, publishedScore, RECENT_SET, RECENT_YEARS, runMetrics, solvedWithin, summarize, timelineOf, topErrors, tracesUrl, type AttemptLog, type BenchResult, type BenchRun } from "./bench";
+import { tooManyModelErrors, attemptKinds, BENCH_BASICS, BENCH_SETS, problemInWords, problemOrigin, protocolLabel, protocolOf, LOG_LIMITS, WITHIN, harnessLabel, METHOD_LABELS, MODEL_ERROR_LIMIT, modelCalls, servedOthers, thinkingReturned, FAILURES, failureBreakdown, publishedScore, RECENT_SET, RECENT_YEARS, runMetrics, solvedWithin, summarize, timelineOf, topErrors, tracesUrl, type AttemptLog, type BenchResult, type BenchRun } from "./bench";
 
 /** A run as shared: its folder in the repo, who shared it and from which Mack. */
 export type SharedRun = BenchRun & { folder: string; sharedBy?: string; appVersion?: string; attemptsLogged?: boolean };
@@ -404,8 +404,8 @@ function runTable(rows: Row[], root: string, withModel = true, ranked = true): s
 ${ranked ? `<td class="rank">${i + 1}</td>` : ""}
 ${withModel ? `<td class="wrap"><a href="${root}models/${esc(modelSlug(r))}.html">${esc(models(r))}</a></td>` : `<td>${esc(setLabel(r.set))}</td>`}
 <td class="opt" title="${esc(r.harness?.procedures.join(", ") ?? "")}">${protocolOf(r) === "passk" ? esc(protocolLabel(r)) : esc(METHOD_LABELS[r.config.method ?? "single"].replace(/ \(.*\)$/, ""))}${r.config.method === "search" || r.config.method === "ultramath" ? ' <span class="pill omh">OMH</span>' : ""}<span class="cell-sub">${esc(harnessLabel(r.harness, r.appVersion ?? r.env?.app))}</span></td>
-<td class="opt">${thinking(r)}</td>
-<td><a href="${root}runs/${esc(r.folder)}.html"><b>${p.solved}/${p.of}</b></a></td>
+<td class="opt">${thinking(r)}${r.config.maxTokens ? `<span class="cell-sub">${Math.round(r.config.maxTokens / 1024)}k reply</span>` : ""}</td>
+<td><a href="${root}runs/${esc(r.folder)}.html"><b>${p.solved}/${p.of}</b></a>${callsFlag(r)}</td>
 <td>${rateCell(p.rate, best, i)}<span class="cell-sub">${range(p.low, p.high)}</span></td>
 <td class="opt">${p.solved ? usd(spent / p.solved) : "–"}</td>
 <td class="opt">${day(r.startedAt)}</td>
@@ -677,6 +677,13 @@ ${rows}
   );
 }
 
+/** On the leaderboard: a run whose failed model calls passed the limit says so beside its score, which counts those calls as failed samples. */
+function callsFlag(r: BenchRun): string {
+  if (!tooManyModelErrors(r)) return "";
+  const { calls, errors } = modelCalls(r);
+  return `<span class="cell-sub bad" title="${errors} of ${calls} model calls failed or timed out at the provider; each counts as a failed attempt, so the score is lower than the model alone would get">⚠ ${pct(errors / calls)} calls failed</span>`;
+}
+
 /**
  * What decides whether this run compares fairly with the others: how many model calls failed (each a sample lost),
  * whether thinking came back at the level asked for, and whether the provider served the model asked for.
@@ -692,7 +699,7 @@ function fairnessSection(r: BenchRun): string {
       share <= MODEL_ERROR_LIMIT,
       "Model calls",
       errors
-        ? `${errors} of ${calls} failed or timed out (${pct(share)}), each a sample that never reached Lean${share > MODEL_ERROR_LIMIT ? `: above the ${pct(MODEL_ERROR_LIMIT)} limit, so this run is marked incomplete` : ""}`
+        ? `${errors} of ${calls} failed or timed out (${pct(share)}), each a sample that never reached Lean${share > MODEL_ERROR_LIMIT ? `: above the ${pct(MODEL_ERROR_LIMIT)} limit, so the score is flagged on the leaderboard. The failed calls count as failed attempts` : ""}`
         : `all ${calls} answered`,
     ),
     r.config.effort && th.replies
@@ -1003,12 +1010,18 @@ ${failures}
 <li>The sample is exactly the fixed problems for its size, each with one result.</li>
 <li>A run that fails either is not merged.</li>
 </ul></div>
+<div class="card"><h3>What the score counts as a failure</h3><ul class="bullets">
+<li><b>The reply limit.</b> A reply cut off at the run's limit (thinking included) before it reached a proof is a failed attempt. A model that thinks at length pays for it; the limit is on every run's page and in the leaderboard's Thinking column.</li>
+<li><b>Failed model calls.</b> A call the provider refuses, drops, or times out (after two retries for brief errors) is a failed attempt, not a free retry: the run had k attempts, and these were some of them. Slow models suffer most when a provider ends long replies early.</li>
+<li><b>Above 5% failed calls</b>, the score is published with a <span class="bad">⚠ calls failed</span> flag on the leaderboard and the run page says how many and why. It still ranks, but read it as a lower bound on the model.</li>
+<li>Every failure is logged with its reason, attempt by attempt, on each problem's page and in the run's traces.</li>
+</ul></div>
 <div class="card"><h3>How runs are made</h3><ul class="bullets">
 <li>Every run is made by the Mack repo's own workflow on one fixed cloud machine (GitHub Actions, 4 CPUs, 16 GB), so time and cost compare across models.</li>
 <li>Time is measured on that machine, tokens as the provider reported them, cost from the provider's published prices.</li>
 <li>Each run names one thinking level, the same for every request, so runs compare like for like.</li>
 <li>Every model gets the same reply limit and temperature. Before any machine starts, one tiny real call with those exact settings checks the provider accepts them; a provider that refuses one stops the run instead of quietly lowering it.</li>
-<li>A model call that fails or times out still spends its attempt and is logged as one. When more than 5% of a run's calls fail, the model had fewer real samples than the others, so the run is marked incomplete.</li>
+<li>A model call that fails or times out still spends its attempt and is logged as one. When more than 5% of a run's calls fail, the run is published with a warning beside its score (see below).</li>
 <li>Each run's page says whether thinking came back at the level asked for (a model may ignore it) and whether the provider reported serving another model.</li>
 <li>Every attempt's full trace (the whole thinking and reply, the Lean and Lean's verdict) is published to a Hugging Face dataset, linked from each problem's page; this site shows the first ${LOG_LIMITS.thinking.toLocaleString("en-US")} characters of each attempt's thinking.</li>
 <li>Failed problems: a failure cannot be re-run for free, so its attempts are shown as logged.</li>
