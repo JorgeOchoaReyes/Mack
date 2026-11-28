@@ -66,6 +66,8 @@ const proverProvider = a["prover-provider"] && isProvider(a["prover-provider"]) 
 const effort = (a.effort && (PROOF_EFFORTS as string[]).includes(a.effort) ? a.effort : "default") as ProofEffort;
 // An official run names a level the provider actually receives: "default" and "off" send none (the provider
 // picks, and may change it), and "xhigh" is sent as "high", so none of them is a fixed, comparable setting.
+// The longest reply each pass@k attempt may write, thinking included: the run's own, the same for every model it is compared with.
+const maxTokens = num("max-tokens", PASSK_MAX_TOKENS);
 if (a.official && !["low", "medium", "high"].includes(effort)) fail(`--effort must be low, medium or high for an official run, not "${a.effort ?? ""}"`);
 const workspace = a.workspace || fail("--workspace (a Lean project with Mathlib) is required");
 const scratchRoot = a.scratch || join(os.tmpdir(), "mack-bench");
@@ -197,7 +199,7 @@ void (async () => {
       premises: s.premiseSelection,
       ...(effort !== "default" ? { effort } : {}),
       // The same reply limit and temperature for every model: a provider that refuses them fails the call rather than lowering them.
-      ...(passk ? { maxTokens: PASSK_MAX_TOKENS } : {}),
+      ...(passk ? { maxTokens } : {}),
       temperature: proverModels(s).length ? PROOF_TEMPERATURE.prover : PROOF_TEMPERATURE.model,
       ...(!passk && (method === "single" || method === "decompose") && a["lemma-pool"] !== "false" ? { lemmaPool: true } : {}),
     },

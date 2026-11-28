@@ -59,6 +59,7 @@ describe("pass@k, the labs' protocol", () => {
   it("names its harness and its label by k", () => {
     const config = { model: "m", maxAttempts: 32, parallel: 1, automation: false, revisions: 1, protocol: "passk" as const };
     expect(harnessOf(config, "0.2.42", "687f2a20").procedures).toEqual(["strict verifier", "linters off", "pass@32: independent samples, checked as written", "replies up to 32k tokens"]);
+    expect(harnessOf({ ...config, maxTokens: 65536 }, "0.2.42", "687f2a20").procedures).toContain("replies up to 64k tokens");
     expect(protocolLabel({ config })).toBe("pass@32");
     expect(protocolLabel({ config: { ...config, protocol: undefined } })).toBe("Mack agent");
   });

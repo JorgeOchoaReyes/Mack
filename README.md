@@ -123,7 +123,7 @@ source, and the Lean statement the model was given.
 | Measures | The model, as the labs report it | Mack as a system |
 | Samples | Up to *k* independent samples from the opening prompt | Attempts that learn from Lean's errors |
 | Help given | None: no automation, repairs, premise hints, plans or shared lemmas | All of Mack's procedures (each listed on the run) |
-| Reply length | Up to 32k tokens | The model's usual limit |
+| Reply length | The run's limit, thinking included: 64k tokens on official runs (32k by default) | The model's usual limit |
 | Compare with | Published pass@k numbers | Other Mack runs |
 
 Both run several problems at once locally, and a pass@k problem runs up to 8
@@ -178,7 +178,7 @@ two runs for a **head to head**.
 | ✅ One machine, one workflow | Every run on the site is made by the owner's cloud workflow (GitHub Actions, 4 CPUs, 16 GB); CI refuses the official mark on a fork's PR |
 | ✅ Contamination check | Recent Putnam is its own set, and PutnamBench runs are split by year |
 | ✅ Fixed thinking level | Each run names low, medium or high, sent with every request; never the provider's default |
-| ✅ Same limits for every model | One 32k reply limit and one temperature; a test call before the run stops it if the provider refuses either, rather than lowering the limit |
+| ✅ Same limits for every model | One reply limit (64k tokens, thinking included, for official runs) and one temperature; a test call before the run stops it if the provider refuses either, rather than lowering the limit |
 | ✅ Failed calls counted | A failed or timed-out model call is a logged, spent attempt; over 5% of a run's calls and the run is marked incomplete |
 | ✅ Served model and thinking checked | Each run says whether the provider reported another model, and whether thinking came back at the level asked for |
 | ⚠️ Provider-reported | Tokens and the served model are as the provider reported them; cost uses its published prices |

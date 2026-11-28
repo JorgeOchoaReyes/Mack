@@ -64,6 +64,11 @@ on:
         type: choice
         options: [low, medium, high]
         default: high
+      max_tokens:
+        description: Reply limit per attempt in tokens, thinking included (pass@k); the same for every model of a comparison
+        type: choice
+        options: ["65536", "32768"]
+        default: "65536"
       attempts:
         description: Attempts per problem (k for pass@k)
         default: "32"
@@ -99,6 +104,7 @@ jobs:
           IN_MODEL: ${{ (inputs.model == 'custom' && inputs.custom_model || inputs.model) }}
           IN_PROVER: ${{ inputs.prover }}
           IN_EFFORT: ${{ inputs.effort }}
+          IN_MAX_TOKENS: ${{ inputs.max_tokens }}
           IN_ATTEMPTS: ${{ inputs.attempts }}
           IN_BUDGET: ${{ inputs.budget }}
         # The run's settings on its summary page at once, while the machines work.
@@ -114,6 +120,7 @@ jobs:
             echo "| Model | \`$IN_MODEL\` ($IN_PROVIDER) |"
             echo "| Prover models | ${IN_PROVER:-none} |"
             echo "| Thinking | $IN_EFFORT |"
+            echo "| Reply limit | $IN_MAX_TOKENS tokens |"
             echo "| Machines | $IN_MACHINES |"
             echo "| Budget | \$$IN_BUDGET (0 = none) |"
             echo ""
@@ -140,8 +147,8 @@ jobs:
           IN_MODEL: ${{ (inputs.model == 'custom' && inputs.custom_model || inputs.model) }}
           IN_PROVER: ${{ inputs.prover }}
           IN_EFFORT: ${{ inputs.effort }}
-          # Pass@k attempts get the labs' 32k reply limit (electron/bench-run.ts PASSK_MAX_TOKENS); the test call asks for the same.
-          IN_MAX_TOKENS: ${{ inputs.method == 'passk' && '32768' || '' }}
+          # Pass@k attempts get the run's reply limit; the test call asks for the same.
+          IN_MAX_TOKENS: ${{ inputs.method == 'passk' && inputs.max_tokens || '' }}
           FIREWORKS_API_KEY: ${{ secrets.FIREWORKS_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           CHEAPER_INFERENCE_API_KEY: ${{ secrets.CHEAPER_INFERENCE_API_KEY }}
@@ -196,6 +203,7 @@ jobs:
           IN_MODEL: ${{ (inputs.model == 'custom' && inputs.custom_model || inputs.model) }}
           IN_PROVER: ${{ inputs.prover }}
           IN_EFFORT: ${{ inputs.effort }}
+          IN_MAX_TOKENS: ${{ inputs.max_tokens }}
           IN_ATTEMPTS: ${{ inputs.attempts }}
           IN_BUDGET: ${{ inputs.budget }}
           SHARD: ${{ matrix.shard }}
@@ -211,7 +219,7 @@ jobs:
           export MACK_VERSION
           node dist-electron/scripts/run-bench.js \
             --set "$IN_SET" --problems "$IN_PROBLEMS" --method "$IN_METHOD" \
-            --provider "$IN_PROVIDER" --model "$IN_MODEL" --prover "$IN_PROVER" --effort "$IN_EFFORT" \
+            --provider "$IN_PROVIDER" --model "$IN_MODEL" --prover "$IN_PROVER" --effort "$IN_EFFORT" --max-tokens "$IN_MAX_TOKENS" \
             --attempts "$IN_ATTEMPTS" --budget "$IN_BUDGET" --lemma-pool false \
             --shard "$SHARD" --shards "$SHARDS" \
             --workspace "$PWD/community/lean" --lean-processes 2 --scratch "$RUNNER_TEMP/mack-bench" \
