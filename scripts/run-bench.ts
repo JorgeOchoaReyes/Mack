@@ -31,7 +31,8 @@ import { DEFAULT_LIMITS } from "../core/search/tree";
 import { DEFAULT_ULTRAMATH } from "../core/ultramath/swarm";
 import { UPSTREAM } from "../core/upstream";
 import type { Lemma } from "../core/prepare";
-import { benchOne, parallelOf, passkParallel, passkSettings, proverModels, type BenchHost } from "../electron/bench-run";
+import { benchOne, parallelOf, PASSK_MAX_TOKENS, passkParallel, passkSettings, proverModels, type BenchHost } from "../electron/bench-run";
+import { PROOF_TEMPERATURE } from "../core/prove";
 import type { Settings } from "../electron/main";
 
 const METHODS: BenchMethod[] = ["single", "decompose", "steps", "search", "ultramath"];
@@ -195,6 +196,9 @@ void (async () => {
       easierFirst: s.easierFirst,
       premises: s.premiseSelection,
       ...(effort !== "default" ? { effort } : {}),
+      // The same reply limit and temperature for every model: a provider that refuses them fails the call rather than lowering them.
+      ...(passk ? { maxTokens: PASSK_MAX_TOKENS } : {}),
+      temperature: proverModels(s).length ? PROOF_TEMPERATURE.prover : PROOF_TEMPERATURE.model,
       ...(!passk && (method === "single" || method === "decompose") && a["lemma-pool"] !== "false" ? { lemmaPool: true } : {}),
     },
     sample,

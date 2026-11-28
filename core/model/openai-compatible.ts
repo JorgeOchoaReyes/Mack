@@ -39,6 +39,10 @@ class HttpError extends Error {
   }
 }
 
+/** Token counts as OpenAI-compatible APIs give them; thinking tokens are counted inside the completion tokens. */
+type Usage = { prompt_tokens?: number; completion_tokens?: number; completion_tokens_details?: { reasoning_tokens?: number | null } | null };
+const thinkingTokens = (u?: Usage): number | undefined => (typeof u?.completion_tokens_details?.reasoning_tokens === "number" ? u.completion_tokens_details.reasoning_tokens : undefined);
+
 const transient = (e: unknown) => (e instanceof HttpError ? e.status === 429 || e.status >= 500 : e instanceof TypeError);
 
 function wireMessage(m: ChatMessage): Record<string, unknown> {
@@ -136,8 +140,9 @@ export class OpenAICompatibleProvider implements ModelProvider {
       return this.readStream(res.body, request.onDelta, markStreamed, alive);
     }
     const json = (await res.json()) as {
+      model?: string;
       choices?: { message?: { content?: string | null; reasoning?: string | null; reasoning_content?: string | null }; finish_reason?: string | null }[];
-      usage?: { prompt_tokens?: number; completion_tokens?: number };
+      usage?: Usage;
       error?: { message?: string };
     };
     if (json.error) throw new Error(`${this.name}: ${json.error.message ?? "error"}`);
@@ -150,6 +155,8 @@ export class OpenAICompatibleProvider implements ModelProvider {
       ...(thinking ? { reasoning: thinking } : {}),
       usage: json.usage && { promptTokens: json.usage.prompt_tokens ?? 0, completionTokens: json.usage.completion_tokens ?? 0 },
       ...(json.choices?.[0]?.finish_reason === "length" ? { truncated: true } : {}),
+      ...(json.model ? { servedModel: json.model } : {}),
+      ...(thinkingTokens(json.usage) !== undefined ? { reasoningTokens: thinkingTokens(json.usage) } : {}),
     };
   }
 
@@ -162,11 +169,13 @@ export class OpenAICompatibleProvider implements ModelProvider {
     let usage: ChatResponse["usage"];
     let truncated = false;
     let reasoning = "";
+    let servedModel = "";
+    let reasoningTokens: number | undefined;
     const handle = (line: string) => {
       if (!line.startsWith("data:")) return;
       const data = line.slice(5).trim();
       if (!data || data === "[DONE]") return;
-      let j: { choices?: { delta?: { content?: string | null; reasoning?: string | null; reasoning_content?: string | null }; finish_reason?: string | null }[]; usage?: { prompt_tokens?: number; completion_tokens?: number }; error?: { message?: string } };
+      let j: { model?: string; choices?: { delta?: { content?: string | null; reasoning?: string | null; reasoning_content?: string | null }; finish_reason?: string | null }[]; usage?: Usage; error?: { message?: string } };
       try {
         j = JSON.parse(data);
       } catch {
@@ -187,7 +196,11 @@ export class OpenAICompatibleProvider implements ModelProvider {
         onDelta(piece);
       }
       if (j.choices?.[0]?.finish_reason === "length") truncated = true;
-      if (j.usage) usage = { promptTokens: j.usage.prompt_tokens ?? 0, completionTokens: j.usage.completion_tokens ?? 0 };
+      if (j.model) servedModel = j.model;
+      if (j.usage) {
+        usage = { promptTokens: j.usage.prompt_tokens ?? 0, completionTokens: j.usage.completion_tokens ?? 0 };
+        reasoningTokens = thinkingTokens(j.usage) ?? reasoningTokens;
+      }
     };
     for (;;) {
       const { done, value } = await reader.read();
@@ -200,7 +213,7 @@ export class OpenAICompatibleProvider implements ModelProvider {
       }
     }
     handle(buffer);
-    return { content, usage, ...(truncated ? { truncated } : {}), ...(reasoning ? { reasoning } : {}) };
+    return { content, usage, ...(truncated ? { truncated } : {}), ...(reasoning ? { reasoning } : {}), ...(servedModel ? { servedModel } : {}), ...(reasoningTokens !== undefined ? { reasoningTokens } : {}) };
   }
 
   /** Prices the catalogue publishes, USD per million tokens (OpenRouter and LiteLLM give them per token, Cheaper Inference per million); empty when it gives none. */

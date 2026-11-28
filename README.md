@@ -178,6 +178,9 @@ two runs for a **head to head**.
 | ✅ One machine, one workflow | Every run on the site is made by the owner's cloud workflow (GitHub Actions, 4 CPUs, 16 GB); CI refuses the official mark on a fork's PR |
 | ✅ Contamination check | Recent Putnam is its own set, and PutnamBench runs are split by year |
 | ✅ Fixed thinking level | Each run names low, medium or high, sent with every request; never the provider's default |
+| ✅ Same limits for every model | One 32k reply limit and one temperature; a test call before the run stops it if the provider refuses either, rather than lowering the limit |
+| ✅ Failed calls counted | A failed or timed-out model call is a logged, spent attempt; over 5% of a run's calls and the run is marked incomplete |
+| ✅ Served model and thinking checked | Each run says whether the provider reported another model, and whether thinking came back at the level asked for |
 | ⚠️ Provider-reported | Tokens and the served model are as the provider reported them; cost uses its published prices |
 
 The [methodology page](https://jorgeochoareyes.github.io/Mack/methodology.html)

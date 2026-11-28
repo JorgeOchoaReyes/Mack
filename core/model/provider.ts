@@ -30,6 +30,10 @@ export type ChatResponse = {
   truncated?: boolean;
   /** The model's thinking, when the provider returns it apart from the answer (`reasoning` or `reasoning_content`). */
   reasoning?: string;
+  /** The model the provider says answered (its `model` field), which a router may set to another version than the one asked for. */
+  servedModel?: string;
+  /** Thinking tokens the provider counted (`completion_tokens_details.reasoning_tokens`), part of the completion tokens. */
+  reasoningTokens?: number;
 };
 
 export interface ModelProvider {
