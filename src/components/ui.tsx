@@ -44,6 +44,7 @@ const OUTCOME_LABEL: Record<AttemptOutcome, string> = {
   rejected: "Rejected",
   refused: "Refused",
   "no verdict": "Timed out",
+  "model error": "Model call failed",
 };
 
 const OUTCOME_TONE: Record<AttemptOutcome, Tone> = {
@@ -53,6 +54,7 @@ const OUTCOME_TONE: Record<AttemptOutcome, Tone> = {
   rejected: "bad",
   refused: "bad",
   "no verdict": "warn",
+  "model error": "warn",
 };
 
 type Tone = "ok" | "bad" | "warn" | "info" | "neutral";

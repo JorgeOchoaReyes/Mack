@@ -82,8 +82,10 @@ export type BenchOutcome = "solved" | "failed" | "error" | "skipped";
 export type BenchResult = {
   id: string;
   outcome: BenchOutcome;
-  /** Model attempts made; 0 when Lean's automation closed it alone. */
+  /** Model attempts made; 0 when Lean's automation closed it alone. Model calls that failed are not among them. */
   attempts: number;
+  /** Attempts spent on model calls that failed or timed out, so no proof reached Lean (each is in the log as "model error"). */
+  modelErrors?: number;
   ms: number;
   usd: number;
   message?: string;
@@ -115,6 +117,10 @@ export type AttemptLog = {
   promptTokens?: number;
   /** The reply stopped at the token limit, so the proof may be cut short. */
   truncated?: boolean;
+  /** The model the provider says answered, when it is not the one asked for. */
+  servedModel?: string;
+  /** Thinking tokens the provider counted for this reply, when it reports them. */
+  reasoningTokens?: number;
   /** Lean's feedback (errors first), the candidate, the model's thinking and the prose around its proof. */
   detail: string;
   candidate: string;
@@ -195,6 +201,7 @@ export function attemptKind(a: AttemptNote): FailureKind {
   // Only Lean's own errors judge an attempt: warnings and notes may mention anything.
   const errs = errorMessages(a.detail);
   const d = errs || a.detail;
+  if (a.outcome === "model error") return "model";
   if (a.outcome === "no verdict") return HARNESS.test(a.detail) ? "harness" : "timeout";
   if (/exceeded the \d+ ms deadline|deterministic\) timeout|maximum recursion depth|maxHeartbeats/i.test(d)) return "timeout";
   // A reply cut off at its token limit never reached the theorem: that is not a changed statement.
@@ -277,6 +284,9 @@ export type BenchConfig = {
   lemmaPool?: boolean;
   /** The thinking level the models were asked for; absent: each model's default. */
   effort?: string;
+  /** The longest reply each attempt was allowed, in tokens, and the sampling temperature: the same for every model of a comparison. */
+  maxTokens?: number;
+  temperature?: number;
 };
 
 export type BenchRun = {
@@ -369,7 +379,54 @@ export const tracesUrl = (t: { dataset: string; path: string }, problem?: string
 
 /** A run that ran to the end: finished, not stopped, and no problem skipped (by a stop or a spent budget). Only these are shared on their own. */
 export const ranToEnd = (run: Pick<BenchRun, "status" | "results" | "sample">): boolean =>
-  run.status === "done" && run.results.length === run.sample.length && run.results.every((r) => r.outcome !== "skipped");
+  run.status === "done" && run.results.length === run.sample.length && run.results.every((r) => r.outcome !== "skipped") && !tooManyModelErrors(run);
+
+/** The share of a run's model calls that may fail before its score no longer compares: past it, the model had fewer real samples than k. */
+export const MODEL_ERROR_LIMIT = 0.05;
+
+/** A run's model calls and how many of them failed (after retries) or timed out. */
+export function modelCalls(run: Pick<BenchRun, "results">): { calls: number; errors: number } {
+  let calls = 0;
+  let errors = 0;
+  for (const r of run.results) {
+    calls += r.attempts + (r.modelErrors ?? 0);
+    errors += r.modelErrors ?? 0;
+  }
+  return { calls, errors };
+}
+
+export const tooManyModelErrors = (run: Pick<BenchRun, "results">): boolean => {
+  const { calls, errors } = modelCalls(run);
+  return calls > 0 && errors / calls > MODEL_ERROR_LIMIT;
+};
+
+/** Whether a served model name is the one asked for: the same id, or the same name under a router's prefix or with a version suffix. */
+export function sameModel(asked: string, served: string): boolean {
+  const norm = (m: string) => m.toLowerCase().split("/").pop()!.replace(/[:@].*$/, "");
+  const a = norm(asked);
+  const s = norm(served);
+  return a === s || s.startsWith(`${a}-`) || a.startsWith(`${s}-`);
+}
+
+/** The models the provider said answered, other than the one asked for, with how many attempts each. */
+export function servedOthers(run: Pick<BenchRun, "results">): { model: string; count: number }[] {
+  const by = new Map<string, number>();
+  for (const r of run.results) for (const a of r.log ?? []) if (a.servedModel) by.set(a.servedModel, (by.get(a.servedModel) ?? 0) + 1);
+  return [...by.entries()].map(([model, count]) => ({ model, count })).sort((a, b) => b.count - a.count);
+}
+
+/** Of the attempts that got a reply, how many came back with any thinking (text or counted tokens): none means the model ignored the level. */
+export function thinkingReturned(run: Pick<BenchRun, "results">): { replies: number; withThinking: number } {
+  let replies = 0;
+  let withThinking = 0;
+  for (const r of run.results)
+    for (const a of r.log ?? []) {
+      if (a.outcome === "model error" || !a.model) continue;
+      replies++;
+      if (a.thinking || (a.reasoningTokens ?? 0) > 0) withThinking++;
+    }
+  return { replies, withThinking };
+}
 
 /** A string hash for a fixed order: the same set and size always picks the same problems, so runs compare. */
 function hash(s: string): number {
@@ -649,6 +706,8 @@ export function runMetrics(run: Pick<BenchRun, "results">): RunMetrics {
   const logs = run.results.flatMap((r) => r.log ?? []);
   const models = new Map<string, ModelMetrics>();
   for (const a of logs) {
+    // A failed call is not an attempt the model made: it is counted on the run's fairness check instead.
+    if (a.outcome === "model error") continue;
     const key = a.model ?? "unknown";
     const m = models.get(key) ?? { model: key, attempts: 0, verified: 0, completionTokens: 0, promptTokens: 0, ms: 0, truncated: 0 };
     m.attempts++;

@@ -139,10 +139,15 @@ jobs:
           IN_PROVIDER: ${{ inputs.provider }}
           IN_MODEL: ${{ (inputs.model == 'custom' && inputs.custom_model || inputs.model) }}
           IN_PROVER: ${{ inputs.prover }}
+          IN_EFFORT: ${{ inputs.effort }}
+          # Pass@k attempts get the labs' 32k reply limit (electron/bench-run.ts PASSK_MAX_TOKENS); the test call asks for the same.
+          IN_MAX_TOKENS: ${{ inputs.method == 'passk' && '32768' || '' }}
           FIREWORKS_API_KEY: ${{ secrets.FIREWORKS_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           CHEAPER_INFERENCE_API_KEY: ${{ secrets.CHEAPER_INFERENCE_API_KEY }}
-        run: node dist-electron/scripts/check-model.js --provider "$IN_PROVIDER" --model "$IN_MODEL" --prover "$IN_PROVER"
+        # Then one tiny real call per model with the run's exact settings: a provider that refuses the reply limit,
+        # the temperature or the thinking level stops the run here, before any machine starts (a fraction of a cent).
+        run: node dist-electron/scripts/check-model.js --provider "$IN_PROVIDER" --model "$IN_MODEL" --prover "$IN_PROVER" --effort "$IN_EFFORT" --max-tokens "$IN_MAX_TOKENS"
 
   part:
     needs: plan

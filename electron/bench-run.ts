@@ -20,7 +20,7 @@ import { research } from "../core/research";
 import { stepSearch } from "../core/stepsearch";
 import { helperLemmas, relevantLemmas } from "../core/bench/pool";
 import { easierVersions } from "../core/variants";
-import { attemptKind, classifyFailure, LOG_LIMITS, splitReply, type AttemptLog, type AttemptNote, type BenchResult, type BenchRun } from "../core/bench/bench";
+import { attemptKind, classifyFailure, sameModel, LOG_LIMITS, splitReply, type AttemptLog, type AttemptNote, type BenchResult, type BenchRun } from "../core/bench/bench";
 import type { Settings } from "./main";
 
 /** What a benchmark run needs from where it runs. */
@@ -56,6 +56,9 @@ export type TraceLine = {
   tokens: number;
   promptTokens?: number;
   truncated?: boolean;
+  /** The model the provider says answered, and the thinking tokens it counted, when it reports them. */
+  servedModel?: string;
+  reasoningTokens?: number;
   thinking: string;
   reply: string;
   candidate: string;
@@ -97,6 +100,8 @@ export async function attemptProof(
     repair?: boolean;
     /** The longest reply a model may write; pass@k raises it. */
     maxTokens?: number;
+    /** Keep `maxTokens` even when the provider refuses it (benchmarks), so every model gets the same limit. */
+    strictMaxTokens?: boolean;
     signal: AbortSignal;
     onEvent: (e: ProveEvent) => void;
   },
@@ -112,6 +117,7 @@ export async function attemptProof(
     rename: o.repair === false ? undefined : host.mathlibRenames,
     repair: o.repair,
     maxTokens: o.maxTokens,
+    strictMaxTokens: o.strictMaxTokens,
     provers: proversFor(host, s, o.meter, o.hooks),
     revisions: s.revisionsPerChain,
     automation: s.leanAutomation,
@@ -187,6 +193,9 @@ export async function benchOne(host: BenchHost, s: Settings, p: { id: string; so
   // A stop kills this problem's Lean runs at once, as well as its model calls.
   const run = leanRunner({ workspace: s.leanWorkspace, timeoutMs: s.timeoutMs, signal: AbortSignal.any([signal, ctl.signal]) });
   let attempts = 0;
+  let modelErrors = 0;
+  // The model the provider says answered is kept only when it is not the one asked for.
+  const served = (ev: { servedModel?: string; model?: string }) => (ev.servedModel && !sameModel(ev.model ?? model, ev.servedModel) ? { servedModel: ev.servedModel } : {});
   let proof: string | undefined;
   let message = "";
   // How each attempt ended, to say afterwards why the problem was not solved.
@@ -213,6 +222,8 @@ export async function benchOne(host: BenchHost, s: Settings, p: { id: string; so
           tokens: ev.tokens,
           ...(ev.promptTokens ? { promptTokens: ev.promptTokens } : {}),
           ...(ev.truncated ? { truncated: true } : {}),
+          ...(ev.servedModel ? { servedModel: ev.servedModel } : {}),
+          ...(ev.reasoningTokens !== undefined ? { reasoningTokens: ev.reasoningTokens } : {}),
           thinking,
           reply: (ev.reply ?? "").replace(/<think>[\s\S]*?<\/think>/g, "").trim(),
           candidate: ev.candidate,
@@ -232,6 +243,8 @@ export async function benchOne(host: BenchHost, s: Settings, p: { id: string; so
             tokens: ev.tokens,
             ...(ev.promptTokens ? { promptTokens: ev.promptTokens } : {}),
             ...(ev.truncated ? { truncated: true } : {}),
+            ...served(ev),
+            ...(ev.reasoningTokens !== undefined ? { reasoningTokens: ev.reasoningTokens } : {}),
             detail: ev.detail.slice(0, LOG_LIMITS.detail),
             candidate: ev.candidate.slice(0, LOG_LIMITS.candidate),
             ...(thinking ? { thinking: thinking.slice(0, LOG_LIMITS.thinking) } : {}),
@@ -240,10 +253,11 @@ export async function benchOne(host: BenchHost, s: Settings, p: { id: string; so
         }
       }
       if (ev.type === "attempt" && ev.n > 0) {
-        attempts++;
+        if (ev.outcome === "model error") modelErrors++;
+        else attempts++;
         if (ev.outcome !== "verified") {
           notes.push({ outcome: ev.outcome, detail: ev.detail, ...(ev.truncated ? { truncated: true } : {}) });
-          lastCandidate = ev.candidate;
+          if (ev.outcome !== "model error") lastCandidate = ev.candidate;
         }
       }
       if (ev.type === "solved") proof = ev.proof;
@@ -335,7 +349,7 @@ export async function benchOne(host: BenchHost, s: Settings, p: { id: string; so
       lemmas: passk ? [] : offered,
       repair: !passk,
       // As the labs run pass@k: room for a reasoning model to think, so no reply is cut short.
-      ...(passk ? { maxTokens: PASSK_MAX_TOKENS } : {}),
+      ...(passk ? { maxTokens: PASSK_MAX_TOKENS, strictMaxTokens: true } : {}),
       provider,
       model,
       meter,
@@ -348,7 +362,8 @@ export async function benchOne(host: BenchHost, s: Settings, p: { id: string; so
     });
   }
   if (proof && bench.config.lemmaPool) pool.push(...helperLemmas(proof, p.source, p.id));
-  if (proof) return { id: p.id, outcome: "solved", attempts, ms: Date.now() - t0, usd: meter.spent, proof, log, timeline };
+  const errs = modelErrors ? { modelErrors } : {};
+  if (proof) return { id: p.id, outcome: "solved", attempts, ...errs, ms: Date.now() - t0, usd: meter.spent, proof, log, timeline };
   const outcomes: Record<string, number> = {};
   for (const n of notes) outcomes[n.outcome] = (outcomes[n.outcome] ?? 0) + 1;
   const failure = classifyFailure(notes, message);
@@ -356,6 +371,7 @@ export async function benchOne(host: BenchHost, s: Settings, p: { id: string; so
     id: p.id,
     outcome: "failed",
     attempts,
+    ...errs,
     ms: Date.now() - t0,
     usd: meter.spent,
     message,

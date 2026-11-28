@@ -5,7 +5,7 @@
 // with its settings, its failures by reason and every problem's result.
 // Pure functions of the runs, so the page is the same wherever it is built.
 
-import { attemptKinds, BENCH_BASICS, BENCH_SETS, problemInWords, problemOrigin, protocolLabel, protocolOf, LOG_LIMITS, WITHIN, harnessLabel, METHOD_LABELS, FAILURES, failureBreakdown, publishedScore, RECENT_SET, RECENT_YEARS, runMetrics, solvedWithin, summarize, timelineOf, topErrors, tracesUrl, type AttemptLog, type BenchResult, type BenchRun } from "./bench";
+import { attemptKinds, BENCH_BASICS, BENCH_SETS, problemInWords, problemOrigin, protocolLabel, protocolOf, LOG_LIMITS, WITHIN, harnessLabel, METHOD_LABELS, MODEL_ERROR_LIMIT, modelCalls, servedOthers, thinkingReturned, FAILURES, failureBreakdown, publishedScore, RECENT_SET, RECENT_YEARS, runMetrics, solvedWithin, summarize, timelineOf, topErrors, tracesUrl, type AttemptLog, type BenchResult, type BenchRun } from "./bench";
 
 /** A run as shared: its folder in the repo, who shared it and from which Mack. */
 export type SharedRun = BenchRun & { folder: string; sharedBy?: string; appVersion?: string; attemptsLogged?: boolean };
@@ -127,6 +127,7 @@ th .tip::after { bottom: auto; top: calc(100% + 8px); }
 .steps-list .t { color: var(--muted); font-variant-numeric: tabular-nums; margin-right: 6px; }
 pre.code { white-space: pre-wrap; font-size: 12.5px; font-family: ui-monospace, "Cascadia Code", Menlo, monospace; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; overflow: auto; margin: 0; }
 .bullets { margin: 0; padding-left: 18px; color: var(--muted); font-size: 14px; }
+.bullets.checks { list-style: none; padding-left: 0; display: grid; gap: 6px; }
 .bullets li { margin: 4px 0; }
 .bullets b { color: var(--text); }
 .hero h1 { font-size: clamp(30px, 5vw, 48px); line-height: 1.1; margin: 0 0 14px; letter-spacing: -.02em; }
@@ -354,6 +355,7 @@ const TIPS = {
   within: "Problems solved within k model attempts: pass@k for a pass@k run; for an agent run, attempts learn from Lean's errors.",
   thinking: "How deeply the model was asked to reason (reasoning effort). not set = no level was sent, so the provider chose (older runs only).",
   perSolve: "The run's whole cost divided by problems solved.",
+  fairness: "Every run gets the same problems, attempts, reply limit, temperature and thinking level. These are what can still differ: samples lost to failed calls, a level the model ignores, another model served.",
   time: "Wall-clock per problem: model calls, Lean checks and automation together.",
   verified: "Accepted by Mack's strict verifier and re-checked with Lean in CI.",
   contamination: "Recent Putnam problems are least likely to be in training data. Much weaker there suggests memorization helped elsewhere.",
@@ -608,6 +610,7 @@ ${kpi(`${Math.round(s.ms / 60000)} min`, "time")}
 ${m.attempts ? kpi(m.attemptsPerSolve !== null ? m.attemptsPerSolve.toFixed(1) : "–", "attempts per solve", `${s.byAutomation} by automation alone`) : ""}
 ${m.attempts ? kpi(`${tokens(m.promptTokens)} / ${tokens(m.completionTokens)}`, "tokens in / out") : ""}
 </div>
+${fairnessSection(r)}
 <section class="reveal"><h2>Problems</h2>
 <div class="card"><div class="tiles">${tiles}</div>
 <div class="legend"><span><i style="background:var(--ok)"></i>solved by a model</span><span><i style="background:color-mix(in srgb, var(--ok) 55%, var(--surface))"></i>solved by automation${tip(TIPS.automation)}</span><span><i style="background:var(--bad)"></i>not solved</span><span><i style="background:var(--bar)"></i>skipped</span><span>Click a square for its deep dive.</span></div></div>
@@ -644,7 +647,9 @@ ${byModel.map((x) => `<tr><td>${esc(short(x.model))}</td><td>${x.attempts}</td><
 ${kv("Model", esc(c.model))}
 ${r.traces ? kv("Full traces", `<a href="${esc(tracesUrl(r.traces))}">every attempt on Hugging Face</a>`) : ""}
 ${kv("Prover", c.prover ? esc(c.prover) : "none")}
-${kv("Thinking", c.effort ? esc(c.effort) : "model default")}
+${kv("Thinking", c.effort ? esc(c.effort) : "not set")}
+${c.maxTokens ? kv("Reply limit", `${c.maxTokens.toLocaleString("en-US")} tokens`) : ""}
+${c.temperature !== undefined ? kv("Temperature", String(c.temperature)) : ""}
 ${kv("Method", esc(METHOD_LABELS[c.method ?? "single"]))}
 ${kv("Attempts", `${c.maxAttempts}, ${c.parallel} at once`)}
 ${kv("Restart after", `${c.revisions} revisions`)}
@@ -670,6 +675,32 @@ ${rows}
     "../",
     repo,
   );
+}
+
+/**
+ * What decides whether this run compares fairly with the others: how many model calls failed (each a sample lost),
+ * whether thinking came back at the level asked for, and whether the provider served the model asked for.
+ */
+function fairnessSection(r: BenchRun): string {
+  const { calls, errors } = modelCalls(r);
+  const th = thinkingReturned(r);
+  const others = servedOthers(r);
+  const share = calls ? errors / calls : 0;
+  const line = (ok: boolean, what: string, says: string) => `<li><span class="${ok ? "ok" : "bad"}">${ok ? "✓" : "⚠"}</span> <b>${what}</b>: ${says}</li>`;
+  const items = [
+    line(
+      share <= MODEL_ERROR_LIMIT,
+      "Model calls",
+      errors
+        ? `${errors} of ${calls} failed or timed out (${pct(share)}), each a sample that never reached Lean${share > MODEL_ERROR_LIMIT ? `: above the ${pct(MODEL_ERROR_LIMIT)} limit, so this run is marked incomplete` : ""}`
+        : `all ${calls} answered`,
+    ),
+    r.config.effort && th.replies
+      ? line(th.withThinking > 0, `Thinking at ${esc(r.config.effort)}`, th.withThinking ? `returned on ${th.withThinking} of ${th.replies} replies` : `none came back on any of ${th.replies} replies: the model may ignore the level, so it may not have thought as deeply as models that honour it`)
+      : "",
+    line(!others.length, "Served model", others.length ? `the provider reported ${others.map((o) => `<code>${esc(o.model)}</code> on ${o.count} attempt${o.count === 1 ? "" : "s"}`).join(", ")}, not <code>${esc(r.config.model)}</code>` : "the one asked for, wherever the provider reported it"),
+  ].filter(Boolean);
+  return `<section class="reveal" id="fairness"><h2>Fair comparison${tip(TIPS.fairness)}</h2><div class="card"><ul class="bullets checks">${items.join("\n")}</ul></div></section>`;
 }
 
 /** How long problems took: median, slowest, and the slowest few as bars. */
@@ -768,7 +799,7 @@ export function problemPage(r: SharedRun, x: BenchResult, source: string | undef
   const attempts = rows
     .map(
       (a) => `<div class="attempt ${a.kind === "verified" ? "ok" : ""}" id="${a.n === 0 ? "automation" : `attempt-${a.n}`}">
-<div class="head"><b>${a.n === 0 ? "Lean's automation" : `Attempt ${a.n}`}</b><a class="anchor" href="#${a.n === 0 ? "automation" : `attempt-${a.n}`}" aria-label="Copy a link to this attempt" title="Copy a link to this attempt">#</a><span class="${a.kind === "verified" ? "ok" : "bad"}">${esc(a.label)}</span><span class="muted">${esc(short(a.model ?? ""))}</span><span class="muted">${dur(a.ms)}${a.offsetMs !== null ? ` · at ${clock(a.offsetMs)}` : ""}</span><span class="muted">${a.promptTokens ? `${tokens(a.promptTokens)} → ` : ""}${tokens(a.tokens)} tokens${a.truncated ? ' <span class="bad">cut short</span>' : ""}</span></div>
+<div class="head"><b>${a.n === 0 ? "Lean's automation" : `Attempt ${a.n}`}</b><a class="anchor" href="#${a.n === 0 ? "automation" : `attempt-${a.n}`}" aria-label="Copy a link to this attempt" title="Copy a link to this attempt">#</a><span class="${a.kind === "verified" ? "ok" : "bad"}">${esc(a.label)}</span><span class="muted">${esc(short(a.model ?? ""))}${a.servedModel ? ` <span class="bad" title="The provider said this model answered">served ${esc(a.servedModel)}</span>` : ""}</span><span class="muted">${dur(a.ms)}${a.offsetMs !== null ? ` · at ${clock(a.offsetMs)}` : ""}</span><span class="muted">${a.promptTokens ? `${tokens(a.promptTokens)} → ` : ""}${tokens(a.tokens)} tokens${a.reasoningTokens ? ` (${tokens(a.reasoningTokens)} thinking)` : ""}${a.truncated ? ' <span class="bad">cut short</span>' : ""}</span></div>
 ${a.error ? `<div class="err">${esc(a.error)}${a.repeats ? ` <span class="muted">(same as attempt ${a.repeats})</span>` : ""}</div>` : ""}
 <details><summary>Lean's feedback, the model's thinking and the attempt</summary>
 ${a.detail ? `<p class="small">Lean's feedback</p><pre>${esc(a.detail)}</pre>` : ""}
@@ -976,6 +1007,9 @@ ${failures}
 <li>Every run is made by the Mack repo's own workflow on one fixed cloud machine (GitHub Actions, 4 CPUs, 16 GB), so time and cost compare across models.</li>
 <li>Time is measured on that machine, tokens as the provider reported them, cost from the provider's published prices.</li>
 <li>Each run names one thinking level, the same for every request, so runs compare like for like.</li>
+<li>Every model gets the same reply limit and temperature. Before any machine starts, one tiny real call with those exact settings checks the provider accepts them; a provider that refuses one stops the run instead of quietly lowering it.</li>
+<li>A model call that fails or times out still spends its attempt and is logged as one. When more than 5% of a run's calls fail, the model had fewer real samples than the others, so the run is marked incomplete.</li>
+<li>Each run's page says whether thinking came back at the level asked for (a model may ignore it) and whether the provider reported serving another model.</li>
 <li>Every attempt's full trace (the whole thinking and reply, the Lean and Lean's verdict) is published to a Hugging Face dataset, linked from each problem's page; this site shows the first ${LOG_LIMITS.thinking.toLocaleString("en-US")} characters of each attempt's thinking.</li>
 <li>Failed problems: a failure cannot be re-run for free, so its attempts are shown as logged.</li>
 </ul></div>

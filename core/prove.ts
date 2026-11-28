@@ -15,7 +15,11 @@ import { closeByAutomation, sweep } from "./lean/analysis";
 const SWEEP_NAMES = "rfl, assumption, decide, omega, norm_num, simp, linarith, positivity, ring, simp_all, nlinarith, tauto, then aesop, grind, exact?";
 import { dropDeadTactics } from "./lean/repair";
 
-export type AttemptOutcome = "refused" | "no verdict" | "errors" | "sorries" | "rejected" | "verified";
+/** "model error": the model call failed (after the provider's retries) or timed out, so no proof reached Lean; the attempt is still spent. */
+export type AttemptOutcome = "refused" | "no verdict" | "errors" | "sorries" | "rejected" | "verified" | "model error";
+
+/** The sampling temperature of proof attempts: a prover model's, and every other model's. */
+export const PROOF_TEMPERATURE = { prover: 0.9, model: 0.6 } as const;
 
 export type ProveEvent =
   | { type: "status"; message: string }
@@ -36,6 +40,9 @@ export type ProveEvent =
       reasoning?: string;
       /** The reply stopped at the token limit. */
       truncated?: boolean;
+      /** The model the provider says answered, and the thinking tokens it counted. */
+      servedModel?: string;
+      reasoningTokens?: number;
     }
   | { type: "solved"; n: number; proof: string; axioms: string[] }
   | { type: "failed"; message: string }
@@ -88,6 +95,11 @@ export type ProveOptions = {
    * reasoning models room to think: a reply cut off loses a problem the model would have solved.
    */
   maxTokens?: number;
+  /**
+   * Never fall back to the usual reply limit when the provider refuses `maxTokens` (benchmarks): every model of a
+   * comparison gets the same limit, so a refusal fails the call instead of quietly giving that model less room.
+   */
+  strictMaxTokens?: boolean;
   signal?: AbortSignal;
   onEvent: (e: ProveEvent) => void;
 };
@@ -166,6 +178,8 @@ export async function prove(o: ProveOptions): Promise<void> {
   let started = 0;
   let solved = false;
   let modelError = "";
+  // Calls that failed one after another, across chains: a provider that keeps failing ends the problem instead of being hammered.
+  let failedInARow = 0;
   const emit = (e: ProveEvent) => {
     if (!solved) o.onEvent(e);
   };
@@ -199,13 +213,15 @@ export async function prove(o: ProveOptions): Promise<void> {
       let promptTokens = 0;
       let reasoning: string | undefined;
       let truncated = false;
+      let servedModel: string | undefined;
+      let reasoningTokens: number | undefined;
       const at = Date.now();
       try {
         const usual = isProver ? 16384 : 8192;
-        const ask = (maxTokens: number) => writer.provider.chat({ model: writer.model, messages, maxTokens, temperature: isProver ? 0.9 : 0.6, signal, onDelta: streamQuietly });
-        // A provider that refuses a reply this long (above the model's own limit) is asked again with the usual one.
+        const ask = (maxTokens: number) => writer.provider.chat({ model: writer.model, messages, maxTokens, temperature: isProver ? PROOF_TEMPERATURE.prover : PROOF_TEMPERATURE.model, signal, onDelta: streamQuietly });
+        // A provider that refuses a reply this long (above the model's own limit) is asked again with the usual one, except in a benchmark.
         const r = await ask(Math.max(usual, o.maxTokens ?? usual)).catch((e: Error) => {
-          if ((o.maxTokens ?? usual) > usual && !signal.aborted && /max_tokens|max tokens|maximum.*tokens|context (length|window)|too (large|long)/i.test(e.message)) return ask(usual);
+          if (!o.strictMaxTokens && (o.maxTokens ?? usual) > usual && !signal.aborted && /max_tokens|max tokens|maximum.*tokens|context (length|window)|too (large|long)/i.test(e.message)) return ask(usual);
           throw e;
         });
         reply = r.content;
@@ -213,15 +229,22 @@ export async function prove(o: ProveOptions): Promise<void> {
         promptTokens = r.usage?.promptTokens ?? 0;
         reasoning = r.reasoning;
         truncated = !!r.truncated;
+        servedModel = r.servedModel;
+        reasoningTokens = r.reasoningTokens;
+        failedInARow = 0;
       } catch (e) {
-        if (!signal.aborted) modelError = (e as Error).message;
-        return;
+        if (signal.aborted) return;
+        modelError = (e as Error).message;
+        // The attempt is spent all the same: it is logged, so a run shows how many of its k samples never reached Lean.
+        emit({ type: "attempt", n, candidate: "", outcome: "model error", detail: modelError.slice(0, 1500), ms: Date.now() - t0, tokens: 0, model: writer.model, at });
+        if (++failedInARow >= 4) return;
+        continue;
       }
       if (solved) return;
       messages.push({ role: "assistant", content: reply });
       let candidate = extractLean(reply);
       const attempt = (outcome: AttemptOutcome, detail: string) =>
-        emit({ type: "attempt", n, candidate, outcome, detail, ms: Date.now() - t0, tokens, model: writer.model, at, promptTokens, reply, ...(reasoning ? { reasoning } : {}), ...(truncated ? { truncated } : {}) });
+        emit({ type: "attempt", n, candidate, outcome, detail, ms: Date.now() - t0, tokens, model: writer.model, at, promptTokens, reply, ...(reasoning ? { reasoning } : {}), ...(truncated ? { truncated } : {}), ...(servedModel ? { servedModel } : {}), ...(reasoningTokens !== undefined ? { reasoningTokens } : {}) });
 
       const feedback = async (): Promise<string | null> => {
         const textual = protocolObjection(statement, candidate);
