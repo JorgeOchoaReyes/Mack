@@ -179,6 +179,7 @@ two runs for a **head to head**.
 | ✅ Contamination check | Recent Putnam is its own set, and PutnamBench runs are split by year |
 | ✅ Fixed thinking level | Each run names low, medium or high, sent with every request; never the provider's default |
 | ✅ Same limits for every model | One reply limit (64k tokens, thinking included, for official runs) and one temperature; a test call before the run stops it if the provider refuses either, rather than lowering the limit |
+| ⚠️ Provider time limit | Cheaper Inference ends any request after 795 s (about 13 min), so a reply must also finish in that time; a reply it ends counts as a failed call |
 | ✅ Failed calls counted | A failed or timed-out model call is a logged, spent attempt; over 5% of a run's calls and the run is marked incomplete |
 | ✅ Served model and thinking checked | Each run says whether the provider reported another model, and whether thinking came back at the level asked for |
 | ⚠️ Provider-reported | Tokens and the served model are as the provider reported them; cost uses its published prices |

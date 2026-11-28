@@ -1013,6 +1013,7 @@ ${failures}
 <div class="card"><h3>What the score counts as a failure</h3><ul class="bullets">
 <li><b>The reply limit.</b> A reply cut off at the run's limit (thinking included) before it reached a proof is a failed attempt. A model that thinks at length pays for it; the limit is on every run's page and in the leaderboard's Thinking column.</li>
 <li><b>Failed model calls.</b> A call the provider refuses, drops, or times out (after two retries for brief errors) is a failed attempt, not a free retry: the run had k attempts, and these were some of them. Slow models suffer most when a provider ends long replies early.</li>
+<li><b>The provider's time limit.</b> Official runs call every model through Cheaper Inference, which ends any request after 795 seconds (about 13 minutes), streaming or not (<a href="https://www.cheaperinference.com/docs#timeouts">its docs</a>). So each reply must finish within that time as well as within the reply limit: the same rule for every model, but it weighs most on slow models and on the longest reasoning. A reply it ends is a failed call, counted as above.</li>
 <li><b>Above 5% failed calls</b>, the score is published with a <span class="bad">⚠ calls failed</span> flag on the leaderboard and the run page says how many and why. It still ranks, but read it as a lower bound on the model.</li>
 <li>Every failure is logged with its reason, attempt by attempt, on each problem's page and in the run's traces.</li>
 </ul></div>
